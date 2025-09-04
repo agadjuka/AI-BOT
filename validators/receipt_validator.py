@@ -25,24 +25,28 @@ class ReceiptValidator:
         
         # Check that all lines have required fields
         for item in items:
-            # Check required fields exist
+            # Check required fields exist (name and status are always required)
             if not hasattr(item, 'name') or item.name is None:
                 return False, f"Отсутствует поле name в строке {item.line_number}"
-            if not hasattr(item, 'quantity') or item.quantity is None:
-                return False, f"Отсутствует поле quantity в строке {item.line_number}"
-            if not hasattr(item, 'price') or item.price is None:
-                return False, f"Отсутствует поле price в строке {item.line_number}"
-            if not hasattr(item, 'total') or item.total is None:
-                return False, f"Отсутствует поле total в строке {item.line_number}"
             if not hasattr(item, 'status') or item.status is None:
                 return False, f"Отсутствует поле status в строке {item.line_number}"
+            
+            # quantity, price, total могут быть None (нечитаемые данные)
+            # Проверяем только что поля существуют, но не требуем значений
+            if not hasattr(item, 'quantity'):
+                return False, f"Отсутствует поле quantity в строке {item.line_number}"
+            if not hasattr(item, 'price'):
+                return False, f"Отсутствует поле price в строке {item.line_number}"
+            if not hasattr(item, 'total'):
+                return False, f"Отсутствует поле total в строке {item.line_number}"
             
             # Additional calculation check (only for logging)
             quantity = item.quantity
             price = item.price
             total = item.total
             
-            if quantity > 0 and price > 0 and total > 0:
+            # Проверяем расчеты только если все поля не None и больше 0
+            if quantity is not None and price is not None and total is not None and quantity > 0 and price > 0 and total > 0:
                 expected_total = quantity * price
                 if abs(expected_total - total) > 0.01:
                     print(f"Предупреждение: Строка {item.line_number} - расчеты не сходятся: {quantity} * {price} = {expected_total}, но в чеке {total}")

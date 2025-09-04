@@ -136,7 +136,7 @@ class MessageHandlers:
                 if field_to_edit in ['quantity', 'price'] and item_to_edit.auto_calculated:
                     quantity = item_to_edit.quantity
                     price = item_to_edit.price
-                    if quantity > 0 and price > 0:
+                    if quantity is not None and price is not None and quantity > 0 and price > 0:
                         item_to_edit.total = quantity * price
                         item_to_edit.auto_calculated = True
                 elif field_to_edit == 'total':
@@ -461,7 +461,7 @@ class MessageHandlers:
                     total = item.total
                     has_calculation_error = False
                     
-                    if quantity > 0 and price > 0 and total > 0:
+                    if quantity is not None and price is not None and total is not None and quantity > 0 and price > 0 and total > 0:
                         expected_total = quantity * price
                         has_calculation_error = abs(expected_total - total) > 0.01
                     

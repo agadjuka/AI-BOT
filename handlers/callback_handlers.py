@@ -501,7 +501,7 @@ class CallbackHandlers:
                     total = item.total
                     has_calculation_error = False
                     
-                    if quantity > 0 and price > 0 and total > 0:
+                    if quantity is not None and price is not None and total is not None and quantity > 0 and price > 0 and total > 0:
                         expected_total = quantity * price
                         has_calculation_error = abs(expected_total - total) > 0.01
                     

@@ -19,46 +19,35 @@ class ReceiptProcessor:
         # Check if name is unreadable
         is_unreadable = item_name == "???" or item_name == "**не распознано**"
         
-        if is_unreadable:
-            # If name is unreadable but has numbers - needs_review
-            if quantity > 0 or price > 0 or total > 0:
-                item.status = 'needs_review'
+        # Check if any numeric field is null (None) - means unreadable
+        has_null_values = quantity is None or price is None or total is None
+        
+        if is_unreadable or has_null_values:
+            # If name is unreadable OR any numeric field is null - needs_review
+            item.status = 'needs_review'
+        elif quantity is not None and price is not None and total is not None:
+            # All fields are readable numbers - check calculation
+            if quantity > 0 and price > 0 and total > 0:
+                expected_total = quantity * price
+                if abs(expected_total - total) < 0.01:
+                    item.status = 'confirmed'  # Green marker
+                else:
+                    item.status = 'error'      # Red marker (calculation mismatch)
             else:
-                # If no numbers - needs_review
+                # Zero values - needs_review
                 item.status = 'needs_review'
-        elif quantity > 0 and price > 0 and total > 0:
-            # Check calculation match ONLY for marker determination
-            # DO NOT CHANGE data! Only determine status for marker
-            expected_total = quantity * price
-            if abs(expected_total - total) < 0.01:
-                item.status = 'confirmed'  # Green marker
-            else:
-                item.status = 'error'      # Red marker (manually entered sum)
-        elif quantity > 0 and price > 0 and total == 0:
-            # If has quantity and price but sum 0 - automatically calculate
-            item.status = 'confirmed'  # Green marker for automatically calculated sum
         else:
-            # If missing data for calculation
-            item.status = 'needs_review'   # Yellow marker
+            # Fallback - needs_review
+            item.status = 'needs_review'
         
         return item
     
     @staticmethod
     def auto_calculate_total_if_needed(item: ReceiptItem) -> ReceiptItem:
-        """Automatically calculate sum if quantity and price are set but sum is 0"""
-        quantity = item.quantity
-        price = item.price
-        total = item.total
-        
-        # If has quantity and price but sum is 0 - automatically calculate
-        if quantity > 0 and price > 0 and total == 0:
-            item.total = quantity * price
-            # Set flag that sum was automatically calculated
-            item.auto_calculated = True
-        else:
-            # If sum was entered manually, reset flag
-            item.auto_calculated = False
-        
+        """DO NOT automatically calculate - only for scanner mode"""
+        # В режиме сканера НЕ вычисляем значения автоматически
+        # Все значения должны быть строго из чека
+        item.auto_calculated = False
         return item
     
     @staticmethod
@@ -83,7 +72,8 @@ class ReceiptProcessor:
             total = item.total
             has_calculation_error = False
             
-            if quantity > 0 and price > 0 and total > 0:
+            # Проверяем расчеты только если все поля не None и больше 0
+            if quantity is not None and price is not None and total is not None and quantity > 0 and price > 0 and total > 0:
                 expected_total = quantity * price
                 has_calculation_error = abs(expected_total - total) > 0.01
             

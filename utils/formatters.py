@@ -1,7 +1,7 @@
 """
 Formatting utilities for receipt data
 """
-from typing import Dict, Any, List
+from typing import Dict, Any, List, Optional
 from models.receipt import ReceiptData, ReceiptItem
 
 
@@ -9,8 +9,12 @@ class NumberFormatter:
     """Utility class for number formatting"""
     
     @staticmethod
-    def format_number_with_spaces(number: float) -> str:
+    def format_number_with_spaces(number: Optional[float]) -> str:
         """Format number with spaces between thousands, preserving all zeros"""
+        # Handle None values
+        if number is None:
+            return "0"
+        
         # Always show number as integer if it's whole
         if number == int(number):
             return f"{int(number):,}".replace(",", " ")
@@ -221,7 +225,7 @@ class ReceiptFormatter:
             # Format quantity - if 0 or None, show dash
             if quantity is None or quantity == 0:
                 quantity_str = "-"
-            elif quantity == int(quantity):
+            elif quantity is not None and quantity == int(quantity):
                 quantity_str = str(int(quantity))
             else:
                 quantity_str = str(quantity)
@@ -229,7 +233,7 @@ class ReceiptFormatter:
             # Format price - if 0 or None, show dash
             if price is None or price == 0:
                 price_str = "-"
-            elif price == int(price):
+            elif price is not None and price == int(price):
                 price_str = str(int(price))
             else:
                 price_str = str(price)

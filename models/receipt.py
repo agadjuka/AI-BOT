@@ -10,9 +10,9 @@ class ReceiptItem:
     """Model for a single receipt item"""
     line_number: int
     name: str
-    quantity: float
-    price: float
-    total: float
+    quantity: Optional[float] = None
+    price: Optional[float] = None
+    total: Optional[float] = None
     status: str = "needs_review"
     auto_calculated: bool = False
     
@@ -34,9 +34,9 @@ class ReceiptItem:
         return cls(
             line_number=data.get('line_number', 0),
             name=data.get('name', ''),
-            quantity=data.get('quantity', 0.0),
-            price=data.get('price', 0.0),
-            total=data.get('total', 0.0),
+            quantity=data.get('quantity'),  # Может быть None
+            price=data.get('price'),        # Может быть None
+            total=data.get('total'),        # Может быть None
             status=data.get('status', 'needs_review'),
             auto_calculated=data.get('auto_calculated', False)
         )
@@ -99,7 +99,7 @@ class ReceiptData:
     
     def calculate_total_sum(self) -> float:
         """Calculate total sum of all items"""
-        return sum(item.total for item in self.items if item.total > 0)
+        return sum(item.total for item in self.items if item.total is not None and item.total > 0)
     
     def get_max_line_number(self) -> int:
         """Get maximum line number"""
