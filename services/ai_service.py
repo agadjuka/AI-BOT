@@ -73,7 +73,21 @@ class ReceiptAnalysisService:
         # Parse the JSON response
         data = self.ai_service.parse_receipt_data(analysis_json_str)
         
-        return data
+        # Check if data is a list (items only) or dict (with items key)
+        if isinstance(data, list):
+            # If data is a list, wrap it in a dict with 'items' key
+            return {'items': data, 'grand_total_text': '0'}
+        elif isinstance(data, dict) and 'items' in data:
+            # If data is already a dict with 'items' key, return as is
+            return data
+        else:
+            # If data is a dict but doesn't have 'items' key, try to find items
+            # This handles cases where AI returns different structure
+            if 'items' in data:
+                return data
+            else:
+                # If no items key found, assume the whole dict is items
+                return {'items': [data], 'grand_total_text': '0'}
     
     def format_receipt_data(self, data: Dict[str, Any]) -> str:
         """
