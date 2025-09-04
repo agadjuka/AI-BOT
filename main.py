@@ -16,10 +16,15 @@ from config.settings import BotConfig, PromptConfig
 from services.ai_service import AIService, ReceiptAnalysisService
 from handlers.message_handlers import MessageHandlers
 from handlers.callback_handlers import CallbackHandlers
+# 👇 --- ДОБАВЛЕН ИМПОРТ --- 👇
+from poster_handler import get_all_poster_ingredients
 
 
 def main() -> None:
     """Main function to start the bot"""
+    # 1. Загружаем справочник ингредиентов из Poster
+    poster_ingredients_handbook = get_all_poster_ingredients()
+    
     # Initialize configuration
     config = BotConfig()
     prompt_config = PromptConfig()
@@ -34,6 +39,10 @@ def main() -> None:
     
     # Create application
     application = Application.builder().token(config.BOT_TOKEN).concurrent_updates(True).build()
+    
+    # 3. Сохраняем загруженный справочник в общую память бота
+    # Это специальное 'хранилище' данных, доступное во всех частях нашего бота.
+    application.bot_data["poster_ingredients"] = poster_ingredients_handbook
 
     # Create conversation handler
     conv_handler = ConversationHandler(
@@ -73,7 +82,8 @@ def main() -> None:
     application.add_handler(CommandHandler("start", message_handlers.start))
     application.add_handler(conv_handler)
 
-    print("Бот запущен и готов к интерактивной работе...")
+    # 4. Запускаем бота
+    print("Бот запускается...")
     application.run_polling()
 
 

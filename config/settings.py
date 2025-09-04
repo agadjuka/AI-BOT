@@ -13,6 +13,9 @@ class BotConfig:
         self.BOT_TOKEN: str = "8291213805:AAEHDlkDCHLQ3RFtrB5HLMeU-nGzF1hOZYE"
         self.PHOTO_FILE_NAME: str = "last_photo.jpg"
         
+        # Poster settings
+        self.POSTER_TOKEN: str = "853931:71424838d41a70ee724e07ef6c6f0774"
+        
         # Google Cloud settings
         self.PROJECT_ID: str = "just-advice-470905-a3"
         self.LOCATION: str = "us-central1"
@@ -166,3 +169,6 @@ PROMPT_FORMAT = """
 
 Вот данные:
 """
+
+# Poster API token
+POSTER_TOKEN = "853931:71424838d41a70ee724e07ef6c6f0774"
