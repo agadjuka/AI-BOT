@@ -1,0 +1,88 @@
+"""
+AI service for receipt analysis using Google Gemini
+"""
+import json
+from typing import Dict, Any
+import vertexai
+from vertexai.generative_models import GenerativeModel, Part
+
+from config.settings import BotConfig, PromptConfig
+
+
+class AIService:
+    """Service for AI operations using Google Gemini"""
+    
+    def __init__(self, config: BotConfig, prompt_config: PromptConfig):
+        self.config = config
+        self.prompt_config = prompt_config
+    
+    def analyze_receipt_phase1(self, image_path: str) -> str:
+        """
+        Phase 1: Analyze receipt image and extract data
+        """
+        vertexai.init(project=self.config.PROJECT_ID, location=self.config.LOCATION)
+        model = GenerativeModel(self.config.MODEL_NAME)
+        
+        with open(image_path, "rb") as f:
+            image_data = f.read()
+        image_part = Part.from_data(data=image_data, mime_type="image/jpeg")
+        
+        print("Отправка запроса в Gemini (Фаза 1: Анализ)...")
+        response = model.generate_content([image_part, self.prompt_config.PROMPT_ANALYZE])
+        
+        clean_response = response.text.strip().replace("```json", "").replace("```", "")
+        print("Ответ от Gemini (Фаза 1):", clean_response)
+        return clean_response
+    
+    def analyze_receipt_phase2(self, final_data: str) -> str:
+        """
+        Phase 2: Format the analyzed data
+        """
+        vertexai.init(project=self.config.PROJECT_ID, location=self.config.LOCATION)
+        model = GenerativeModel(self.config.MODEL_NAME)
+        
+        print("Отправка запроса в Gemini (Фаза 2: Форматирование)...")
+        response = model.generate_content(self.prompt_config.PROMPT_FORMAT + final_data)
+        print("Ответ от Gemini (Фаза 2):", response.text)
+        return response.text
+    
+    def parse_receipt_data(self, json_str: str) -> Dict[str, Any]:
+        """
+        Parse JSON response from AI analysis
+        """
+        try:
+            return json.loads(json_str)
+        except json.JSONDecodeError as e:
+            print(f"Ошибка парсинга JSON от Gemini: {e}")
+            raise ValueError(f"Не удалось распарсить JSON ответ от AI: {e}")
+
+
+class ReceiptAnalysisService:
+    """Service for receipt analysis operations"""
+    
+    def __init__(self, ai_service: AIService):
+        self.ai_service = ai_service
+    
+    def analyze_receipt(self, image_path: str) -> Dict[str, Any]:
+        """
+        Complete receipt analysis process
+        """
+        # Phase 1: Extract data from image
+        analysis_json_str = self.ai_service.analyze_receipt_phase1(image_path)
+        
+        # Parse the JSON response
+        data = self.ai_service.parse_receipt_data(analysis_json_str)
+        
+        return data
+    
+    def format_receipt_data(self, data: Dict[str, Any]) -> str:
+        """
+        Format receipt data for display
+        """
+        # Convert data to JSON string for formatting
+        json_str = json.dumps(data, ensure_ascii=False, indent=2)
+        
+        # Phase 2: Format the data
+        formatted_text = self.ai_service.analyze_receipt_phase2(json_str)
+        
+        return formatted_text
