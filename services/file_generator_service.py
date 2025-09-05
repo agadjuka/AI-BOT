@@ -15,7 +15,7 @@ class FileGeneratorService:
     """Service for generating supply files in various formats"""
     
     def __init__(self):
-        self.supported_formats = ['xlsx', 'xls', 'csv']
+        self.supported_formats = ['xlsx']
     
     def generate_supply_file(self, 
                            receipt_data: ReceiptData, 
@@ -30,7 +30,7 @@ class FileGeneratorService:
         Args:
             receipt_data: Processed receipt data
             matching_result: Ingredient matching results
-            file_format: Output format ('xlsx', 'xls', 'csv')
+            file_format: Output format ('xlsx')
             supplier: Supplier name
             storage_location: Storage location
             comment: Additional comment
@@ -52,10 +52,8 @@ class FileGeneratorService:
         
         if file_format == 'xlsx':
             return self._generate_xlsx(df, metadata)
-        elif file_format == 'xls':
-            return self._generate_xls(df, metadata)
-        elif file_format == 'csv':
-            return self._generate_csv(df, metadata)
+        else:
+            raise ValueError(f"Unsupported format: {file_format}. Only 'xlsx' is supported.")
     
     def _create_supply_data(self, receipt_data: ReceiptData, matching_result: IngredientMatchingResult) -> List[Dict[str, Any]]:
         """Create supply data from receipt and matching results"""
@@ -128,35 +126,6 @@ class FileGeneratorService:
         output.seek(0)
         return output.getvalue()
     
-    def _generate_xls(self, df: pd.DataFrame, metadata: Dict[str, Any]) -> bytes:
-        """Generate XLS file"""
-        output = io.BytesIO()
-        
-        with pd.ExcelWriter(output, engine='xlwt') as writer:
-            # Write main data
-            df.to_excel(writer, sheet_name='Supply Items', index=False)
-            
-            # Create metadata sheet
-            metadata_df = pd.DataFrame(list(metadata.items()), columns=['Field', 'Value'])
-            metadata_df.to_excel(writer, sheet_name='Metadata', index=False)
-        
-        output.seek(0)
-        return output.getvalue()
-    
-    def _generate_csv(self, df: pd.DataFrame, metadata: Dict[str, Any]) -> bytes:
-        """Generate CSV file"""
-        output = io.StringIO()
-        
-        # Write metadata as comments
-        for key, value in metadata.items():
-            output.write(f"# {key}: {value}\n")
-        
-        output.write("\n")
-        
-        # Write main data
-        df.to_csv(output, index=False)
-        
-        return output.getvalue().encode('utf-8')
     
     def get_supported_formats(self) -> List[str]:
         """Get list of supported file formats"""

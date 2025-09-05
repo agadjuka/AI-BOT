@@ -204,6 +204,40 @@
             "score": 0.06363636363636363
           }
         ]
+      },
+      {
+        "receipt_item_name": "Новый товар",
+        "matched_ingredient_name": "olive oil",
+        "matched_ingredient_id": 54,
+        "match_status": "no_match",
+        "similarity_score": 0.06999999999999999,
+        "suggested_matches": [
+          {
+            "name": "olive oil",
+            "id": 54,
+            "score": 0.06999999999999999
+          },
+          {
+            "name": "salad oil",
+            "id": 24,
+            "score": 0.06999999999999999
+          },
+          {
+            "name": "mango froz",
+            "id": 60,
+            "score": 0.06666666666666665
+          },
+          {
+            "name": "sour cream",
+            "id": 105,
+            "score": 0.06666666666666665
+          },
+          {
+            "name": "bell pepper ",
+            "id": 49,
+            "score": 0.06363636363636363
+          }
+        ]
       }
     ],
     "total_items": 5,

@@ -540,7 +540,7 @@ class CallbackHandlers:
         
         if action.startswith("generate_file_"):
             # User selected file format
-            file_format = action.split('_')[2]  # xlsx, xls, or csv
+            file_format = action.split('_')[2]  # xlsx
             await query.answer(f"📄 Генерирую файл в формате {file_format.upper()}...")
             
             # Clean up all messages except anchor before showing new menu
@@ -1916,9 +1916,7 @@ class CallbackHandlers:
         text += f"```\n{table_preview}\n```"
         
         keyboard = [
-            [InlineKeyboardButton("📊 XLSX (Рекомендуется)", callback_data="generate_file_xlsx")],
-            [InlineKeyboardButton("📈 XLS", callback_data="generate_file_xls")],
-            [InlineKeyboardButton("📝 CSV", callback_data="generate_file_csv")],
+            [InlineKeyboardButton("📥 Скачать XLSX", callback_data="generate_file_xlsx")],
             [InlineKeyboardButton("◀️ Назад", callback_data="back_to_receipt")]
         ]
         

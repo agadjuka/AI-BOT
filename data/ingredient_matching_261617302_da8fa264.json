@@ -2,36 +2,36 @@
   "matching_result": {
     "matches": [
       {
-        "receipt_item_name": "Cabbage",
+        "receipt_item_name": "White Cabbage",
         "matched_ingredient_name": "cabbage",
         "matched_ingredient_id": 26,
-        "match_status": "exact",
-        "similarity_score": 1.0,
+        "match_status": "partial",
+        "similarity_score": 0.6399999999999999,
         "suggested_matches": [
           {
             "name": "cabbage",
             "id": 26,
-            "score": 1.0
+            "score": 0.6399999999999999
           },
           {
             "name": "red cabbage",
             "id": 27,
-            "score": 0.6944444444444444
+            "score": 0.6249999999999999
           },
           {
-            "name": "cranberry",
-            "id": 61,
-            "score": 0.35
+            "name": "onion white",
+            "id": 75,
+            "score": 0.39166666666666666
           },
           {
-            "name": "babu cucumber",
-            "id": 55,
-            "score": 0.27999999999999997
+            "name": "pickles cucumber",
+            "id": 128,
+            "score": 0.28965517241379307
           },
           {
-            "name": "cucumber",
-            "id": 21,
-            "score": 0.27999999999999997
+            "name": "iceberg salad",
+            "id": 46,
+            "score": 0.2692307692307692
           }
         ]
       },
@@ -172,43 +172,43 @@
         ]
       },
       {
-        "receipt_item_name": "Новый товар",
-        "matched_ingredient_name": "olive oil",
-        "matched_ingredient_id": 54,
-        "match_status": "no_match",
-        "similarity_score": 0.06999999999999999,
+        "receipt_item_name": "mayonase",
+        "matched_ingredient_name": "mayonase",
+        "matched_ingredient_id": 123,
+        "match_status": "exact",
+        "similarity_score": 1.0,
         "suggested_matches": [
           {
-            "name": "olive oil",
-            "id": 54,
-            "score": 0.06999999999999999
+            "name": "mayonase",
+            "id": 123,
+            "score": 1.0
           },
           {
-            "name": "salad oil",
-            "id": 24,
-            "score": 0.06999999999999999
+            "name": "tom yam paste",
+            "id": 72,
+            "score": 0.3333333333333333
           },
           {
-            "name": "mango froz",
-            "id": 60,
-            "score": 0.06666666666666665
+            "name": "lemon",
+            "id": 52,
+            "score": 0.3230769230769231
           },
           {
-            "name": "sour cream",
-            "id": 105,
-            "score": 0.06666666666666665
+            "name": "salmon",
+            "id": 77,
+            "score": 0.3
           },
           {
-            "name": "bell pepper ",
-            "id": 49,
-            "score": 0.06363636363636363
+            "name": "tomato",
+            "id": 20,
+            "score": 0.3
           }
         ]
       }
     ],
-    "total_items": 5,
+    "total_items": 6,
     "exact_matches": 5,
-    "partial_matches": 0,
+    "partial_matches": 1,
     "no_matches": 0
   },
   "changed_indices": []
