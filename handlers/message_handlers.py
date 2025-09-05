@@ -38,8 +38,23 @@ class MessageHandlers:
     
     async def start(self, update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         """Handle /start command"""
+        from telegram import InlineKeyboardButton, InlineKeyboardMarkup
+        
+        # Create start menu with buttons
+        keyboard = [
+            [InlineKeyboardButton("📸 Анализировать чек", callback_data="analyze_receipt")],
+            [InlineKeyboardButton("📄 Получить файл для загрузки в постер", callback_data="generate_supply_file")]
+        ]
+        
+        # Add back button if there's existing receipt data
+        if context.user_data.get('receipt_data'):
+            keyboard.append([InlineKeyboardButton("◀️ Вернуться к чеку", callback_data="back_to_receipt")])
+        reply_markup = InlineKeyboardMarkup(keyboard)
+        
         await update.message.reply_html(
-            f"Привет, {update.effective_user.mention_html()}! 👋\n\nОтправь мне фото рукописного чека для интерактивного анализа."
+            f"Привет, {update.effective_user.mention_html()}! 👋\n\n"
+            "Выберите действие:",
+            reply_markup=reply_markup
         )
         return self.config.AWAITING_CORRECTION
     
@@ -508,8 +523,7 @@ class MessageHandlers:
                 # Add control buttons
                 keyboard.extend([
                     [InlineKeyboardButton("🔍 Новый поиск", callback_data="select_position_for_matching")],
-                    [InlineKeyboardButton("📋 Назад к обзору", callback_data="back_to_matching_overview")],
-                    [InlineKeyboardButton("❌ Отмена", callback_data="cancel")]
+                    [InlineKeyboardButton("📋 Назад к обзору", callback_data="back_to_matching_overview")]
                 ])
                 
                 reply_markup = InlineKeyboardMarkup(keyboard)
@@ -527,8 +541,7 @@ class MessageHandlers:
                     "Попробуйте другой поисковый запрос или вернитесь к обзору.",
                     InlineKeyboardMarkup([
                         [InlineKeyboardButton("🔍 Новый поиск", callback_data="select_position_for_matching")],
-                        [InlineKeyboardButton("📋 Назад к обзору", callback_data="back_to_matching_overview")],
-                        [InlineKeyboardButton("❌ Отмена", callback_data="cancel")]
+                        [InlineKeyboardButton("📋 Назад к обзору", callback_data="back_to_matching_overview")]
                     ]),
                     'Markdown'
                 )
@@ -539,8 +552,7 @@ class MessageHandlers:
                 "Попробуйте другой поисковый запрос или вернитесь к обзору.",
                 InlineKeyboardMarkup([
                     [InlineKeyboardButton("🔍 Новый поиск", callback_data="select_position_for_matching")],
-                    [InlineKeyboardButton("📋 Назад к обзору", callback_data="back_to_matching_overview")],
-                    [InlineKeyboardButton("❌ Отмена", callback_data="cancel")]
+                    [InlineKeyboardButton("📋 Назад к обзору", callback_data="back_to_matching_overview")]
                 ]),
                 'Markdown'
             )
@@ -587,7 +599,6 @@ class MessageHandlers:
                 # Add control buttons
                 keyboard.append([InlineKeyboardButton("🔍 Новый поиск", callback_data="search_ingredient")])
                 keyboard.append([InlineKeyboardButton("⏭️ Пропустить", callback_data="skip_ingredient")])
-                keyboard.append([InlineKeyboardButton("❌ Отмена", callback_data="cancel")])
                 
                 reply_markup = InlineKeyboardMarkup(keyboard)
                 
@@ -683,8 +694,7 @@ class MessageHandlers:
                 
                 # Add control buttons
                 keyboard.extend([
-                    [InlineKeyboardButton("◀️ Назад", callback_data="back_to_matching_overview")],
-                    [InlineKeyboardButton("❌ Отмена", callback_data="cancel")]
+                    [InlineKeyboardButton("◀️ Назад", callback_data="back_to_matching_overview")]
                 ])
                 
                 reply_markup = InlineKeyboardMarkup(keyboard)
@@ -701,8 +711,7 @@ class MessageHandlers:
                     f"❌ **По запросу '{user_input}' не найдено подходящих вариантов**\n\n"
                     "Попробуйте другой поисковый запрос или вернитесь к обзору.",
                     InlineKeyboardMarkup([
-                        [InlineKeyboardButton("◀️ Назад", callback_data="back_to_matching_overview")],
-                        [InlineKeyboardButton("❌ Отмена", callback_data="cancel")]
+                        [InlineKeyboardButton("◀️ Назад", callback_data="back_to_matching_overview")]
                     ]),
                     'Markdown'
                 )
@@ -712,8 +721,7 @@ class MessageHandlers:
                 f"❌ **По запросу '{user_input}' ничего не найдено**\n\n"
                 "Попробуйте другой поисковый запрос или вернитесь к обзору.",
                 InlineKeyboardMarkup([
-                    [InlineKeyboardButton("◀️ Назад", callback_data="back_to_matching_overview")],
-                    [InlineKeyboardButton("❌ Отмена", callback_data="cancel")]
+                    [InlineKeyboardButton("◀️ Назад", callback_data="back_to_matching_overview")]
                 ]),
                 'Markdown'
             )
@@ -785,8 +793,7 @@ class MessageHandlers:
         # Add action buttons
         keyboard = [
             [InlineKeyboardButton("🔄 Сопоставить заново", callback_data="rematch_ingredients")],
-            [InlineKeyboardButton("📋 Вернуться к чеку", callback_data="back_to_receipt")],
-            [InlineKeyboardButton("❌ Отмена", callback_data="cancel")]
+            [InlineKeyboardButton("📋 Вернуться к чеку", callback_data="back_to_receipt")]
         ]
         
         reply_markup = InlineKeyboardMarkup(keyboard)
@@ -928,10 +935,12 @@ class MessageHandlers:
             # Add ingredient matching button
             keyboard.append([InlineKeyboardButton("🔍 Сопоставить ингредиенты", callback_data="match_ingredients")])
             
+            # Add file generation button
+            keyboard.append([InlineKeyboardButton("📄 Получить файл для загрузки в постер", callback_data="generate_supply_file")])
+            
             # Add general buttons
             keyboard.append([InlineKeyboardButton("🔢 Редактировать строку по номеру", callback_data="edit_line_number")])
             keyboard.append([InlineKeyboardButton("◀️ Вернуться к чеку", callback_data="back_to_receipt")])
-            keyboard.append([InlineKeyboardButton("❌ Отмена", callback_data="cancel")])
             
             reply_markup = InlineKeyboardMarkup(keyboard)
             
@@ -1002,7 +1011,7 @@ class MessageHandlers:
             [
                 InlineKeyboardButton("💵 Сумма", callback_data=f"field_{line_number}_total"),
                 InlineKeyboardButton("✅ Применить", callback_data=f"apply_{line_number}"),
-                InlineKeyboardButton("❌ Отмена", callback_data="cancel")
+                InlineKeyboardButton("◀️ Назад", callback_data="back_to_receipt")
             ]
         ]
         

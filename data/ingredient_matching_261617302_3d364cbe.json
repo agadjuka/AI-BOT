@@ -3,11 +3,37 @@
     "matches": [
       {
         "receipt_item_name": "White Cabbage",
-        "matched_ingredient_name": "red cabbage",
-        "matched_ingredient_id": 27,
-        "match_status": "exact",
-        "similarity_score": 1.0,
-        "suggested_matches": []
+        "matched_ingredient_name": "cabbage",
+        "matched_ingredient_id": 26,
+        "match_status": "partial",
+        "similarity_score": 0.6399999999999999,
+        "suggested_matches": [
+          {
+            "name": "cabbage",
+            "id": 26,
+            "score": 0.6399999999999999
+          },
+          {
+            "name": "red cabbage",
+            "id": 27,
+            "score": 0.6249999999999999
+          },
+          {
+            "name": "onion white",
+            "id": 75,
+            "score": 0.39166666666666666
+          },
+          {
+            "name": "pickles cucumber",
+            "id": 128,
+            "score": 0.28965517241379307
+          },
+          {
+            "name": "iceberg salad",
+            "id": 46,
+            "score": 0.2692307692307692
+          }
+        ]
       },
       {
         "receipt_item_name": "Cucumber",
@@ -79,11 +105,37 @@
       },
       {
         "receipt_item_name": "Salt",
-        "matched_ingredient_name": "dill",
-        "matched_ingredient_id": 29,
+        "matched_ingredient_name": "salt",
+        "matched_ingredient_id": 25,
         "match_status": "exact",
         "similarity_score": 1.0,
-        "suggested_matches": []
+        "suggested_matches": [
+          {
+            "name": "salt",
+            "id": 25,
+            "score": 1.0
+          },
+          {
+            "name": "salmon",
+            "id": 77,
+            "score": 0.42
+          },
+          {
+            "name": "salad oil",
+            "id": 24,
+            "score": 0.3230769230769231
+          },
+          {
+            "name": "sugar",
+            "id": 45,
+            "score": 0.31111111111111106
+          },
+          {
+            "name": "carrot",
+            "id": 28,
+            "score": 0.27999999999999997
+          }
+        ]
       },
       {
         "receipt_item_name": "Avocado",
@@ -125,8 +177,5 @@
     "partial_matches": 1,
     "no_matches": 0
   },
-  "changed_indices": [
-    0,
-    3
-  ]
+  "changed_indices": []
 }

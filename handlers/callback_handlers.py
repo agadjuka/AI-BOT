@@ -3,6 +3,8 @@ Callback handlers for Telegram bot
 """
 import asyncio
 import json
+import io
+from datetime import datetime
 from typing import Optional
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import ContextTypes
@@ -12,6 +14,7 @@ from models.receipt import ReceiptData, ReceiptItem
 from models.ingredient_matching import IngredientMatchingResult
 from services.ai_service import ReceiptAnalysisService
 from services.ingredient_matching_service import IngredientMatchingService
+from services.file_generator_service import FileGeneratorService
 from utils.formatters import ReceiptFormatter, NumberFormatter, TextParser
 from utils.ingredient_formatter import IngredientFormatter
 from utils.ingredient_storage import IngredientStorage
@@ -34,6 +37,7 @@ class CallbackHandlers:
         self.ingredient_matching_service = IngredientMatchingService()
         self.ingredient_formatter = IngredientFormatter()
         self.ingredient_storage = IngredientStorage()
+        self.file_generator = FileGeneratorService()
         self.ui_manager = UIManager(config)
     
     async def handle_correction_choice(self, update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
@@ -467,6 +471,113 @@ class CallbackHandlers:
             await self._show_final_report_with_edit_button_callback(update, context)
             return self.config.AWAITING_CORRECTION
         
+        if action == "analyze_receipt":
+            # User wants to analyze receipt
+            await query.answer("📸 Отправьте фото чека для анализа")
+            return self.config.AWAITING_CORRECTION
+        
+        if action == "generate_supply_file":
+            # User wants to generate supply file
+            await query.answer("📄 Проверяю данные для генерации файла...")
+            
+            # Clean up all messages except anchor before showing new menu
+            await self.ui_manager.cleanup_all_except_anchor(update, context)
+            
+            # Check if we have processed receipt data
+            receipt_data = context.user_data.get('receipt_data')
+            
+            if not receipt_data:
+                await self.ui_manager.send_menu(
+                    update, context,
+                    "📄 **Получить файл для загрузки в постер**\n\n"
+                    "❌ Сначала необходимо проанализировать чек.\n\n"
+                    "**Пошаговая инструкция:**\n"
+                    "1️⃣ Нажмите кнопку '📸 Анализировать чек'\n"
+                    "2️⃣ Отправьте фото чека\n"
+                    "3️⃣ Выполните сопоставление ингредиентов\n"
+                    "4️⃣ Затем вернитесь к этой кнопке для получения файла\n\n"
+                    "Файл будет содержать товары с сопоставленными наименованиями из Poster.",
+                    InlineKeyboardMarkup([
+                        [InlineKeyboardButton("📸 Анализировать чек", callback_data="analyze_receipt")],
+                        [InlineKeyboardButton("◀️ Назад", callback_data="back_to_receipt")]
+                    ]),
+                    'Markdown'
+                )
+                return self.config.AWAITING_CORRECTION
+            
+            # Try to load matching result from storage
+            user_id = update.effective_user.id
+            receipt_hash = receipt_data.get_receipt_hash()
+            saved_data = self.ingredient_storage.load_matching_result(user_id, receipt_hash)
+            
+            print(f"DEBUG: Loading matching data for user {user_id}, receipt {receipt_hash}")
+            print(f"DEBUG: Found saved data: {saved_data is not None}")
+            
+            if not saved_data:
+                await self.ui_manager.send_menu(
+                    update, context,
+                    "📄 **Получить файл для загрузки в постер**\n\n"
+                    "❌ Необходимо выполнить сопоставление ингредиентов.\n\n"
+                    "**Что нужно сделать:**\n"
+                    "1️⃣ В главном меню нажмите '🔍 Сопоставить ингредиенты'\n"
+                    "2️⃣ Выполните сопоставление всех товаров с ингредиентами Poster\n"
+                    "3️⃣ Нажмите '✅ Применить' для сохранения\n"
+                    "4️⃣ Затем вернитесь к этой кнопке для получения файла\n\n"
+                    "Файл будет содержать товары с сопоставленными наименованиями из Poster.",
+                    InlineKeyboardMarkup([
+                        [InlineKeyboardButton("🔍 Сопоставить ингредиенты", callback_data="match_ingredients")],
+                        [InlineKeyboardButton("◀️ Назад", callback_data="back_to_receipt")]
+                    ]),
+                    'Markdown'
+                )
+                return self.config.AWAITING_CORRECTION
+            
+            matching_result, changed_indices = saved_data
+            
+            print(f"DEBUG: Loaded matching result with {len(matching_result.matches)} matches")
+            print(f"DEBUG: Changed indices: {changed_indices}")
+            print(f"DEBUG: Exact matches: {matching_result.exact_matches}")
+            print(f"DEBUG: Partial matches: {matching_result.partial_matches}")
+            print(f"DEBUG: No matches: {matching_result.no_matches}")
+            
+            # Generate and send file
+            await self._generate_and_send_supply_file(update, context, receipt_data, matching_result)
+            return self.config.AWAITING_CORRECTION
+        
+        if action.startswith("generate_file_"):
+            # User selected file format
+            file_format = action.split('_')[2]  # xlsx, xls, or csv
+            await query.answer(f"📄 Генерирую файл в формате {file_format.upper()}...")
+            
+            # Clean up all messages except anchor before showing new menu
+            await self.ui_manager.cleanup_all_except_anchor(update, context)
+            
+            # Get saved data
+            pending_data = context.user_data.get('pending_file_generation')
+            if not pending_data:
+                await self.ui_manager.send_menu(
+                    update, context,
+                    "❌ **Ошибка генерации файла**\n\n"
+                    "Данные для генерации файла не найдены.\n"
+                    "Попробуйте начать процесс заново.",
+                    InlineKeyboardMarkup([
+                        [InlineKeyboardButton("📄 Получить файл для загрузки в постер", callback_data="generate_supply_file")],
+                        [InlineKeyboardButton("◀️ Назад", callback_data="back_to_receipt")]
+                    ]),
+                    'Markdown'
+                )
+                return self.config.AWAITING_CORRECTION
+            
+            receipt_data = pending_data['receipt_data']
+            matching_result = pending_data['matching_result']
+            
+            # Generate and send file
+            await self._generate_file_in_format(update, context, receipt_data, matching_result, file_format)
+            
+            # Clear pending data
+            context.user_data.pop('pending_file_generation', None)
+            return self.config.AWAITING_CORRECTION
+        
         if action == "cancel":
             # Check if we're in edit menu
             if context.user_data.get('line_to_edit'):
@@ -849,6 +960,9 @@ class CallbackHandlers:
             
             # Add ingredient matching button
             keyboard.append([InlineKeyboardButton("🔍 Сопоставить ингредиенты", callback_data="match_ingredients")])
+            
+            # Add file generation button
+            keyboard.append([InlineKeyboardButton("📄 Получить файл для загрузки в постер", callback_data="generate_supply_file")])
             
             # Add general buttons
             keyboard.append([InlineKeyboardButton("🔢 Редактировать строку по номеру", callback_data="edit_line_number")])
@@ -1671,4 +1785,128 @@ class CallbackHandlers:
         if hasattr(update, 'callback_query') and update.callback_query:
             await self.ui_manager.send_menu(
                 update, context, text, reply_markup, 'Markdown'
+            )
+    
+    async def _generate_and_send_supply_file(self, update: Update, context: ContextTypes.DEFAULT_TYPE, 
+                                           receipt_data: ReceiptData, matching_result: IngredientMatchingResult):
+        """Generate and send supply file to user"""
+        try:
+            # Validate data
+            is_valid, error_message = self.file_generator.validate_data(receipt_data, matching_result)
+            if not is_valid:
+                await update.callback_query.message.reply_text(f"❌ Ошибка валидации: {error_message}")
+                return
+            
+            # Show format selection menu
+            await self._show_file_format_selection(update, context, receipt_data, matching_result)
+            
+        except Exception as e:
+            print(f"Ошибка при генерации файла: {e}")
+            await self.ui_manager.send_menu(
+                update, context,
+                f"❌ **Ошибка при генерации файла**\n\n"
+                f"**Детали ошибки:** {e}\n\n"
+                "Попробуйте начать процесс заново.",
+                InlineKeyboardMarkup([
+                    [InlineKeyboardButton("📄 Попробовать снова", callback_data="generate_supply_file")],
+                    [InlineKeyboardButton("◀️ Назад", callback_data="back_to_receipt")]
+                ]),
+                'Markdown'
+            )
+    
+    async def _show_file_format_selection(self, update: Update, context: ContextTypes.DEFAULT_TYPE,
+                                        receipt_data: ReceiptData, matching_result: IngredientMatchingResult):
+        """Show file format selection menu"""
+        from telegram import InlineKeyboardButton, InlineKeyboardMarkup
+        
+        text = "📄 **Выберите формат файла для загрузки в постер:**\n\n"
+        text += "• **XLSX** - Рекомендуемый формат (Excel 2007+)\n"
+        text += "• **XLS** - Совместимый формат (Excel 97-2003)\n"
+        text += "• **CSV** - Текстовый формат\n\n"
+        text += f"📊 **Товаров в файле:** {len(receipt_data.items)}\n"
+        text += f"✅ **Точно сопоставлено:** {matching_result.exact_matches}\n"
+        text += f"🟡 **Частично сопоставлено:** {matching_result.partial_matches}\n"
+        text += f"❌ **Не сопоставлено:** {matching_result.no_matches}\n\n"
+        text += f"📈 **Процент сопоставления:** {((matching_result.exact_matches + matching_result.partial_matches) / len(matching_result.matches) * 100):.1f}%"
+        
+        keyboard = [
+            [InlineKeyboardButton("📊 XLSX (Рекомендуется)", callback_data="generate_file_xlsx")],
+            [InlineKeyboardButton("📈 XLS", callback_data="generate_file_xls")],
+            [InlineKeyboardButton("📝 CSV", callback_data="generate_file_csv")],
+            [InlineKeyboardButton("◀️ Назад", callback_data="back_to_receipt")]
+        ]
+        
+        reply_markup = InlineKeyboardMarkup(keyboard)
+        
+        # Save data for file generation
+        context.user_data['pending_file_generation'] = {
+            'receipt_data': receipt_data,
+            'matching_result': matching_result
+        }
+        
+        await self.ui_manager.send_menu(
+            update, context, text, reply_markup, 'Markdown'
+        )
+    
+    async def _generate_file_in_format(self, update: Update, context: ContextTypes.DEFAULT_TYPE,
+                                     receipt_data: ReceiptData, matching_result: IngredientMatchingResult,
+                                     file_format: str):
+        """Generate file in specified format and send to user"""
+        try:
+            # Generate file
+            file_content = self.file_generator.generate_supply_file(
+                receipt_data=receipt_data,
+                matching_result=matching_result,
+                file_format=file_format,
+                supplier="Supplier",  # Default values, can be made configurable
+                storage_location="Storage 1",
+                comment="Generated by AI Bot"
+            )
+            
+            # Create filename
+            timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+            filename = f"supply_{timestamp}.{file_format}"
+            
+            # Send file
+            from telegram import InputFile
+            file_obj = InputFile(io.BytesIO(file_content), filename=filename)
+            
+            # Send file with caption
+            await update.callback_query.message.reply_document(
+                document=file_obj,
+                caption=f"📄 **Файл поставки готов!**\n\n"
+                       f"📊 **Формат:** {file_format.upper()}\n"
+                       f"📦 **Товаров:** {len(receipt_data.items)}\n"
+                       f"✅ **Точно сопоставлено:** {matching_result.exact_matches}\n"
+                       f"🟡 **Частично сопоставлено:** {matching_result.partial_matches}\n"
+                       f"❌ **Не сопоставлено:** {matching_result.no_matches}\n\n"
+                       f"📈 **Процент сопоставления:** {((matching_result.exact_matches + matching_result.partial_matches) / len(matching_result.matches) * 100):.1f}%\n\n"
+                       f"Файл содержит товары с наименованиями из Poster и готов для загрузки."
+            )
+            
+            # Send additional message with back button
+            await self.ui_manager.send_menu(
+                update, context,
+                "✅ **Файл успешно сгенерирован и отправлен!**\n\n"
+                "Вы можете скачать файл выше или вернуться к чеку для дальнейшей работы.",
+                InlineKeyboardMarkup([
+                    [InlineKeyboardButton("◀️ Назад к чеку", callback_data="back_to_receipt")],
+                    [InlineKeyboardButton("📄 Создать еще один файл", callback_data="generate_supply_file")]
+                ]),
+                'Markdown'
+            )
+            
+        except Exception as e:
+            print(f"Ошибка при генерации файла {file_format}: {e}")
+            await self.ui_manager.send_menu(
+                update, context,
+                f"❌ **Ошибка при генерации файла**\n\n"
+                f"**Формат:** {file_format.upper()}\n"
+                f"**Детали ошибки:** {e}\n\n"
+                "Попробуйте выбрать другой формат или обратитесь к администратору.",
+                InlineKeyboardMarkup([
+                    [InlineKeyboardButton("📄 Выбрать другой формат", callback_data="generate_supply_file")],
+                    [InlineKeyboardButton("◀️ Назад", callback_data="back_to_receipt")]
+                ]),
+                'Markdown'
             )

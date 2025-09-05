@@ -1,0 +1,283 @@
+{
+  "matching_result": {
+    "matches": [
+      {
+        "receipt_item_name": "Carrot",
+        "matched_ingredient_name": "carrot",
+        "matched_ingredient_id": 28,
+        "match_status": "exact",
+        "similarity_score": 1.0,
+        "suggested_matches": [
+          {
+            "name": "carrot",
+            "id": 28,
+            "score": 1.0
+          },
+          {
+            "name": "cranberry",
+            "id": 61,
+            "score": 0.3733333333333333
+          },
+          {
+            "name": "avocado",
+            "id": 36,
+            "score": 0.3230769230769231
+          },
+          {
+            "name": "curry powder ",
+            "id": 74,
+            "score": 0.31111111111111106
+          },
+          {
+            "name": "salt",
+            "id": 25,
+            "score": 0.27999999999999997
+          }
+        ]
+      },
+      {
+        "receipt_item_name": "Tomato",
+        "matched_ingredient_name": "tomato",
+        "matched_ingredient_id": 20,
+        "match_status": "exact",
+        "similarity_score": 1.0,
+        "suggested_matches": [
+          {
+            "name": "tomato",
+            "id": 20,
+            "score": 1.0
+          },
+          {
+            "name": "tom yam paste",
+            "id": 72,
+            "score": 0.3684210526315789
+          },
+          {
+            "name": "romano baby",
+            "id": 39,
+            "score": 0.32941176470588235
+          },
+          {
+            "name": "avocado",
+            "id": 36,
+            "score": 0.3230769230769231
+          },
+          {
+            "name": "weges potato",
+            "id": 57,
+            "score": 0.31111111111111106
+          }
+        ]
+      },
+      {
+        "receipt_item_name": "Purple Cabbage",
+        "matched_ingredient_name": "red cabbage",
+        "matched_ingredient_id": 27,
+        "match_status": "partial",
+        "similarity_score": 0.6599999999999999,
+        "suggested_matches": [
+          {
+            "name": "red cabbage",
+            "id": 27,
+            "score": 0.6599999999999999
+          },
+          {
+            "name": "cabbage",
+            "id": 26,
+            "score": 0.6166666666666666
+          },
+          {
+            "name": "pickles cucumber",
+            "id": 128,
+            "score": 0.32666666666666666
+          },
+          {
+            "name": "sour cream",
+            "id": 105,
+            "score": 0.2916666666666667
+          },
+          {
+            "name": "dumplings chiken",
+            "id": 101,
+            "score": 0.27999999999999997
+          }
+        ]
+      },
+      {
+        "receipt_item_name": "Garlic",
+        "matched_ingredient_name": "garlic",
+        "matched_ingredient_id": 40,
+        "match_status": "exact",
+        "similarity_score": 1.0,
+        "suggested_matches": [
+          {
+            "name": "garlic",
+            "id": 40,
+            "score": 1.0
+          },
+          {
+            "name": "basilic",
+            "id": 41,
+            "score": 0.4307692307692308
+          },
+          {
+            "name": "sugar",
+            "id": 45,
+            "score": 0.3818181818181818
+          },
+          {
+            "name": "paprika",
+            "id": 33,
+            "score": 0.3230769230769231
+          },
+          {
+            "name": "parsley",
+            "id": 30,
+            "score": 0.3230769230769231
+          }
+        ]
+      },
+      {
+        "receipt_item_name": "Dill",
+        "matched_ingredient_name": "dill",
+        "matched_ingredient_id": 29,
+        "match_status": "exact",
+        "similarity_score": 1.0,
+        "suggested_matches": [
+          {
+            "name": "dill",
+            "id": 29,
+            "score": 1.0
+          },
+          {
+            "name": "salad oil",
+            "id": 24,
+            "score": 0.3230769230769231
+          },
+          {
+            "name": "basilic",
+            "id": 41,
+            "score": 0.2545454545454545
+          },
+          {
+            "name": "condensed milk",
+            "id": 106,
+            "score": 0.2333333333333333
+          },
+          {
+            "name": "olive oil",
+            "id": 54,
+            "score": 0.2153846153846154
+          }
+        ]
+      },
+      {
+        "receipt_item_name": "Parsley",
+        "matched_ingredient_name": "parsley",
+        "matched_ingredient_id": 30,
+        "match_status": "exact",
+        "similarity_score": 1.0,
+        "suggested_matches": [
+          {
+            "name": "parsley",
+            "id": 30,
+            "score": 1.0
+          },
+          {
+            "name": "rasgulay",
+            "id": 111,
+            "score": 0.3733333333333333
+          },
+          {
+            "name": "celery ",
+            "id": 51,
+            "score": 0.3230769230769231
+          },
+          {
+            "name": "garlic",
+            "id": 40,
+            "score": 0.3230769230769231
+          },
+          {
+            "name": "basilic",
+            "id": 41,
+            "score": 0.3
+          }
+        ]
+      },
+      {
+        "receipt_item_name": "Dishwashing Scourer",
+        "matched_ingredient_name": "chili souse",
+        "matched_ingredient_id": 100,
+        "match_status": "no_match",
+        "similarity_score": 0.32666666666666666,
+        "suggested_matches": [
+          {
+            "name": "chili souse",
+            "id": 100,
+            "score": 0.32666666666666666
+          },
+          {
+            "name": "peanut souse",
+            "id": 37,
+            "score": 0.3161290322580645
+          },
+          {
+            "name": "dumplings chiken",
+            "id": 101,
+            "score": 0.27999999999999997
+          },
+          {
+            "name": "pickles cucumber",
+            "id": 128,
+            "score": 0.27999999999999997
+          },
+          {
+            "name": "babu cucumber",
+            "id": 55,
+            "score": 0.26249999999999996
+          }
+        ]
+      },
+      {
+        "receipt_item_name": "Dishwashing Sponge",
+        "matched_ingredient_name": "chili souse",
+        "matched_ingredient_id": 100,
+        "match_status": "no_match",
+        "similarity_score": 0.28965517241379307,
+        "suggested_matches": [
+          {
+            "name": "chili souse",
+            "id": 100,
+            "score": 0.28965517241379307
+          },
+          {
+            "name": "peanut souse",
+            "id": 37,
+            "score": 0.27999999999999997
+          },
+          {
+            "name": "dumplings cottage cheese",
+            "id": 104,
+            "score": 0.2666666666666666
+          },
+          {
+            "name": "dumplings meat",
+            "id": 103,
+            "score": 0.26249999999999996
+          },
+          {
+            "name": "dumplings mush",
+            "id": 102,
+            "score": 0.26249999999999996
+          }
+        ]
+      }
+    ],
+    "total_items": 8,
+    "exact_matches": 5,
+    "partial_matches": 1,
+    "no_matches": 2
+  },
+  "changed_indices": []
+}
