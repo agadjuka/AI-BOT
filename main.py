@@ -21,8 +21,6 @@ from services.ai_service import AIService, ReceiptAnalysisService
 from handlers.message_handlers import MessageHandlers
 from handlers.callback_handlers import CallbackHandlers
 from utils.ingredient_storage import IngredientStorage
-# 👇 --- ДОБАВЛЕН ИМПОРТ --- 👇
-from poster_handler import get_all_poster_ingredients
 
 
 def safe_start_bot(application: Application, ingredient_storage: IngredientStorage, max_retries: int = 3) -> None:
@@ -84,9 +82,6 @@ def cleanup_old_files_periodically(ingredient_storage: IngredientStorage) -> Non
 
 def main() -> None:
     """Main function to start the bot"""
-    # 1. Загружаем справочник ингредиентов из Poster
-    poster_ingredients_handbook = get_all_poster_ingredients()
-    
     # Initialize configuration
     config = BotConfig()
     prompt_config = PromptConfig()
@@ -105,9 +100,8 @@ def main() -> None:
     # Create application
     application = Application.builder().token(config.BOT_TOKEN).concurrent_updates(True).build()
     
-    # 3. Сохраняем загруженный справочник в общую память бота
-    # Это специальное 'хранилище' данных, доступное во всех частях нашего бота.
-    application.bot_data["poster_ingredients"] = poster_ingredients_handbook
+    # Initialize empty poster ingredients - will be loaded on demand
+    application.bot_data["poster_ingredients"] = {}
 
     # Create conversation handler
     conv_handler = ConversationHandler(

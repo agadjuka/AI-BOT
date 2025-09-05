@@ -1079,6 +1079,7 @@ class MessageHandlers:
             
             # If there are errors, add buttons for fixing problematic lines
             if has_errors:
+                fix_buttons = []
                 for item in final_data.items:
                     status = item.status
                     
@@ -1098,10 +1099,31 @@ class MessageHandlers:
                     
                     # If there are calculation errors, unreadable data or status not confirmed
                     if status != 'confirmed' or has_calculation_error or is_unreadable:
-                        keyboard.append([InlineKeyboardButton(
+                        fix_buttons.append(InlineKeyboardButton(
                             f"Исправить строку {item.line_number}",
                             callback_data=f"edit_{item.line_number}"
-                        )])
+                        ))
+                
+                # Distribute fix buttons across 1-3 columns based on quantity
+                if fix_buttons:
+                    if len(fix_buttons) <= 3:
+                        # 1 column for 1-3 buttons
+                        for button in fix_buttons:
+                            keyboard.append([button])
+                    elif len(fix_buttons) <= 6:
+                        # 2 columns for 4-6 buttons
+                        for i in range(0, len(fix_buttons), 2):
+                            row = fix_buttons[i:i+2]
+                            if len(row) == 1:
+                                row.append(InlineKeyboardButton("", callback_data="noop"))  # Empty button for alignment
+                            keyboard.append(row)
+                    else:
+                        # 3 columns for 7+ buttons
+                        for i in range(0, len(fix_buttons), 3):
+                            row = fix_buttons[i:i+3]
+                            while len(row) < 3:
+                                row.append(InlineKeyboardButton("", callback_data="noop"))  # Empty buttons for alignment
+                            keyboard.append(row)
             
             # Add line management buttons
             keyboard.append([
@@ -1109,20 +1131,19 @@ class MessageHandlers:
                 InlineKeyboardButton("➖ Удалить строку", callback_data="delete_row")
             ])
             
-            # Add total edit button
-            keyboard.append([InlineKeyboardButton("💰 Редактировать Итого", callback_data="edit_total")])
+            # Add edit line by number button under add/delete buttons
+            keyboard.append([InlineKeyboardButton("🔢 Редактировать строку по номеру", callback_data="edit_line_number")])
             
-            # Add reanalysis button
-            keyboard.append([InlineKeyboardButton("🔄 Проанализировать заново", callback_data="reanalyze")])
-            
-            # Add ingredient matching button
-            keyboard.append([InlineKeyboardButton("🔍 Сопоставить ингредиенты", callback_data="match_ingredients")])
+            # Add total edit and reanalysis buttons in one row
+            keyboard.append([
+                InlineKeyboardButton("💰 Редактировать Итого", callback_data="edit_total"),
+                InlineKeyboardButton("🔄 Проанализировать заново", callback_data="reanalyze")
+            ])
             
             # Add file generation button
             keyboard.append([InlineKeyboardButton("📄 Получить файл для загрузки в постер", callback_data="generate_supply_file")])
             
-            # Add general buttons
-            keyboard.append([InlineKeyboardButton("🔢 Редактировать строку по номеру", callback_data="edit_line_number")])
+            # Add back button
             keyboard.append([InlineKeyboardButton("◀️ Вернуться к чеку", callback_data="back_to_receipt")])
             
             reply_markup = InlineKeyboardMarkup(keyboard)

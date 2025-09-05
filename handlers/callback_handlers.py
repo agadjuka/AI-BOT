@@ -40,6 +40,24 @@ class CallbackHandlers:
         self.file_generator = FileGeneratorService()
         self.ui_manager = UIManager(config)
     
+    async def _ensure_poster_ingredients_loaded(self, context: ContextTypes.DEFAULT_TYPE) -> bool:
+        """Ensure poster ingredients are loaded, load them if necessary"""
+        poster_ingredients = context.bot_data.get('poster_ingredients', {})
+        
+        if not poster_ingredients:
+            # Load poster ingredients
+            from poster_handler import get_all_poster_ingredients
+            poster_ingredients = get_all_poster_ingredients()
+            
+            if not poster_ingredients:
+                return False
+            
+            # Save poster ingredients to bot data for future use
+            context.bot_data["poster_ingredients"] = poster_ingredients
+            print(f"DEBUG: Loaded {len(poster_ingredients)} poster ingredients")
+        
+        return True
+    
     async def handle_correction_choice(self, update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
         """Handle correction choice callback"""
         query = update.callback_query
@@ -149,17 +167,20 @@ class CallbackHandlers:
             # Clean up all messages except anchor before showing new menu
             await self.ui_manager.cleanup_all_except_anchor(update, context)
             
-            # Get receipt data and poster ingredients
+            # Get receipt data
             receipt_data = context.user_data.get('receipt_data')
-            poster_ingredients = context.bot_data.get('poster_ingredients', {})
             
             if not receipt_data:
                 await query.message.reply_text("Ошибка: данные чека не найдены.")
                 return self.config.AWAITING_CORRECTION
             
-            if not poster_ingredients:
-                await query.message.reply_text("Ошибка: справочник ингредиентов не загружен.")
+            # Ensure poster ingredients are loaded
+            if not await self._ensure_poster_ingredients_loaded(context):
+                await query.message.reply_text("❌ Ошибка: не удалось загрузить справочник ингредиентов из Poster.\nПроверьте подключение к интернету и попробуйте снова.")
                 return self.config.AWAITING_CORRECTION
+            
+            # Get poster ingredients from bot data
+            poster_ingredients = context.bot_data.get('poster_ingredients', {})
             
             # Get current receipt hash
             user_id = update.effective_user.id
@@ -215,11 +236,18 @@ class CallbackHandlers:
             await query.answer("🔄 Перезапускаю сопоставление...")
             
             receipt_data = context.user_data.get('receipt_data')
-            poster_ingredients = context.bot_data.get('poster_ingredients', {})
             
-            if not receipt_data or not poster_ingredients:
-                await query.message.reply_text("Ошибка: данные не найдены.")
+            if not receipt_data:
+                await query.message.reply_text("Ошибка: данные чека не найдены.")
                 return self.config.AWAITING_CORRECTION
+            
+            # Ensure poster ingredients are loaded
+            if not await self._ensure_poster_ingredients_loaded(context):
+                await query.message.reply_text("❌ Ошибка: не удалось загрузить справочник ингредиентов из Poster.\nПроверьте подключение к интернету и попробуйте снова.")
+                return self.config.AWAITING_CORRECTION
+            
+            # Get poster ingredients from bot data
+            poster_ingredients = context.bot_data.get('poster_ingredients', {})
             
             # Clean up all messages except anchor before showing new menu
             await self.ui_manager.cleanup_all_except_anchor(update, context)
@@ -269,9 +297,17 @@ class CallbackHandlers:
                 context.user_data.pop('changed_ingredient_indices', None)
                 context.user_data.pop('current_match_index', None)
                 
-                await query.answer("📋 Возвращаюсь к чеку...")
+                await query.answer("📄 Возвращаюсь к генерации файла...")
                 await self.ui_manager.cleanup_all_except_anchor(update, context)
-                await self._show_final_report_with_edit_button_callback(update, context)
+                
+                # Check if we have receipt data
+                receipt_data = context.user_data.get('receipt_data')
+                if receipt_data:
+                    # Show matching table with edit button
+                    await self._show_matching_table_with_edit_button(update, context, receipt_data, matching_result)
+                else:
+                    # Fallback to receipt report
+                    await self._show_final_report_with_edit_button_callback(update, context)
                 return self.config.AWAITING_CORRECTION
         
         if action == "next_ingredient_match":
@@ -426,9 +462,17 @@ class CallbackHandlers:
             context.user_data.pop('changed_ingredient_indices', None)
             context.user_data.pop('current_match_index', None)
             
-            await query.answer("📋 Возвращаюсь к чеку...")
+            await query.answer("📄 Возвращаюсь к генерации файла...")
             await self.ui_manager.cleanup_all_except_anchor(update, context)
-            await self._show_final_report_with_edit_button_callback(update, context)
+            
+            # Check if we have receipt data
+            receipt_data = context.user_data.get('receipt_data')
+            if receipt_data:
+                # Show matching table with edit button
+                await self._show_matching_table_with_edit_button(update, context, receipt_data, matching_result)
+            else:
+                # Fallback to receipt report
+                await self._show_final_report_with_edit_button_callback(update, context)
             return self.config.AWAITING_CORRECTION
         
         if action == "cancel_back":
@@ -478,7 +522,7 @@ class CallbackHandlers:
         
         if action == "generate_supply_file":
             # User wants to generate supply file
-            await query.answer("📄 Проверяю данные для генерации файла...")
+            await query.answer("📄 Загружаю данные из постера и сопоставляю ингредиенты...")
             
             # Clean up all messages except anchor before showing new menu
             await self.ui_manager.cleanup_all_except_anchor(update, context)
@@ -494,8 +538,7 @@ class CallbackHandlers:
                     "**Пошаговая инструкция:**\n"
                     "1️⃣ Нажмите кнопку '📸 Анализировать чек'\n"
                     "2️⃣ Отправьте фото чека\n"
-                    "3️⃣ Выполните сопоставление ингредиентов\n"
-                    "4️⃣ Затем вернитесь к этой кнопке для получения файла\n\n"
+                    "3️⃣ Затем вернитесь к этой кнопке для получения файла\n\n"
                     "Файл будет содержать товары с сопоставленными наименованиями из Poster.",
                     InlineKeyboardMarkup([
                         [InlineKeyboardButton("📸 Анализировать чек", callback_data="analyze_receipt")],
@@ -505,33 +548,45 @@ class CallbackHandlers:
                 )
                 return self.config.AWAITING_CORRECTION
             
-            # Try to load matching result from storage
+            # Check if we already have matching data
             user_id = update.effective_user.id
             receipt_hash = receipt_data.get_receipt_hash()
             saved_data = self.ingredient_storage.load_matching_result(user_id, receipt_hash)
             
-            print(f"DEBUG: Loading matching data for user {user_id}, receipt {receipt_hash}")
-            print(f"DEBUG: Found saved data: {saved_data is not None}")
+            if saved_data:
+                # We have matching data, show table with edit button
+                matching_result, changed_indices = saved_data
+                context.user_data['ingredient_matching_result'] = matching_result
+                context.user_data['changed_ingredient_indices'] = changed_indices
+                await self._show_matching_table_with_edit_button(update, context, receipt_data, matching_result)
+            else:
+                # No matching data, load poster ingredients and match
+                await self._load_poster_ingredients_and_match(update, context, receipt_data)
+            return self.config.AWAITING_CORRECTION
+        
+        if action == "generate_file_from_table":
+            # User wants to generate file from table
+            await query.answer("📄 Генерирую файл...")
             
-            if not saved_data:
-                # Try to automatically match all ingredients first
-                print("DEBUG: No saved matching data, attempting automatic matching for all items")
-                await self._attempt_automatic_matching_for_all_items(update, context, receipt_data)
-                return self.config.AWAITING_CORRECTION
+            # Clean up all messages except anchor before showing new menu
+            await self.ui_manager.cleanup_all_except_anchor(update, context)
             
-            matching_result, changed_indices = saved_data
+            # Get receipt data and matching result from context
+            receipt_data = context.user_data.get('receipt_data')
+            matching_result = context.user_data.get('ingredient_matching_result')
             
-            print(f"DEBUG: Loaded matching result with {len(matching_result.matches)} matches")
-            print(f"DEBUG: Receipt has {len(receipt_data.items)} items")
-            print(f"DEBUG: Changed indices: {changed_indices}")
-            print(f"DEBUG: Exact matches: {matching_result.exact_matches}")
-            print(f"DEBUG: Partial matches: {matching_result.partial_matches}")
-            print(f"DEBUG: No matches: {matching_result.no_matches}")
-            
-            # Check if the number of items matches the number of matches
-            if len(receipt_data.items) != len(matching_result.matches):
-                print("DEBUG: Item count mismatch, attempting to fix matching")
-                await self._fix_matching_for_changed_items(update, context, receipt_data, matching_result)
+            if not receipt_data or not matching_result:
+                await self.ui_manager.send_menu(
+                    update, context,
+                    "❌ **Ошибка генерации файла**\n\n"
+                    "Данные для генерации файла не найдены.\n"
+                    "Попробуйте начать процесс заново.",
+                    InlineKeyboardMarkup([
+                        [InlineKeyboardButton("📄 Получить файл для загрузки в постер", callback_data="generate_supply_file")],
+                        [InlineKeyboardButton("◀️ Назад", callback_data="back_to_receipt")]
+                    ]),
+                    'Markdown'
+                )
                 return self.config.AWAITING_CORRECTION
             
             # Generate and send file
@@ -930,6 +985,7 @@ class CallbackHandlers:
             
             # If there are errors, add buttons for fixing problematic lines
             if has_errors:
+                fix_buttons = []
                 for item in final_data.items:
                     status = item.status
                     
@@ -949,10 +1005,31 @@ class CallbackHandlers:
                     
                     # If there are calculation errors, unreadable data or status not confirmed
                     if status != 'confirmed' or has_calculation_error or is_unreadable:
-                        keyboard.append([InlineKeyboardButton(
+                        fix_buttons.append(InlineKeyboardButton(
                             f"Исправить строку {item.line_number}",
                             callback_data=f"edit_{item.line_number}"
-                        )])
+                        ))
+                
+                # Distribute fix buttons across 1-3 columns based on quantity
+                if fix_buttons:
+                    if len(fix_buttons) <= 3:
+                        # 1 column for 1-3 buttons
+                        for button in fix_buttons:
+                            keyboard.append([button])
+                    elif len(fix_buttons) <= 6:
+                        # 2 columns for 4-6 buttons
+                        for i in range(0, len(fix_buttons), 2):
+                            row = fix_buttons[i:i+2]
+                            if len(row) == 1:
+                                row.append(InlineKeyboardButton("", callback_data="noop"))  # Empty button for alignment
+                            keyboard.append(row)
+                    else:
+                        # 3 columns for 7+ buttons
+                        for i in range(0, len(fix_buttons), 3):
+                            row = fix_buttons[i:i+3]
+                            while len(row) < 3:
+                                row.append(InlineKeyboardButton("", callback_data="noop"))  # Empty buttons for alignment
+                            keyboard.append(row)
             
             # Add line management buttons
             keyboard.append([
@@ -960,20 +1037,19 @@ class CallbackHandlers:
                 InlineKeyboardButton("➖ Удалить строку", callback_data="delete_row")
             ])
             
-            # Add total edit button
-            keyboard.append([InlineKeyboardButton("💰 Редактировать Итого", callback_data="edit_total")])
+            # Add edit line by number button under add/delete buttons
+            keyboard.append([InlineKeyboardButton("🔢 Редактировать строку по номеру", callback_data="edit_line_number")])
             
-            # Add reanalysis button
-            keyboard.append([InlineKeyboardButton("🔄 Проанализировать заново", callback_data="reanalyze")])
-            
-            # Add ingredient matching button
-            keyboard.append([InlineKeyboardButton("🔍 Сопоставить ингредиенты", callback_data="match_ingredients")])
+            # Add total edit and reanalysis buttons in one row
+            keyboard.append([
+                InlineKeyboardButton("💰 Редактировать Итого", callback_data="edit_total"),
+                InlineKeyboardButton("🔄 Проанализировать заново", callback_data="reanalyze")
+            ])
             
             # Add file generation button
             keyboard.append([InlineKeyboardButton("📄 Получить файл для загрузки в постер", callback_data="generate_supply_file")])
             
-            # Add general buttons
-            keyboard.append([InlineKeyboardButton("🔢 Редактировать строку по номеру", callback_data="edit_line_number")])
+            # Add cancel button
             keyboard.append([InlineKeyboardButton("❌ Отмена", callback_data="cancel")])
             
             reply_markup = InlineKeyboardMarkup(keyboard)
@@ -1487,15 +1563,18 @@ class CallbackHandlers:
                     context.user_data['current_match_index'] = 0
         
         matching_result = context.user_data.get('ingredient_matching_result')
-        poster_ingredients = context.bot_data.get('poster_ingredients', {})
         
         if not matching_result or item_index >= len(matching_result.matches):
             await update.callback_query.answer("Ошибка: элемент не найден")
             return
         
-        if not poster_ingredients:
-            await update.callback_query.answer("Ошибка: справочник ингредиентов не загружен")
+        # Ensure poster ingredients are loaded
+        if not await self._ensure_poster_ingredients_loaded(context):
+            await update.callback_query.answer("❌ Ошибка: не удалось загрузить справочник ингредиентов")
             return
+        
+        # Get poster ingredients from bot data
+        poster_ingredients = context.bot_data.get('poster_ingredients', {})
         
         # Get the item to match
         item_to_match = matching_result.matches[item_index]
@@ -2215,6 +2294,104 @@ class CallbackHandlers:
             print(f"DEBUG: Error in automatic matching for all items: {e}")
             await self._show_manual_matching_menu(update, context)
     
+    async def _load_poster_ingredients_and_match(self, update: Update, context: ContextTypes.DEFAULT_TYPE, 
+                                               receipt_data: ReceiptData) -> None:
+        """Load poster ingredients and perform matching, then show table with edit button"""
+        try:
+            print("DEBUG: Loading poster ingredients and performing matching")
+            
+            # Load poster ingredients
+            from poster_handler import get_all_poster_ingredients
+            poster_ingredients = get_all_poster_ingredients()
+            
+            if not poster_ingredients:
+                await self.ui_manager.send_menu(
+                    update, context,
+                    "❌ **Ошибка загрузки данных**\n\n"
+                    "Не удалось загрузить справочник ингредиентов из Poster.\n"
+                    "Проверьте подключение к интернету и попробуйте снова.",
+                    InlineKeyboardMarkup([
+                        [InlineKeyboardButton("🔄 Попробовать снова", callback_data="generate_supply_file")],
+                        [InlineKeyboardButton("◀️ Назад", callback_data="back_to_receipt")]
+                    ]),
+                    'Markdown'
+                )
+                return
+            
+            # Save poster ingredients to bot data for future use
+            context.bot_data["poster_ingredients"] = poster_ingredients
+            print(f"DEBUG: Loaded {len(poster_ingredients)} poster ingredients")
+            
+            # Perform automatic ingredient matching for all items
+            matching_result = self.ingredient_matching_service.match_ingredients(receipt_data, poster_ingredients)
+            
+            print(f"DEBUG: Automatic matching completed: {len(matching_result.matches)} matches")
+            print(f"DEBUG: Exact matches: {matching_result.exact_matches}")
+            print(f"DEBUG: Partial matches: {matching_result.partial_matches}")
+            print(f"DEBUG: No matches: {matching_result.no_matches}")
+            
+            # Save the matching result
+            user_id = update.effective_user.id
+            receipt_hash = receipt_data.get_receipt_hash()
+            success = self.ingredient_storage.save_matching_result(user_id, matching_result, set(), receipt_hash)
+            
+            # Update context
+            context.user_data['ingredient_matching_result'] = matching_result
+            context.user_data['changed_ingredient_indices'] = set()
+            
+            # Show table with edit button
+            await self._show_matching_table_with_edit_button(update, context, receipt_data, matching_result)
+                
+        except Exception as e:
+            print(f"DEBUG: Error loading poster ingredients and matching: {e}")
+            await self.ui_manager.send_menu(
+                update, context,
+                "❌ **Ошибка при загрузке данных**\n\n"
+                f"Произошла ошибка: {e}\n\n"
+                "Попробуйте снова или обратитесь к администратору.",
+                InlineKeyboardMarkup([
+                    [InlineKeyboardButton("🔄 Попробовать снова", callback_data="generate_supply_file")],
+                    [InlineKeyboardButton("◀️ Назад", callback_data="back_to_receipt")]
+                ]),
+                'Markdown'
+            )
+    
+    async def _show_matching_table_with_edit_button(self, update: Update, context: ContextTypes.DEFAULT_TYPE, 
+                                                  receipt_data: ReceiptData, matching_result: IngredientMatchingResult) -> None:
+        """Show matching table with edit button"""
+        try:
+            # Create table preview with Poster data
+            table_preview = self._format_poster_table_preview(receipt_data, matching_result)
+            
+            # Text with table preview
+            text = "**Проверьте содержимое таблицы перед генерацией**\n\n"
+            text += f"```\n{table_preview}\n```"
+            
+            # Create keyboard with edit button and file generation
+            keyboard = [
+                [InlineKeyboardButton("✏️ Отредактировать сопоставления", callback_data="match_ingredients")],
+                [InlineKeyboardButton("📄 Сгенерировать файл", callback_data="generate_file_from_table")],
+                [InlineKeyboardButton("◀️ Назад", callback_data="back_to_receipt")]
+            ]
+            
+            reply_markup = InlineKeyboardMarkup(keyboard)
+            
+            await self.ui_manager.send_menu(update, context, text, reply_markup, 'Markdown')
+            
+        except Exception as e:
+            print(f"DEBUG: Error showing matching table: {e}")
+            await self.ui_manager.send_menu(
+                update, context,
+                "❌ **Ошибка отображения таблицы**\n\n"
+                f"Произошла ошибка: {e}\n\n"
+                "Попробуйте снова.",
+                InlineKeyboardMarkup([
+                    [InlineKeyboardButton("🔄 Попробовать снова", callback_data="generate_supply_file")],
+                    [InlineKeyboardButton("◀️ Назад", callback_data="back_to_receipt")]
+                ]),
+                'Markdown'
+            )
+    
     async def _fix_matching_for_changed_items(self, update: Update, context: ContextTypes.DEFAULT_TYPE, 
                                             receipt_data: ReceiptData, existing_matching: IngredientMatchingResult) -> None:
         """Fix matching when item count has changed"""
@@ -2265,13 +2442,13 @@ class CallbackHandlers:
             "📄 **Получить файл для загрузки в постер**\n\n"
             "❌ Необходимо выполнить сопоставление ингредиентов.\n\n"
             "**Что нужно сделать:**\n"
-            "1️⃣ В главном меню нажмите '🔍 Сопоставить ингредиенты'\n"
+            "1️⃣ Нажмите кнопку '✏️ Отредактировать сопоставления' ниже\n"
             "2️⃣ Выполните сопоставление всех товаров с ингредиентами Poster\n"
             "3️⃣ Нажмите '✅ Применить' для сохранения\n"
             "4️⃣ Затем вернитесь к этой кнопке для получения файла\n\n"
             "Файл будет содержать товары с сопоставленными наименованиями из Poster.",
             InlineKeyboardMarkup([
-                [InlineKeyboardButton("🔍 Сопоставить ингредиенты", callback_data="match_ingredients")],
+                [InlineKeyboardButton("✏️ Отредактировать сопоставления", callback_data="match_ingredients")],
                 [InlineKeyboardButton("◀️ Назад", callback_data="back_to_receipt")]
             ]),
             'Markdown'
