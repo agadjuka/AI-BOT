@@ -178,6 +178,12 @@ class UIManager:
             if message_id and message_id != anchor_message_id:
                 message_ids_to_delete.append(message_id)
         
+        # Add messages from cleanup list (like file messages)
+        cleanup_messages = context.user_data.get('messages_to_cleanup', [])
+        for message_id in cleanup_messages:
+            if message_id != anchor_message_id:
+                message_ids_to_delete.append(message_id)
+        
         # Delete messages
         for message_id in message_ids_to_delete:
             try:
@@ -222,7 +228,7 @@ class UIManager:
             'menu_message_ids', 'table_message_id', 'edit_menu_message_id', 
             'total_edit_menu_message_id', 'instruction_message_id', 
             'line_number_instruction_message_id', 'delete_line_number_instruction_message_id',
-            'total_edit_instruction_message_id', 'processing_message_id'
+            'total_edit_instruction_message_id', 'processing_message_id', 'messages_to_cleanup'
         ]
         
         for key in keys_to_clear:

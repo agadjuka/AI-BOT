@@ -1814,20 +1814,98 @@ class CallbackHandlers:
                 'Markdown'
             )
     
+    def _format_poster_table_preview(self, receipt_data: ReceiptData, matching_result: IngredientMatchingResult) -> str:
+        """Format table preview using the same data as file generation"""
+        if not receipt_data.items or not matching_result.matches:
+            return "Нет данных для отображения"
+        
+        # Use the same algorithm as file generation
+        supply_data = self.file_generator._create_supply_data(receipt_data, matching_result)
+        
+        if not supply_data:
+            return "Нет данных для отображения"
+        
+        # Set fixed column widths (optimized for mobile devices)
+        name_width = 15     # Fixed width 15 characters for ingredient names
+        quantity_width = 8  # Fixed width 8 characters for quantity
+        price_width = 10    # Fixed width 10 characters for price
+        total_width = 10    # Fixed width 10 characters for total
+        
+        # Create header using English column names (same as in file)
+        header = f"{'Name':<{name_width}} | {'Quantity':^{quantity_width}} | {'Price for piece':^{price_width}} | {'Total amount':>{total_width}}"
+        separator = "─" * (name_width + quantity_width + price_width + total_width + 9)  # 9 characters for separators
+        
+        lines = [header, separator]
+        
+        # Add data rows using the same data as file generation
+        for item in supply_data:
+            name = item['Name']
+            quantity = item['Quantity']
+            price = item['Price for piece']
+            total = item['Total amount']
+            
+            # Format numbers
+            quantity_str = self.number_formatter.format_number_with_spaces(quantity) if quantity > 0 else "-"
+            price_str = self.number_formatter.format_number_with_spaces(price) if price > 0 else "-"
+            total_str = self.number_formatter.format_number_with_spaces(total) if total > 0 else "-"
+            
+            # Split long names into multiple lines
+            name_parts = self._split_name_for_width(name, name_width)
+            
+            # Create rows with alignment (can be multiple rows for one product)
+            for i, name_part in enumerate(name_parts):
+                if i == 0:
+                    # First row with full data
+                    line = f"{name_part:<{name_width}} | {quantity_str:^{quantity_width}} | {price_str:^{price_width}} | {total_str:>{total_width}}"
+                else:
+                    # Subsequent rows only with name, but same length
+                    line = f"{name_part:<{name_width}} | {'':^{quantity_width}} | {'':^{price_width}} | {'':>{total_width}}"
+                lines.append(line)
+        
+        return "\n".join(lines)
+    
+    def _split_name_for_width(self, name: str, max_width: int) -> list:
+        """Split name into multiple lines if it's too long for the column width"""
+        if len(name) <= max_width:
+            return [name]
+        
+        # Split by words first
+        words = name.split()
+        lines = []
+        current_line = ""
+        
+        for word in words:
+            # If adding this word would exceed the width
+            if len(current_line) + len(word) + 1 > max_width:
+                if current_line:
+                    lines.append(current_line)
+                    current_line = word
+                else:
+                    # Single word is too long, split it with hyphen
+                    lines.append(word[:max_width-1] + "-")
+                    current_line = word[max_width-1:]
+            else:
+                if current_line:
+                    current_line += " " + word
+                else:
+                    current_line = word
+        
+        if current_line:
+            lines.append(current_line)
+        
+        return lines
+
     async def _show_file_format_selection(self, update: Update, context: ContextTypes.DEFAULT_TYPE,
                                         receipt_data: ReceiptData, matching_result: IngredientMatchingResult):
-        """Show file format selection menu"""
+        """Show file format selection menu with table preview"""
         from telegram import InlineKeyboardButton, InlineKeyboardMarkup
         
-        text = "📄 **Выберите формат файла для загрузки в постер:**\n\n"
-        text += "• **XLSX** - Рекомендуемый формат (Excel 2007+)\n"
-        text += "• **XLS** - Совместимый формат (Excel 97-2003)\n"
-        text += "• **CSV** - Текстовый формат\n\n"
-        text += f"📊 **Товаров в файле:** {len(receipt_data.items)}\n"
-        text += f"✅ **Точно сопоставлено:** {matching_result.exact_matches}\n"
-        text += f"🟡 **Частично сопоставлено:** {matching_result.partial_matches}\n"
-        text += f"❌ **Не сопоставлено:** {matching_result.no_matches}\n\n"
-        text += f"📈 **Процент сопоставления:** {((matching_result.exact_matches + matching_result.partial_matches) / len(matching_result.matches) * 100):.1f}%"
+        # Create table preview with Poster data
+        table_preview = self._format_poster_table_preview(receipt_data, matching_result)
+        
+        # Text with table preview
+        text = "**Проверьте содержимое таблицы перед генерацией**\n\n"
+        text += f"```\n{table_preview}\n```"
         
         keyboard = [
             [InlineKeyboardButton("📊 XLSX (Рекомендуется)", callback_data="generate_file_xlsx")],
@@ -1871,8 +1949,8 @@ class CallbackHandlers:
             from telegram import InputFile
             file_obj = InputFile(io.BytesIO(file_content), filename=filename)
             
-            # Send file with caption
-            await update.callback_query.message.reply_document(
+            # Send file with caption using UI manager for proper cleanup
+            file_message = await update.callback_query.message.reply_document(
                 document=file_obj,
                 caption=f"📄 **Файл поставки готов!**\n\n"
                        f"📊 **Формат:** {file_format.upper()}\n"
@@ -1883,6 +1961,11 @@ class CallbackHandlers:
                        f"📈 **Процент сопоставления:** {((matching_result.exact_matches + matching_result.partial_matches) / len(matching_result.matches) * 100):.1f}%\n\n"
                        f"Файл содержит товары с наименованиями из Poster и готов для загрузки."
             )
+            
+            # Add file message to cleanup list
+            if 'messages_to_cleanup' not in context.user_data:
+                context.user_data['messages_to_cleanup'] = []
+            context.user_data['messages_to_cleanup'].append(file_message.message_id)
             
             # Send additional message with back button
             await self.ui_manager.send_menu(
