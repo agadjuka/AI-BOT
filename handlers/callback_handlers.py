@@ -351,11 +351,10 @@ class CallbackHandlers:
             # Clean up all messages except anchor before showing new menu
             await self.ui_manager.cleanup_all_except_anchor(update, context)
             
-            await self.ui_manager.send_temp(
-                update, context, "🔍 Введите название ингредиента для поиска", duration=10
-            )
-            context.user_data['awaiting_position_search'] = True
+            # Show the same table as before, but with position selection interface
+            await self._show_position_selection_interface(update, context)
             return self.config.AWAITING_MANUAL_MATCH
+        
         
         if action == "back_to_matching_overview":
             # Return to matching overview
@@ -364,7 +363,22 @@ class CallbackHandlers:
             # Clean up all messages except anchor before showing new menu
             await self.ui_manager.cleanup_all_except_anchor(update, context)
             
+            # Clear position selection mode flag
+            context.user_data.pop('in_position_selection_mode', None)
+            context.user_data.pop('selected_line_number', None)
+            context.user_data.pop('position_match_search_results', None)
+            
             await self._show_manual_matching_overview(update, context)
+            return self.config.AWAITING_MANUAL_MATCH
+        
+        if action.startswith("select_position_match_"):
+            # Handle position match selection from search results
+            position_number = int(action.split('_')[3])
+            
+            # Clean up all messages except anchor before showing new menu
+            await self.ui_manager.cleanup_all_except_anchor(update, context)
+            
+            await self._handle_position_match_selection(update, context, position_number)
             return self.config.AWAITING_MANUAL_MATCH
         
         if action.startswith("select_position_"):
@@ -463,6 +477,11 @@ class CallbackHandlers:
                 await self._show_final_report_with_edit_button_callback(update, context)
                 return self.config.AWAITING_CORRECTION
             else:
+                # Clear position selection mode flag
+                context.user_data.pop('in_position_selection_mode', None)
+                context.user_data.pop('selected_line_number', None)
+                context.user_data.pop('position_match_search_results', None)
+                
                 # Regular cancellation
                 await self._cancel(update, context)
                 return self.config.AWAITING_CORRECTION
@@ -910,7 +929,8 @@ class CallbackHandlers:
             'delete_line_number_instruction_message_id', 'total_edit_instruction_message_id',
             'total_edit_menu_message_id', 'ingredient_matching_result', 'current_match_index',
             'changed_ingredient_indices', 'search_results', 'position_search_results',
-            'awaiting_search', 'awaiting_position_search'
+            'awaiting_search', 'awaiting_position_search', 'in_position_selection_mode',
+            'selected_line_number', 'position_match_search_results', 'awaiting_ingredient_name_for_position'
         ]
         for key in keys_to_clear:
             context.user_data.pop(key, None)
@@ -966,9 +986,9 @@ class CallbackHandlers:
             # All items are matched, show Apply button only if there are changes
             if has_changes:
                 keyboard.extend([
-                    [InlineKeyboardButton("✅ Применить", callback_data="apply_matching_changes")],
                     [InlineKeyboardButton("✋ Сопоставить вручную", callback_data="manual_match_ingredients")],
                     [InlineKeyboardButton("🔄 Сопоставить заново", callback_data="rematch_ingredients")],
+                    [InlineKeyboardButton("✅ Применить", callback_data="apply_matching_changes")],
                     [InlineKeyboardButton("◀️ Назад", callback_data="back_to_receipt")]
                 ])
             else:
@@ -1022,75 +1042,99 @@ class CallbackHandlers:
         # Delete previous menu messages if they exist
         await self._cleanup_previous_menus(update, context)
         
+        # Show the same table as before, but with manual matching interface
+        # Format results
+        print(f"DEBUG: Formatting table with changed_indices: {changed_indices}")
+        results_text = self.ingredient_formatter.format_matching_table(matching_result, changed_indices)
+        
         # Find items that need manual matching (yellow/red status)
         items_needing_matching = []
         for i, match in enumerate(matching_result.matches):
             if match.match_status.value in ['partial', 'no_match']:
                 items_needing_matching.append((i, match))
         
-        if not items_needing_matching:
-            # All items are already matched
-            overview_text = "✅ **Все ингредиенты уже сопоставлены!**\n\n"
-            overview_text += "Нет элементов, требующих ручного сопоставления."
+        # Create action buttons
+        keyboard = []
+        
+        # Add buttons for items that need matching (max 2 per row)
+        for i, (index, match) in enumerate(items_needing_matching):
+            # Check if this item was manually changed
+            is_changed = index in changed_indices
+            if is_changed:
+                status_emoji = "✏️"
+            else:
+                status_emoji = self.ingredient_formatter._get_status_emoji(match.match_status)
+            button_text = f"{status_emoji} {self.ingredient_formatter._truncate_name(match.receipt_item_name, 15)}"
             
-            keyboard = [
-                [InlineKeyboardButton("✅ Применить", callback_data="apply_matching_changes")],
-                [InlineKeyboardButton("◀️ Назад", callback_data="back_to_receipt")]
-            ]
-        else:
-            # Show all items with their current status
-            overview_text = f"**Ручное сопоставление ингредиентов**\n\n"
-            overview_text += f"Найдено элементов для сопоставления: **{len(items_needing_matching)}**\n"
-            overview_text += f"Всего элементов: **{len(matching_result.matches)}**\n\n"
-            
-            # Show status table
-            overview_text += "**Статус сопоставления:**\n"
-            changed_indices = context.user_data.get('changed_ingredient_indices', set())
-            for i, match in enumerate(matching_result.matches):
-                # Check if this item was manually changed
-                is_changed = i in changed_indices
-                if is_changed:
-                    status_emoji = "✏️"
-                else:
-                    status_emoji = self.ingredient_formatter._get_status_emoji(match.match_status)
-                
-                if match.match_status.value == 'exact':
-                    overview_text += f"{status_emoji} {match.receipt_item_name} → {match.matched_ingredient_name}\n"
-                else:
-                    overview_text += f"{status_emoji} {match.receipt_item_name} (требует сопоставления)\n"
-            
-            overview_text += "\n**Выберите элемент для сопоставления:**\n\n"
-            
-            # Create horizontal buttons for items that need matching (max 2 per row)
-            keyboard = []
-            for i, (index, match) in enumerate(items_needing_matching):
-                # Check if this item was manually changed
-                is_changed = index in changed_indices
-                if is_changed:
-                    status_emoji = "✏️"
-                else:
-                    status_emoji = self.ingredient_formatter._get_status_emoji(match.match_status)
-                button_text = f"{status_emoji} {self.ingredient_formatter._truncate_name(match.receipt_item_name, 15)}"
-                
-                if i % 2 == 0:
-                    # Start new row
-                    keyboard.append([InlineKeyboardButton(button_text, callback_data=f"select_item_{index}")])
-                else:
-                    # Add to existing row
-                    keyboard[-1].append(InlineKeyboardButton(button_text, callback_data=f"select_item_{index}"))
-            
-            # Add control buttons
-            keyboard.extend([
-                [InlineKeyboardButton("🔍 Выбрать позицию для сопоставления", callback_data="select_position_for_matching")],
-                [InlineKeyboardButton("✅ Применить изменения", callback_data="apply_matching_changes")],
-                [InlineKeyboardButton("◀️ Назад", callback_data="back_to_receipt")]
-            ])
+            if i % 2 == 0:
+                # Start new row
+                keyboard.append([InlineKeyboardButton(button_text, callback_data=f"select_item_{index}")])
+            else:
+                # Add to existing row
+                keyboard[-1].append(InlineKeyboardButton(button_text, callback_data=f"select_item_{index}"))
+        
+        # Add control buttons
+        keyboard.extend([
+            [InlineKeyboardButton("🔍 Выбрать позицию для сопоставления", callback_data="select_position_for_matching")],
+            [InlineKeyboardButton("✅ Применить", callback_data="apply_matching_changes")],
+            [InlineKeyboardButton("◀️ Назад", callback_data="back_to_receipt")]
+        ])
         
         reply_markup = InlineKeyboardMarkup(keyboard)
         
         if hasattr(update, 'callback_query') and update.callback_query:
             await self.ui_manager.send_menu(
-                update, context, overview_text, reply_markup, 'Markdown'
+                update, context, results_text, reply_markup, 'Markdown'
+            )
+    
+    async def _show_position_selection_interface(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
+        """Show position selection interface with the same table as before"""
+        # First check if we have data in context
+        matching_result = context.user_data.get('ingredient_matching_result')
+        changed_indices = context.user_data.get('changed_ingredient_indices', set())
+        
+        if not matching_result:
+            # Try to load from persistent storage
+            user_id = update.effective_user.id
+            receipt_data = context.user_data.get('receipt_data')
+            
+            if receipt_data:
+                receipt_hash = receipt_data.get_receipt_hash()
+                saved_data = self.ingredient_storage.load_matching_result(user_id, receipt_hash)
+                if saved_data:
+                    matching_result, changed_indices = saved_data
+                    # Update context with loaded data
+                    context.user_data['ingredient_matching_result'] = matching_result
+                    context.user_data['changed_ingredient_indices'] = changed_indices
+                    # Reset current match index when loading from storage
+                    context.user_data['current_match_index'] = 0
+        
+        if not matching_result:
+            if hasattr(update, 'callback_query') and update.callback_query:
+                await update.callback_query.message.reply_text("Ошибка: данные сопоставления не найдены.")
+            return
+        
+        # Show the same table as before
+        # Format results
+        print(f"DEBUG: Formatting table with changed_indices: {changed_indices}")
+        results_text = self.ingredient_formatter.format_matching_table(matching_result, changed_indices)
+        
+        # Add instruction text
+        results_text += "\n\n**Введите номер строки элемента для сопоставления:**"
+        
+        # Set position selection mode flag
+        context.user_data['in_position_selection_mode'] = True
+        
+        # Create action buttons
+        keyboard = [
+            [InlineKeyboardButton("◀️ Назад", callback_data="back_to_matching_overview")]
+        ]
+        
+        reply_markup = InlineKeyboardMarkup(keyboard)
+        
+        if hasattr(update, 'callback_query') and update.callback_query:
+            await self.ui_manager.send_menu(
+                update, context, results_text, reply_markup, 'Markdown'
             )
     
     async def _handle_item_selection_for_matching(self, update: Update, context: ContextTypes.DEFAULT_TYPE, item_index: int):
@@ -1245,6 +1289,58 @@ class CallbackHandlers:
         await self.ui_manager.send_menu(
             update, context, items_text, reply_markup, 'Markdown'
         )
+    
+    async def _handle_position_match_selection(self, update: Update, context: ContextTypes.DEFAULT_TYPE, position_number: int):
+        """Handle position match selection from search results"""
+        position_match_search_results = context.user_data.get('position_match_search_results', [])
+        matching_result = context.user_data.get('ingredient_matching_result')
+        selected_line_number = context.user_data.get('selected_line_number')
+        
+        if not position_match_search_results or position_number < 1 or position_number > len(position_match_search_results):
+            await update.callback_query.answer("Ошибка: позиция не найдена")
+            return
+        
+        if not matching_result or not selected_line_number or selected_line_number < 1 or selected_line_number > len(matching_result.matches):
+            await update.callback_query.answer("Ошибка: данные сопоставления не найдены")
+            return
+        
+        # Get selected position
+        selected_position = position_match_search_results[position_number - 1]
+        
+        # Get the item to match (convert to 0-based index)
+        item_index = selected_line_number - 1
+        item_to_match = matching_result.matches[item_index]
+        
+        # Create manual match
+        manual_match = self.ingredient_matching_service.manual_match_ingredient(
+            item_to_match.receipt_item_name,
+            selected_position['id'],
+            context.bot_data.get('poster_ingredients', {})
+        )
+        
+        # Update the match in the result
+        matching_result.matches[item_index] = manual_match
+        context.user_data['ingredient_matching_result'] = matching_result
+        
+        # Add this index to changed indices for pencil emoji display
+        if 'changed_ingredient_indices' not in context.user_data:
+            context.user_data['changed_ingredient_indices'] = set()
+        context.user_data['changed_ingredient_indices'].add(item_index)
+        print(f"DEBUG: Added item_index {item_index} to changed_indices. Current changed_indices: {context.user_data['changed_ingredient_indices']}")
+        
+        # Save to persistent storage
+        user_id = update.effective_user.id
+        self._save_ingredient_matching_data(user_id, context)
+        
+        # Clear search results and selected line number
+        context.user_data.pop('position_match_search_results', None)
+        context.user_data.pop('selected_line_number', None)
+        
+        # Show confirmation
+        await update.callback_query.answer(f"✅ Сопоставлено: {item_to_match.receipt_item_name} → {manual_match.matched_ingredient_name}")
+        
+        # Return to main ingredient matching results
+        await self._show_ingredient_matching_results(update, context)
     
     async def _handle_item_position_matching(self, update: Update, context: ContextTypes.DEFAULT_TYPE, item_index: int, position_id: str):
         """Handle matching of item with selected position"""

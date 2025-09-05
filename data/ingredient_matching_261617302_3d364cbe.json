@@ -79,37 +79,11 @@
       },
       {
         "receipt_item_name": "Salt",
-        "matched_ingredient_name": "salt",
-        "matched_ingredient_id": 25,
+        "matched_ingredient_name": "dill",
+        "matched_ingredient_id": 29,
         "match_status": "exact",
         "similarity_score": 1.0,
-        "suggested_matches": [
-          {
-            "name": "salt",
-            "id": 25,
-            "score": 1.0
-          },
-          {
-            "name": "salmon",
-            "id": 77,
-            "score": 0.42
-          },
-          {
-            "name": "salad oil",
-            "id": 24,
-            "score": 0.3230769230769231
-          },
-          {
-            "name": "sugar",
-            "id": 45,
-            "score": 0.31111111111111106
-          },
-          {
-            "name": "carrot",
-            "id": 28,
-            "score": 0.27999999999999997
-          }
-        ]
+        "suggested_matches": []
       },
       {
         "receipt_item_name": "Avocado",
@@ -152,6 +126,7 @@
     "no_matches": 0
   },
   "changed_indices": [
-    0
+    0,
+    3
   ]
 }
