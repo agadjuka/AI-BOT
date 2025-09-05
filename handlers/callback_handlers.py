@@ -38,6 +38,7 @@ class CallbackHandlers:
         await query.answer()
         
         action = query.data
+        print(f"DEBUG: Callback action: {action}")
         
         if action == "finish":
             # "finish" button no longer needed as report is already shown
@@ -172,11 +173,8 @@ class CallbackHandlers:
                 await query.message.reply_text("Ошибка: результаты сопоставления не найдены.")
                 return self.config.AWAITING_CORRECTION
             
-            # Reset to first item
-            context.user_data['current_match_index'] = 0
-            
-            # Show manual matching interface
-            await self._show_manual_matching_for_current_item(update, context)
+            # Show new manual matching interface with all items that need matching
+            await self._show_manual_matching_overview(update, context)
             return self.config.AWAITING_MANUAL_MATCH
         
         if action == "rematch_ingredients":
@@ -251,6 +249,55 @@ class CallbackHandlers:
             suggestion_number = int(action.split('_')[2])
             await self._handle_search_result_selection(update, context, suggestion_number)
             return self.config.AWAITING_MANUAL_MATCH
+        
+        if action.startswith("select_item_"):
+            # Handle item selection for manual matching
+            item_index = int(action.split('_')[2])
+            await self._handle_item_selection_for_matching(update, context, item_index)
+            return self.config.AWAITING_MANUAL_MATCH
+        
+        if action == "select_position_for_matching":
+            # Handle position selection request
+            print(f"DEBUG: select_position_for_matching called")
+            await query.answer("🔍 Введите название ингредиента для поиска")
+            context.user_data['awaiting_position_search'] = True
+            return self.config.AWAITING_MANUAL_MATCH
+        
+        if action == "back_to_matching_overview":
+            # Return to matching overview
+            await query.answer("📋 Возвращаюсь к обзору сопоставления...")
+            await self._show_manual_matching_overview(update, context)
+            return self.config.AWAITING_MANUAL_MATCH
+        
+        if action.startswith("select_position_"):
+            # Handle position selection from search results
+            position_number = int(action.split('_')[2])
+            await self._handle_position_selection(update, context, position_number)
+            return self.config.AWAITING_MANUAL_MATCH
+        
+        if action.startswith("match_item_"):
+            # Handle item matching with selected position
+            parts = action.split('_')
+            item_index = int(parts[2])
+            position_id = parts[3]
+            await self._handle_item_position_matching(update, context, item_index, position_id)
+            return self.config.AWAITING_MANUAL_MATCH
+        
+        if action == "apply_matching_changes":
+            # Apply matching changes and return to main table
+            await query.answer("✅ Применяю изменения...")
+            
+            # Delete current message and show updated table
+            try:
+                await context.bot.delete_message(
+                    chat_id=query.message.chat_id,
+                    message_id=query.message.message_id
+                )
+            except Exception as e:
+                print(f"Не удалось удалить сообщение: {e}")
+            
+            await self._show_ingredient_matching_results(update, context)
+            return self.config.AWAITING_INGREDIENT_MATCHING
         
         if action == "cancel":
             # Check if we're in edit menu
@@ -766,6 +813,273 @@ class CallbackHandlers:
                 parse_mode='Markdown'
             )
     
+    async def _show_manual_matching_overview(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
+        """Show manual matching overview with all items that need matching"""
+        matching_result = context.user_data.get('ingredient_matching_result')
+        
+        if not matching_result:
+            if hasattr(update, 'callback_query') and update.callback_query:
+                await update.callback_query.message.reply_text("Ошибка: данные сопоставления не найдены.")
+            return
+        
+        # Delete previous menu messages if they exist
+        await self._cleanup_previous_menus(update, context)
+        
+        # Find items that need manual matching (yellow/red status)
+        items_needing_matching = []
+        for i, match in enumerate(matching_result.matches):
+            if match.match_status.value in ['partial', 'no_match']:
+                items_needing_matching.append((i, match))
+        
+        if not items_needing_matching:
+            # All items are already matched
+            overview_text = "✅ **Все ингредиенты уже сопоставлены!**\n\n"
+            overview_text += "Нет элементов, требующих ручного сопоставления."
+            
+            keyboard = [
+                [InlineKeyboardButton("📋 Вернуться к чеку", callback_data="back_to_receipt")],
+                [InlineKeyboardButton("❌ Отмена", callback_data="cancel")]
+            ]
+        else:
+            # Show items that need matching
+            overview_text = f"**Ручное сопоставление ингредиентов**\n\n"
+            overview_text += f"Найдено элементов для сопоставления: **{len(items_needing_matching)}**\n\n"
+            overview_text += "**Выберите элемент для сопоставления:**\n\n"
+            
+            # Create horizontal buttons for items (max 2 per row)
+            keyboard = []
+            for i, (index, match) in enumerate(items_needing_matching):
+                status_emoji = self.ingredient_formatter._get_status_emoji(match.match_status)
+                button_text = f"{status_emoji} {self.ingredient_formatter._truncate_name(match.receipt_item_name, 15)}"
+                
+                if i % 2 == 0:
+                    # Start new row
+                    keyboard.append([InlineKeyboardButton(button_text, callback_data=f"select_item_{index}")])
+                else:
+                    # Add to existing row
+                    keyboard[-1].append(InlineKeyboardButton(button_text, callback_data=f"select_item_{index}"))
+            
+            # Add control buttons
+            keyboard.extend([
+                [InlineKeyboardButton("🔍 Выбрать позицию для сопоставления", callback_data="select_position_for_matching")],
+                [InlineKeyboardButton("✅ Применить изменения", callback_data="apply_matching_changes")],
+                [InlineKeyboardButton("📋 Вернуться к чеку", callback_data="back_to_receipt")],
+                [InlineKeyboardButton("❌ Отмена", callback_data="cancel")]
+            ])
+        
+        reply_markup = InlineKeyboardMarkup(keyboard)
+        
+        if hasattr(update, 'callback_query') and update.callback_query:
+            sent_message = await update.callback_query.message.reply_text(
+                overview_text,
+                reply_markup=reply_markup,
+                parse_mode='Markdown'
+            )
+            # Store message ID for cleanup
+            if 'menu_message_ids' not in context.user_data:
+                context.user_data['menu_message_ids'] = []
+            context.user_data['menu_message_ids'].append(sent_message.message_id)
+    
+    async def _handle_item_selection_for_matching(self, update: Update, context: ContextTypes.DEFAULT_TYPE, item_index: int):
+        """Handle selection of specific item for manual matching"""
+        matching_result = context.user_data.get('ingredient_matching_result')
+        poster_ingredients = context.bot_data.get('poster_ingredients', {})
+        
+        if not matching_result or item_index >= len(matching_result.matches):
+            await update.callback_query.answer("Ошибка: элемент не найден")
+            return
+        
+        current_match = matching_result.matches[item_index]
+        
+        # Show current match info
+        progress_text = f"**Сопоставление ингредиента**\n\n"
+        progress_text += f"**Товар:** {current_match.receipt_item_name}\n\n"
+        
+        # Get filtered suggestions (score >= 50%)
+        filtered_suggestions = self.ingredient_formatter.format_suggestions_for_manual_matching(current_match, min_score=0.5)
+        
+        if filtered_suggestions:
+            progress_text += "**Выберите подходящий ингредиент:**\n"
+            
+            # Create horizontal buttons for suggestions (max 2 per row)
+            keyboard = []
+            for i, suggestion in enumerate(filtered_suggestions[:6], 1):  # Show up to 6 suggestions
+                name = self.ingredient_formatter._truncate_name(suggestion['name'], 15)
+                score = int(suggestion['score'] * 100)
+                button_text = f"{name} ({score}%)"
+                
+                if i % 2 == 1:
+                    # Start new row
+                    keyboard.append([InlineKeyboardButton(button_text, callback_data=f"select_ingredient_{i}")])
+                else:
+                    # Add to existing row
+                    keyboard[-1].append(InlineKeyboardButton(button_text, callback_data=f"select_ingredient_{i}"))
+            
+            # Add control buttons
+            keyboard.extend([
+                [InlineKeyboardButton("🔍 Поиск", callback_data="search_ingredient")],
+                [InlineKeyboardButton("⏭️ Пропустить", callback_data="skip_ingredient")],
+                [InlineKeyboardButton("📋 Назад к обзору", callback_data="back_to_matching_overview")],
+                [InlineKeyboardButton("❌ Отмена", callback_data="cancel")]
+            ])
+        else:
+            progress_text += "❌ **Подходящих вариантов не найдено**\n\n"
+            progress_text += "Попробуйте поиск или пропустите этот товар."
+            
+            keyboard = [
+                [InlineKeyboardButton("🔍 Поиск", callback_data="search_ingredient")],
+                [InlineKeyboardButton("⏭️ Пропустить", callback_data="skip_ingredient")],
+                [InlineKeyboardButton("📋 Назад к обзору", callback_data="back_to_matching_overview")],
+                [InlineKeyboardButton("❌ Отмена", callback_data="cancel")]
+            ]
+        
+        reply_markup = InlineKeyboardMarkup(keyboard)
+        
+        # Save current item index for later processing
+        context.user_data['current_match_index'] = item_index
+        
+        sent_message = await update.callback_query.message.reply_text(
+            progress_text,
+            reply_markup=reply_markup,
+            parse_mode='Markdown'
+        )
+        # Store message ID for cleanup
+        if 'menu_message_ids' not in context.user_data:
+            context.user_data['menu_message_ids'] = []
+        context.user_data['menu_message_ids'].append(sent_message.message_id)
+    
+    async def _handle_position_selection(self, update: Update, context: ContextTypes.DEFAULT_TYPE, position_number: int):
+        """Handle position selection from search results"""
+        position_search_results = context.user_data.get('position_search_results', [])
+        matching_result = context.user_data.get('ingredient_matching_result')
+        poster_ingredients = context.bot_data.get('poster_ingredients', {})
+        
+        if not position_search_results or position_number < 1 or position_number > len(position_search_results):
+            await update.callback_query.answer("Ошибка: позиция не найдена")
+            return
+        
+        if not matching_result:
+            await update.callback_query.answer("Ошибка: данные сопоставления не найдены")
+            return
+        
+        # Get selected position
+        selected_position = position_search_results[position_number - 1]
+        
+        # Show all items that can be matched with this position
+        items_text = f"**Выбранный ингредиент:** {selected_position['name']}\n\n"
+        items_text += "**Выберите товар из чека для сопоставления:**\n\n"
+        
+        # Create horizontal buttons for all items (max 2 per row)
+        keyboard = []
+        for i, match in enumerate(matching_result.matches):
+            status_emoji = self.ingredient_formatter._get_status_emoji(match.match_status)
+            button_text = f"{status_emoji} {self.ingredient_formatter._truncate_name(match.receipt_item_name, 15)}"
+            
+            if i % 2 == 0:
+                # Start new row
+                keyboard.append([InlineKeyboardButton(button_text, callback_data=f"match_item_{i}_{selected_position['id']}")])
+            else:
+                # Add to existing row
+                keyboard[-1].append(InlineKeyboardButton(button_text, callback_data=f"match_item_{i}_{selected_position['id']}"))
+        
+        # Add control buttons
+        keyboard.extend([
+            [InlineKeyboardButton("🔍 Выбрать другую позицию", callback_data="select_position_for_matching")],
+            [InlineKeyboardButton("📋 Назад к обзору", callback_data="back_to_matching_overview")],
+            [InlineKeyboardButton("❌ Отмена", callback_data="cancel")]
+        ])
+        
+        reply_markup = InlineKeyboardMarkup(keyboard)
+        
+        sent_message = await update.callback_query.message.reply_text(
+            items_text,
+            reply_markup=reply_markup,
+            parse_mode='Markdown'
+        )
+        # Store message ID for cleanup
+        if 'menu_message_ids' not in context.user_data:
+            context.user_data['menu_message_ids'] = []
+        context.user_data['menu_message_ids'].append(sent_message.message_id)
+    
+    async def _handle_item_position_matching(self, update: Update, context: ContextTypes.DEFAULT_TYPE, item_index: int, position_id: str):
+        """Handle matching of item with selected position"""
+        matching_result = context.user_data.get('ingredient_matching_result')
+        poster_ingredients = context.bot_data.get('poster_ingredients', {})
+        
+        if not matching_result or item_index >= len(matching_result.matches):
+            await update.callback_query.answer("Ошибка: элемент не найден")
+            return
+        
+        if not poster_ingredients:
+            await update.callback_query.answer("Ошибка: справочник ингредиентов не загружен")
+            return
+        
+        # Get the item to match
+        item_to_match = matching_result.matches[item_index]
+        
+        # Create manual match
+        manual_match = self.ingredient_matching_service.manual_match_ingredient(
+            item_to_match.receipt_item_name,
+            position_id,
+            poster_ingredients
+        )
+        
+        # Update the match in the result
+        matching_result.matches[item_index] = manual_match
+        context.user_data['ingredient_matching_result'] = matching_result
+        
+        # Clear search results
+        context.user_data.pop('position_search_results', None)
+        
+        # Show confirmation
+        await update.callback_query.answer(f"✅ Сопоставлено: {item_to_match.receipt_item_name} → {manual_match.matched_ingredient_name}")
+        
+        # Return to matching overview
+        await self._show_manual_matching_overview(update, context)
+    
+    async def _cleanup_previous_menus(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
+        """Clean up previous menu messages to avoid clutter"""
+        try:
+            # Get the current message ID
+            current_message_id = None
+            if hasattr(update, 'callback_query') and update.callback_query:
+                current_message_id = update.callback_query.message.message_id
+            elif hasattr(update, 'message') and update.message:
+                current_message_id = update.message.message_id
+            
+            if not current_message_id:
+                return
+            
+            # Get chat ID
+            chat_id = None
+            if hasattr(update, 'callback_query') and update.callback_query:
+                chat_id = update.callback_query.message.chat_id
+            elif hasattr(update, 'message') and update.message:
+                chat_id = update.message.chat_id
+            
+            if not chat_id:
+                return
+            
+            # Get stored menu message IDs to delete
+            menu_message_ids = context.user_data.get('menu_message_ids', [])
+            
+            # Delete previous menu messages (but not the current one)
+            for message_id in menu_message_ids:
+                if message_id != current_message_id:
+                    try:
+                        await context.bot.delete_message(
+                            chat_id=chat_id,
+                            message_id=message_id
+                        )
+                    except Exception as e:
+                        print(f"Не удалось удалить сообщение меню {message_id}: {e}")
+            
+            # Clear the stored message IDs
+            context.user_data['menu_message_ids'] = []
+            
+        except Exception as e:
+            print(f"Ошибка при очистке меню: {e}")
+    
     async def _show_manual_matching_for_current_item(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         """Show manual matching interface for current item"""
         current_match_index = context.user_data.get('current_match_index', 0)
@@ -894,26 +1208,13 @@ class CallbackHandlers:
         # Show confirmation
         await update.callback_query.answer(f"✅ Сопоставлено: {selected_suggestion['name']}")
         
-        # Move to next ingredient
-        await self._process_next_ingredient_match(update, context)
+        # Return to matching overview
+        await self._show_manual_matching_overview(update, context)
     
     async def _process_next_ingredient_match(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         """Process next ingredient match or finish matching"""
-        current_match_index = context.user_data.get('current_match_index', 0)
-        matching_result = context.user_data.get('ingredient_matching_result')
-        
-        if not matching_result:
-            return
-        
-        current_match_index += 1
-        context.user_data['current_match_index'] = current_match_index
-        
-        if current_match_index >= len(matching_result.matches):
-            # All matches processed, show final result
-            await self._show_final_ingredient_matching_result(update, context)
-        else:
-            # Show next match
-            await self._show_manual_matching_for_current_item(update, context)
+        # Return to matching overview instead of sequential processing
+        await self._show_manual_matching_overview(update, context)
     
     async def _handle_search_result_selection(self, update: Update, context: ContextTypes.DEFAULT_TYPE, suggestion_number: int):
         """Handle search result selection"""
@@ -951,5 +1252,5 @@ class CallbackHandlers:
         # Show confirmation
         await update.callback_query.answer(f"✅ Сопоставлено: {selected_result['name']}")
         
-        # Move to next ingredient
-        await self._process_next_ingredient_match(update, context)
+        # Return to matching overview
+        await self._show_manual_matching_overview(update, context)

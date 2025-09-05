@@ -417,6 +417,11 @@ class MessageHandlers:
             context.user_data.pop('awaiting_search', None)
             return await self._handle_ingredient_search(update, context, user_input)
         
+        # Check if we're waiting for position search input
+        if context.user_data.get('awaiting_position_search'):
+            context.user_data.pop('awaiting_position_search', None)
+            return await self._handle_position_search(update, context, user_input)
+        
         # Get current matching data
         current_match_index = context.user_data.get('current_match_index', 0)
         matching_result = context.user_data.get('ingredient_matching_result')
@@ -481,6 +486,96 @@ class MessageHandlers:
             print(f"Ошибка при обработке ручного сопоставления: {e}")
             await update.message.reply_text("Произошла ошибка. Попробуйте еще раз.")
             return self.config.AWAITING_MANUAL_MATCH
+        
+        return self.config.AWAITING_MANUAL_MATCH
+    
+    async def _handle_position_search(self, update: Update, context: ContextTypes.DEFAULT_TYPE, query: str) -> int:
+        """Handle position search for manual matching"""
+        matching_result = context.user_data.get('ingredient_matching_result')
+        poster_ingredients = context.bot_data.get('poster_ingredients', {})
+        
+        if not matching_result:
+            await update.message.reply_text("Ошибка: данные сопоставления не найдены.")
+            return self.config.AWAITING_CORRECTION
+        
+        # Search for ingredients in the loaded list
+        search_results = self.ingredient_matching_service.get_similar_ingredients(
+            query, poster_ingredients, limit=10
+        )
+        
+        if search_results:
+            # Filter results with score >= 50%
+            filtered_results = [r for r in search_results if r['score'] >= 0.5]
+            
+            if filtered_results:
+                # Show search results with buttons
+                search_text = f"**Результаты поиска для '{query}':**\n\n"
+                search_text += f"Найдено вариантов: **{len(filtered_results)}**\n\n"
+                search_text += "**Выберите ингредиент для сопоставления:**\n"
+                
+                # Create horizontal buttons for search results (max 2 per row)
+                keyboard = []
+                for i, result in enumerate(filtered_results[:8], 1):  # Show up to 8 results
+                    name = self.ingredient_formatter._truncate_name(result['name'], 15)
+                    score = int(result['score'] * 100)
+                    button_text = f"{name} ({score}%)"
+                    
+                    if i % 2 == 1:
+                        # Start new row
+                        keyboard.append([InlineKeyboardButton(button_text, callback_data=f"select_position_{i}")])
+                    else:
+                        # Add to existing row
+                        keyboard[-1].append(InlineKeyboardButton(button_text, callback_data=f"select_position_{i}"))
+                
+                # Add control buttons
+                keyboard.extend([
+                    [InlineKeyboardButton("🔍 Новый поиск", callback_data="select_position_for_matching")],
+                    [InlineKeyboardButton("📋 Назад к обзору", callback_data="back_to_matching_overview")],
+                    [InlineKeyboardButton("❌ Отмена", callback_data="cancel")]
+                ])
+                
+                reply_markup = InlineKeyboardMarkup(keyboard)
+                
+                sent_message = await update.message.reply_text(
+                    search_text,
+                    reply_markup=reply_markup,
+                    parse_mode='Markdown'
+                )
+                # Store message ID for cleanup
+                if 'menu_message_ids' not in context.user_data:
+                    context.user_data['menu_message_ids'] = []
+                context.user_data['menu_message_ids'].append(sent_message.message_id)
+                
+                # Save search results for selection
+                context.user_data['position_search_results'] = filtered_results
+            else:
+                sent_message = await update.message.reply_text(
+                    f"❌ **По запросу '{query}' не найдено подходящих вариантов**\n\n"
+                    "Попробуйте другой поисковый запрос или вернитесь к обзору.",
+                    reply_markup=InlineKeyboardMarkup([
+                        [InlineKeyboardButton("🔍 Новый поиск", callback_data="select_position_for_matching")],
+                        [InlineKeyboardButton("📋 Назад к обзору", callback_data="back_to_matching_overview")],
+                        [InlineKeyboardButton("❌ Отмена", callback_data="cancel")]
+                    ])
+                )
+                # Store message ID for cleanup
+                if 'menu_message_ids' not in context.user_data:
+                    context.user_data['menu_message_ids'] = []
+                context.user_data['menu_message_ids'].append(sent_message.message_id)
+        else:
+            sent_message = await update.message.reply_text(
+                f"❌ **По запросу '{query}' ничего не найдено**\n\n"
+                "Попробуйте другой поисковый запрос или вернитесь к обзору.",
+                reply_markup=InlineKeyboardMarkup([
+                    [InlineKeyboardButton("🔍 Новый поиск", callback_data="select_position_for_matching")],
+                    [InlineKeyboardButton("📋 Назад к обзору", callback_data="back_to_matching_overview")],
+                    [InlineKeyboardButton("❌ Отмена", callback_data="cancel")]
+                ])
+            )
+            # Store message ID for cleanup
+            if 'menu_message_ids' not in context.user_data:
+                context.user_data['menu_message_ids'] = []
+            context.user_data['menu_message_ids'].append(sent_message.message_id)
         
         return self.config.AWAITING_MANUAL_MATCH
     
