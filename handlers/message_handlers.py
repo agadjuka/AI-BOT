@@ -1140,6 +1140,9 @@ class MessageHandlers:
                 InlineKeyboardButton("🔄 Проанализировать заново", callback_data="reanalyze")
             ])
             
+            # Add Google Sheets upload button
+            keyboard.append([InlineKeyboardButton("📊 Загрузить в Google Таблицы", callback_data="upload_to_google_sheets")])
+            
             # Add file generation button
             keyboard.append([InlineKeyboardButton("📄 Получить файл для загрузки в постер", callback_data="generate_supply_file")])
             

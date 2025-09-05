@@ -21,6 +21,7 @@ from services.ai_service import AIService, ReceiptAnalysisService
 from handlers.message_handlers import MessageHandlers
 from handlers.callback_handlers import CallbackHandlers
 from utils.ingredient_storage import IngredientStorage
+from google_sheets_handler import get_google_sheets_ingredients
 
 
 def safe_start_bot(application: Application, ingredient_storage: IngredientStorage, max_retries: int = 3) -> None:
@@ -102,6 +103,9 @@ def main() -> None:
     
     # Initialize empty poster ingredients - will be loaded on demand
     application.bot_data["poster_ingredients"] = {}
+    
+    # Initialize empty Google Sheets ingredients - will be loaded on demand
+    application.bot_data["google_sheets_ingredients"] = {}
 
     # Create conversation handler
     conv_handler = ConversationHandler(

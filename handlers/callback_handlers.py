@@ -15,6 +15,7 @@ from models.ingredient_matching import IngredientMatchingResult
 from services.ai_service import ReceiptAnalysisService
 from services.ingredient_matching_service import IngredientMatchingService
 from services.file_generator_service import FileGeneratorService
+from services.google_sheets_service import GoogleSheetsService
 from utils.formatters import ReceiptFormatter, NumberFormatter, TextParser
 from utils.ingredient_formatter import IngredientFormatter
 from utils.ingredient_storage import IngredientStorage
@@ -38,6 +39,10 @@ class CallbackHandlers:
         self.ingredient_formatter = IngredientFormatter()
         self.ingredient_storage = IngredientStorage()
         self.file_generator = FileGeneratorService()
+        self.google_sheets_service = GoogleSheetsService(
+            credentials_path=config.GOOGLE_SHEETS_CREDENTIALS,
+            spreadsheet_id=config.GOOGLE_SHEETS_SPREADSHEET_ID
+        )
         self.ui_manager = UIManager(config)
     
     async def _ensure_poster_ingredients_loaded(self, context: ContextTypes.DEFAULT_TYPE) -> bool:
@@ -55,6 +60,24 @@ class CallbackHandlers:
             # Save poster ingredients to bot data for future use
             context.bot_data["poster_ingredients"] = poster_ingredients
             print(f"DEBUG: Loaded {len(poster_ingredients)} poster ingredients")
+        
+        return True
+    
+    async def _ensure_google_sheets_ingredients_loaded(self, context: ContextTypes.DEFAULT_TYPE) -> bool:
+        """Ensure Google Sheets ingredients are loaded, load them if necessary"""
+        google_sheets_ingredients = context.bot_data.get('google_sheets_ingredients', {})
+        
+        if not google_sheets_ingredients:
+            # Load Google Sheets ingredients
+            from google_sheets_handler import get_google_sheets_ingredients
+            google_sheets_ingredients = get_google_sheets_ingredients()
+            
+            if not google_sheets_ingredients:
+                return False
+            
+            # Save Google Sheets ingredients to bot data for future use
+            context.bot_data["google_sheets_ingredients"] = google_sheets_ingredients
+            print(f"DEBUG: Loaded {len(google_sheets_ingredients)} Google Sheets ingredients")
         
         return True
     
@@ -309,6 +332,30 @@ class CallbackHandlers:
                     # Fallback to receipt report
                     await self._show_final_report_with_edit_button_callback(update, context)
                 return self.config.AWAITING_CORRECTION
+        
+        if action == "back_to_main_menu":
+            # Return to main menu
+            await query.answer("🏠 Возвращаюсь в главное меню...")
+            await self.ui_manager.cleanup_all_except_anchor(update, context)
+            
+            # Clear all data
+            context.user_data.clear()
+            
+            # Show main menu
+            keyboard = [
+                [InlineKeyboardButton("📸 Анализировать чек", callback_data="analyze_receipt")],
+                [InlineKeyboardButton("📄 Получить файл для загрузки в постер", callback_data="generate_supply_file")],
+                [InlineKeyboardButton("📊 Загрузить в Google таблицы", callback_data="upload_to_google_sheets")]
+            ]
+            reply_markup = InlineKeyboardMarkup(keyboard)
+            
+            await self.ui_manager.send_menu(
+                update, context,
+                "🏠 **Главное меню**\n\nВыберите действие:",
+                reply_markup,
+                'Markdown'
+            )
+            return self.config.AWAITING_CORRECTION
         
         if action == "next_ingredient_match":
             # Move to next ingredient match
@@ -625,6 +672,71 @@ class CallbackHandlers:
             
             # Clear pending data
             context.user_data.pop('pending_file_generation', None)
+            return self.config.AWAITING_CORRECTION
+        
+        if action == "upload_to_google_sheets":
+            # User wants to upload data to Google Sheets
+            await query.answer("📊 Загружаю данные в Google Sheets...")
+            
+            # Clean up all messages except anchor before showing new menu
+            await self.ui_manager.cleanup_all_except_anchor(update, context)
+            
+            # Get receipt data from context
+            receipt_data = context.user_data.get('receipt_data')
+            if not receipt_data:
+                await self.ui_manager.send_menu(
+                    update, context,
+                    "❌ **Нет данных для загрузки**\n\n"
+                    "Сначала необходимо загрузить и проанализировать чек.\n"
+                    "Нажмите 'Анализировать чек' и загрузите фото чека.",
+                    InlineKeyboardMarkup([
+                        [InlineKeyboardButton("📸 Анализировать чек", callback_data="analyze_receipt")],
+                        [InlineKeyboardButton("◀️ Главное меню", callback_data="back_to_main_menu")]
+                    ]),
+                    'Markdown'
+                )
+                return self.config.AWAITING_CORRECTION
+            
+            # Ensure Google Sheets ingredients are loaded
+            if not await self._ensure_google_sheets_ingredients_loaded(context):
+                await self.ui_manager.send_menu(
+                    update, context,
+                    "❌ **Ошибка загрузки в Google Sheets**\n\n"
+                    "Не удалось загрузить справочник ингредиентов для Google Sheets.\n"
+                    "Проверьте настройки конфигурации.",
+                    InlineKeyboardMarkup([
+                        [InlineKeyboardButton("📊 Загрузить в Google Sheets", callback_data="upload_to_google_sheets")],
+                        [InlineKeyboardButton("◀️ Назад", callback_data="back_to_receipt")]
+                    ]),
+                    'Markdown'
+                )
+                return self.config.AWAITING_CORRECTION
+            
+            # Get Google Sheets ingredients from bot data
+            google_sheets_ingredients = context.bot_data.get('google_sheets_ingredients', {})
+            
+            # Get current receipt hash
+            user_id = update.effective_user.id
+            receipt_hash = receipt_data.get_receipt_hash()
+            
+            # Check if we have saved matching data
+            saved_data = self.ingredient_storage.load_matching_result(user_id, receipt_hash)
+            if saved_data:
+                # We have saved data, use it
+                matching_result, changed_indices = saved_data
+                context.user_data['ingredient_matching_result'] = matching_result
+                context.user_data['changed_ingredient_indices'] = changed_indices
+            else:
+                # No saved data found - create new matching with Google Sheets ingredients
+                print(f"DEBUG: No saved data found for receipt {receipt_hash}, creating new matching with Google Sheets ingredients")
+                matching_result = self.ingredient_matching_service.match_ingredients(receipt_data, google_sheets_ingredients)
+                
+                # Save matching result
+                context.user_data['ingredient_matching_result'] = matching_result
+                context.user_data['changed_ingredient_indices'] = set()
+            
+            # Upload to Google Sheets
+            await self._upload_to_google_sheets(update, context, receipt_data, matching_result)
             return self.config.AWAITING_CORRECTION
         
         if action == "cancel":
@@ -1045,6 +1157,9 @@ class CallbackHandlers:
                 InlineKeyboardButton("💰 Редактировать Итого", callback_data="edit_total"),
                 InlineKeyboardButton("🔄 Проанализировать заново", callback_data="reanalyze")
             ])
+            
+            # Add Google Sheets upload button
+            keyboard.append([InlineKeyboardButton("📊 Загрузить в Google Таблицы", callback_data="upload_to_google_sheets")])
             
             # Add file generation button
             keyboard.append([InlineKeyboardButton("📄 Получить файл для загрузки в постер", callback_data="generate_supply_file")])
@@ -2453,3 +2568,69 @@ class CallbackHandlers:
             ]),
             'Markdown'
         )
+    
+    async def _upload_to_google_sheets(self, update: Update, context: ContextTypes.DEFAULT_TYPE,
+                                     receipt_data: ReceiptData, matching_result: IngredientMatchingResult):
+        """Upload receipt data to Google Sheets"""
+        try:
+            # Check if Google Sheets service is available
+            if not self.google_sheets_service.is_available():
+                await self.ui_manager.send_menu(
+                    update, context,
+                    "❌ **Google Sheets недоступен**\n\n"
+                    "Сервис Google Sheets не настроен или недоступен.\n"
+                    "Обратитесь к администратору для настройки.",
+                    InlineKeyboardMarkup([
+                        [InlineKeyboardButton("◀️ Назад", callback_data="back_to_receipt")]
+                    ]),
+                    'Markdown'
+                )
+                return
+            
+            # Show upload summary
+            summary = self.google_sheets_service.get_upload_summary(receipt_data, matching_result)
+            
+            # Upload data
+            success, message = self.google_sheets_service.upload_receipt_data(
+                receipt_data, 
+                matching_result,
+                self.config.GOOGLE_SHEETS_WORKSHEET_NAME
+            )
+            
+            if success:
+                # Show success message
+                success_text = f"✅ **Данные успешно загружены в Google Sheets!**\n\n{summary}\n\n{message}"
+                await self.ui_manager.send_menu(
+                    update, context,
+                    success_text,
+                    InlineKeyboardMarkup([
+                        [InlineKeyboardButton("📊 Загрузить еще раз", callback_data="upload_to_google_sheets")],
+                        [InlineKeyboardButton("📄 Сгенерировать файл", callback_data="generate_file_from_table")],
+                        [InlineKeyboardButton("◀️ Назад", callback_data="back_to_receipt")]
+                    ]),
+                    'Markdown'
+                )
+            else:
+                # Show error message
+                error_text = f"❌ **Ошибка загрузки в Google Sheets**\n\n{message}\n\n{summary}"
+                await self.ui_manager.send_menu(
+                    update, context,
+                    error_text,
+                    InlineKeyboardMarkup([
+                        [InlineKeyboardButton("🔄 Попробовать снова", callback_data="upload_to_google_sheets")],
+                        [InlineKeyboardButton("📄 Сгенерировать файл", callback_data="generate_file_from_table")],
+                        [InlineKeyboardButton("◀️ Назад", callback_data="back_to_receipt")]
+                    ]),
+                    'Markdown'
+                )
+                
+        except Exception as e:
+            print(f"DEBUG: Error uploading to Google Sheets: {e}")
+            await self.ui_manager.send_menu(
+                update, context,
+                f"❌ **Критическая ошибка**\n\nПроизошла неожиданная ошибка при загрузке в Google Sheets:\n`{str(e)}`",
+                InlineKeyboardMarkup([
+                    [InlineKeyboardButton("◀️ Назад", callback_data="back_to_receipt")]
+                ]),
+                'Markdown'
+            )
