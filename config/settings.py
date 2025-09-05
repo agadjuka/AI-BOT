@@ -28,6 +28,8 @@ class BotConfig:
         self.AWAITING_FIELD_EDIT = 3
         self.AWAITING_DELETE_LINE_NUMBER = 4
         self.AWAITING_TOTAL_EDIT = 5
+        self.AWAITING_INGREDIENT_MATCHING = 6
+        self.AWAITING_MANUAL_MATCH = 7
         
         # Message settings
         self.MAX_MESSAGE_LENGTH = 4096

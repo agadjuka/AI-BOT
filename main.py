@@ -73,6 +73,15 @@ def main() -> None:
                 MessageHandler(filters.TEXT & ~filters.COMMAND, message_handlers.handle_total_edit_input),
                 MessageHandler(filters.PHOTO, message_handlers.handle_photo)  # Add photo handler
             ],
+            config.AWAITING_INGREDIENT_MATCHING: [
+                CallbackQueryHandler(callback_handlers.handle_correction_choice),
+                MessageHandler(filters.PHOTO, message_handlers.handle_photo)  # Add photo handler
+            ],
+            config.AWAITING_MANUAL_MATCH: [
+                MessageHandler(filters.TEXT & ~filters.COMMAND, message_handlers.handle_ingredient_matching_input),
+                CallbackQueryHandler(callback_handlers.handle_correction_choice),
+                MessageHandler(filters.PHOTO, message_handlers.handle_photo)  # Add photo handler
+            ],
         },
         fallbacks=[CommandHandler("cancel", message_handlers.start)],  # Use start as cancel fallback
         per_message=False

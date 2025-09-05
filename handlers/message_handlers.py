@@ -9,8 +9,11 @@ from telegram.ext import ContextTypes
 
 from config.settings import BotConfig
 from models.receipt import ReceiptData, ReceiptItem
+from models.ingredient_matching import IngredientMatchingResult
 from services.ai_service import ReceiptAnalysisService
+from services.ingredient_matching_service import IngredientMatchingService
 from utils.formatters import ReceiptFormatter, NumberFormatter, TextParser
+from utils.ingredient_formatter import IngredientFormatter
 from utils.receipt_processor import ReceiptProcessor
 from validators.receipt_validator import ReceiptValidator
 
@@ -26,6 +29,8 @@ class MessageHandlers:
         self.text_parser = TextParser()
         self.processor = ReceiptProcessor()
         self.validator = ReceiptValidator()
+        self.ingredient_matching_service = IngredientMatchingService()
+        self.ingredient_formatter = IngredientFormatter()
     
     async def start(self, update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         """Handle /start command"""
@@ -42,7 +47,10 @@ class MessageHandlers:
             # Clear old data related to previous receipt
             self._clear_receipt_data(context)
         
-        await update.message.reply_text("Фото получил. Начинаю объективный анализ...")
+        processing_message = await update.message.reply_text("Обрабатываю квитанцию")
+        # Сохраняем ID сообщения для последующего удаления
+        context.user_data['processing_message_id'] = processing_message.message_id
+        
         photo_file = await update.message.photo[-1].get_file()
         await photo_file.download_to_drive(self.config.PHOTO_FILE_NAME)
 
@@ -391,6 +399,221 @@ class MessageHandlers:
             await update.message.reply_text("Ошибка при обновлении итоговой суммы. Попробуйте еще раз.")
             return self.config.AWAITING_TOTAL_EDIT
     
+    async def handle_ingredient_matching_input(self, update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
+        """Handle manual ingredient matching input"""
+        user_input = update.message.text.strip()
+        
+        # Delete user message
+        try:
+            await context.bot.delete_message(
+                chat_id=update.message.chat_id,
+                message_id=update.message.message_id
+            )
+        except Exception as e:
+            print(f"Не удалось удалить сообщение пользователя: {e}")
+        
+        # Check if we're waiting for search input
+        if context.user_data.get('awaiting_search'):
+            context.user_data.pop('awaiting_search', None)
+            return await self._handle_ingredient_search(update, context, user_input)
+        
+        # Get current matching data
+        current_match_index = context.user_data.get('current_match_index', 0)
+        matching_result = context.user_data.get('ingredient_matching_result')
+        poster_ingredients = context.bot_data.get('poster_ingredients', {})
+        
+        if not matching_result or current_match_index >= len(matching_result.matches):
+            await update.message.reply_text("Ошибка: данные сопоставления не найдены.")
+            return self.config.AWAITING_CORRECTION
+        
+        current_match = matching_result.matches[current_match_index]
+        
+        try:
+            if user_input == "0":
+                # Skip this ingredient
+                await update.message.reply_text(f"✅ Пропущен ингредиент: {current_match.receipt_item_name}")
+                await self._process_next_ingredient_match(update, context)
+                
+            elif user_input.startswith("search:"):
+                # Search for ingredients
+                query = user_input[7:].strip()
+                if not query:
+                    await update.message.reply_text("Введите поисковый запрос после 'search:'")
+                    return self.config.AWAITING_MANUAL_MATCH
+                
+                return await self._handle_ingredient_search(update, context, query)
+                
+            else:
+                # Try to parse as suggestion number
+                try:
+                    suggestion_number = int(user_input)
+                    if 1 <= suggestion_number <= len(current_match.suggested_matches):
+                        # Apply suggestion
+                        selected_suggestion = current_match.suggested_matches[suggestion_number - 1]
+                        manual_match = self.ingredient_matching_service.manual_match_ingredient(
+                            current_match.receipt_item_name,
+                            selected_suggestion['id'],
+                            poster_ingredients
+                        )
+                        
+                        # Update the match in the result
+                        matching_result.matches[current_match_index] = manual_match
+                        context.user_data['ingredient_matching_result'] = matching_result
+                        
+                        await update.message.reply_text(
+                            f"✅ Сопоставлено: {current_match.receipt_item_name} → {selected_suggestion['name']}"
+                        )
+                        await self._process_next_ingredient_match(update, context)
+                        
+                    else:
+                        await update.message.reply_text(
+                            f"Неверный номер. Введите число от 1 до {len(current_match.suggested_matches)} или 0 для пропуска."
+                        )
+                        return self.config.AWAITING_MANUAL_MATCH
+                        
+                except ValueError:
+                    await update.message.reply_text(
+                        "Неверный формат. Введите номер предложения, 0 для пропуска или 'search: запрос' для поиска."
+                    )
+                    return self.config.AWAITING_MANUAL_MATCH
+                    
+        except Exception as e:
+            print(f"Ошибка при обработке ручного сопоставления: {e}")
+            await update.message.reply_text("Произошла ошибка. Попробуйте еще раз.")
+            return self.config.AWAITING_MANUAL_MATCH
+        
+        return self.config.AWAITING_MANUAL_MATCH
+    
+    async def _handle_ingredient_search(self, update: Update, context: ContextTypes.DEFAULT_TYPE, query: str) -> int:
+        """Handle ingredient search"""
+        current_match_index = context.user_data.get('current_match_index', 0)
+        matching_result = context.user_data.get('ingredient_matching_result')
+        poster_ingredients = context.bot_data.get('poster_ingredients', {})
+        
+        if not matching_result or current_match_index >= len(matching_result.matches):
+            await update.message.reply_text("Ошибка: данные сопоставления не найдены.")
+            return self.config.AWAITING_CORRECTION
+        
+        current_match = matching_result.matches[current_match_index]
+        
+        # Search for ingredients
+        search_results = self.ingredient_matching_service.get_similar_ingredients(
+            query, poster_ingredients, limit=10
+        )
+        
+        if search_results:
+            # Filter results with score >= 50%
+            filtered_results = [r for r in search_results if r['score'] >= 0.5]
+            
+            if filtered_results:
+                # Show search results with buttons
+                progress_text = f"**Результаты поиска для '{query}':**\n\n"
+                progress_text += f"**Текущий товар:** {current_match.receipt_item_name}\n\n"
+                progress_text += "**Выберите подходящий ингредиент:**\n"
+                
+                # Create buttons for search results (max 4 buttons)
+                keyboard = []
+                for i, result in enumerate(filtered_results[:4], 1):
+                    name = self.ingredient_formatter._truncate_name(result['name'], 20)
+                    score = int(result['score'] * 100)
+                    button_text = f"{name} ({score}%)"
+                    keyboard.append([InlineKeyboardButton(button_text, callback_data=f"select_search_{i}")])
+                
+                # Add control buttons
+                keyboard.append([InlineKeyboardButton("🔍 Новый поиск", callback_data="search_ingredient")])
+                keyboard.append([InlineKeyboardButton("⏭️ Пропустить", callback_data="skip_ingredient")])
+                keyboard.append([InlineKeyboardButton("❌ Отмена", callback_data="cancel")])
+                
+                reply_markup = InlineKeyboardMarkup(keyboard)
+                
+                await update.message.reply_text(
+                    progress_text,
+                    reply_markup=reply_markup,
+                    parse_mode='Markdown'
+                )
+                
+                # Save search results for selection
+                context.user_data['search_results'] = filtered_results
+            else:
+                await update.message.reply_text(f"По запросу '{query}' не найдено подходящих вариантов (с вероятностью > 50%).")
+        else:
+            await update.message.reply_text(f"По запросу '{query}' ничего не найдено.")
+        
+        return self.config.AWAITING_MANUAL_MATCH
+    
+    async def _process_next_ingredient_match(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
+        """Process next ingredient match or finish matching"""
+        current_match_index = context.user_data.get('current_match_index', 0)
+        matching_result = context.user_data.get('ingredient_matching_result')
+        
+        if not matching_result:
+            return
+        
+        current_match_index += 1
+        context.user_data['current_match_index'] = current_match_index
+        
+        if current_match_index >= len(matching_result.matches):
+            # All matches processed, show final result
+            await self._show_final_ingredient_matching_result(update, context)
+        else:
+            # Show next match
+            await self._show_manual_matching_for_current_item(update, context)
+    
+    async def _show_manual_matching_for_current_item(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
+        """Show manual matching interface for current item"""
+        current_match_index = context.user_data.get('current_match_index', 0)
+        matching_result = context.user_data.get('ingredient_matching_result')
+        
+        if not matching_result or current_match_index >= len(matching_result.matches):
+            return
+        
+        current_match = matching_result.matches[current_match_index]
+        
+        # Show current match info
+        progress_text = f"**Сопоставление ингредиентов** ({current_match_index + 1}/{len(matching_result.matches)})\n\n"
+        progress_text += f"**Текущий товар:** {current_match.receipt_item_name}\n\n"
+        
+        if current_match.match_status.value == "exact":
+            # Already matched, show confirmation
+            progress_text += f"✅ **Автоматически сопоставлено:** {current_match.matched_ingredient_name}\n\n"
+            progress_text += "Нажмите /continue для перехода к следующему товару."
+        else:
+            # Show suggestions for manual matching
+            if current_match.suggested_matches:
+                suggestions_text = self.ingredient_formatter.format_suggestions_for_manual_matching(current_match)
+                progress_text += suggestions_text + "\n\n"
+            
+            instructions = self.ingredient_formatter.format_manual_matching_instructions()
+            progress_text += instructions
+        
+        await update.message.reply_text(progress_text, parse_mode='Markdown')
+    
+    async def _show_final_ingredient_matching_result(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
+        """Show final ingredient matching result"""
+        matching_result = context.user_data.get('ingredient_matching_result')
+        
+        if not matching_result:
+            await update.message.reply_text("Ошибка: данные сопоставления не найдены.")
+            return
+        
+        # Format final result
+        final_text = self.ingredient_formatter.format_matching_table(matching_result)
+        
+        # Add action buttons
+        keyboard = [
+            [InlineKeyboardButton("🔄 Сопоставить заново", callback_data="rematch_ingredients")],
+            [InlineKeyboardButton("📋 Вернуться к чеку", callback_data="back_to_receipt")],
+            [InlineKeyboardButton("❌ Отмена", callback_data="cancel")]
+        ]
+        
+        reply_markup = InlineKeyboardMarkup(keyboard)
+        
+        await update.message.reply_text(
+            final_text,
+            reply_markup=reply_markup,
+            parse_mode='Markdown'
+        )
+    
     def _clear_receipt_data(self, context: ContextTypes.DEFAULT_TYPE) -> None:
         """Clear all receipt-related data from context"""
         keys_to_clear = [
@@ -398,13 +621,33 @@ class MessageHandlers:
             'cached_final_report', 'table_message_id', 'edit_menu_message_id',
             'instruction_message_id', 'line_number_instruction_message_id',
             'delete_line_number_instruction_message_id', 'total_edit_instruction_message_id',
-            'total_edit_menu_message_id'
+            'total_edit_menu_message_id', 'ingredient_matching_result', 'current_match_index',
+            'processing_message_id'
         ]
         for key in keys_to_clear:
             context.user_data.pop(key, None)
     
     async def show_final_report_with_edit_button(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         """Show final report with edit buttons"""
+        # Удаляем сообщение "Обрабатываю квитанцию" если оно есть
+        processing_message_id = context.user_data.get('processing_message_id')
+        if processing_message_id:
+            try:
+                if hasattr(update, 'message') and update.message:
+                    await context.bot.delete_message(
+                        chat_id=update.message.chat_id,
+                        message_id=processing_message_id
+                    )
+                elif hasattr(update, 'callback_query') and update.callback_query:
+                    await context.bot.delete_message(
+                        chat_id=update.callback_query.message.chat_id,
+                        message_id=processing_message_id
+                    )
+            except Exception as e:
+                print(f"Не удалось удалить сообщение об обработке: {e}")
+            # Очищаем ID сообщения из контекста
+            context.user_data.pop('processing_message_id', None)
+        
         final_data: ReceiptData = context.user_data.get('receipt_data')
         
         if not final_data:
@@ -487,6 +730,9 @@ class MessageHandlers:
             
             # Add reanalysis button
             keyboard.append([InlineKeyboardButton("🔄 Проанализировать заново", callback_data="reanalyze")])
+            
+            # Add ingredient matching button
+            keyboard.append([InlineKeyboardButton("🔍 Сопоставить ингредиенты", callback_data="match_ingredients")])
             
             # Add general buttons
             keyboard.append([InlineKeyboardButton("🔢 Редактировать строку по номеру", callback_data="edit_line_number")])
