@@ -193,6 +193,10 @@ class FileGeneratorService:
         matched_count = sum(1 for match in matching_result.matches 
                            if match.match_status.value != 'no_match' and match.matched_ingredient_name)
         
+        print(f"DEBUG: Validation - Total matches: {len(matching_result.matches)}, Matched count: {matched_count}")
+        for i, match in enumerate(matching_result.matches):
+            print(f"DEBUG: Match {i}: '{match.receipt_item_name}' -> '{match.matched_ingredient_name}' (status: {match.match_status}, score: {match.similarity_score})")
+        
         if matched_count == 0:
             return False, "Нет сопоставленных ингредиентов. Необходимо выполнить сопоставление товаров с ингредиентами Poster."
         

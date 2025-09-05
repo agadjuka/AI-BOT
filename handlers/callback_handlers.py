@@ -514,31 +514,25 @@ class CallbackHandlers:
             print(f"DEBUG: Found saved data: {saved_data is not None}")
             
             if not saved_data:
-                await self.ui_manager.send_menu(
-                    update, context,
-                    "📄 **Получить файл для загрузки в постер**\n\n"
-                    "❌ Необходимо выполнить сопоставление ингредиентов.\n\n"
-                    "**Что нужно сделать:**\n"
-                    "1️⃣ В главном меню нажмите '🔍 Сопоставить ингредиенты'\n"
-                    "2️⃣ Выполните сопоставление всех товаров с ингредиентами Poster\n"
-                    "3️⃣ Нажмите '✅ Применить' для сохранения\n"
-                    "4️⃣ Затем вернитесь к этой кнопке для получения файла\n\n"
-                    "Файл будет содержать товары с сопоставленными наименованиями из Poster.",
-                    InlineKeyboardMarkup([
-                        [InlineKeyboardButton("🔍 Сопоставить ингредиенты", callback_data="match_ingredients")],
-                        [InlineKeyboardButton("◀️ Назад", callback_data="back_to_receipt")]
-                    ]),
-                    'Markdown'
-                )
+                # Try to automatically match all ingredients first
+                print("DEBUG: No saved matching data, attempting automatic matching for all items")
+                await self._attempt_automatic_matching_for_all_items(update, context, receipt_data)
                 return self.config.AWAITING_CORRECTION
             
             matching_result, changed_indices = saved_data
             
             print(f"DEBUG: Loaded matching result with {len(matching_result.matches)} matches")
+            print(f"DEBUG: Receipt has {len(receipt_data.items)} items")
             print(f"DEBUG: Changed indices: {changed_indices}")
             print(f"DEBUG: Exact matches: {matching_result.exact_matches}")
             print(f"DEBUG: Partial matches: {matching_result.partial_matches}")
             print(f"DEBUG: No matches: {matching_result.no_matches}")
+            
+            # Check if the number of items matches the number of matches
+            if len(receipt_data.items) != len(matching_result.matches):
+                print("DEBUG: Item count mismatch, attempting to fix matching")
+                await self._fix_matching_for_changed_items(update, context, receipt_data, matching_result)
+                return self.config.AWAITING_CORRECTION
             
             # Generate and send file
             await self._generate_and_send_supply_file(update, context, receipt_data, matching_result)
@@ -707,6 +701,13 @@ class CallbackHandlers:
         # Add new row to data
         data.add_item(new_item)
         
+        # Update original_data to reflect the changes
+        if context.user_data.get('original_data'):
+            context.user_data['original_data'].add_item(new_item)
+        
+        # Automatically match ingredient for the new item
+        await self._auto_match_ingredient_for_new_item(update, context, new_item, data)
+        
         # Set new row for editing
         context.user_data['line_to_edit'] = new_line_number
         
@@ -766,6 +767,13 @@ class CallbackHandlers:
         
         # Update total sum in data
         data.grand_total_text = str(int(calculated_total)) if calculated_total == int(calculated_total) else str(calculated_total)
+        
+        # Update original_data to reflect the changes
+        if context.user_data.get('original_data'):
+            context.user_data['original_data'].grand_total_text = data.grand_total_text
+        
+        # Update ingredient matching after total change
+        await self._update_ingredient_matching_after_data_change(update, context, data, "total_change")
         
         # Delete total edit menu message
         try:
@@ -1993,3 +2001,280 @@ class CallbackHandlers:
                 ]),
                 'Markdown'
             )
+    
+    async def _update_ingredient_matching_after_data_change(self, update: Update, context: ContextTypes.DEFAULT_TYPE, 
+                                                           receipt_data: ReceiptData, change_type: str = "general") -> None:
+        """Update ingredient matching after any data change"""
+        try:
+            # Get current matching result from context or storage
+            matching_result = context.user_data.get('ingredient_matching_result')
+            changed_indices = context.user_data.get('changed_ingredient_indices', set())
+            
+            if not matching_result:
+                # Try to load from storage using old hash
+                user_id = update.effective_user.id
+                old_receipt_data = context.user_data.get('original_data')
+                if old_receipt_data:
+                    old_receipt_hash = old_receipt_data.get_receipt_hash()
+                    saved_data = self.ingredient_storage.load_matching_result(user_id, old_receipt_hash)
+                    if saved_data:
+                        matching_result, changed_indices = saved_data
+                        # Update context with loaded data
+                        context.user_data['ingredient_matching_result'] = matching_result
+                        context.user_data['changed_ingredient_indices'] = changed_indices
+            
+            if not matching_result:
+                print(f"DEBUG: No matching result found to update after {change_type}")
+                return
+            
+            # For different change types, we need different handling
+            if change_type == "deletion":
+                # This will be handled by the specific deletion function
+                return
+            elif change_type == "addition":
+                # Add a new empty match for the new item
+                from models.ingredient_matching import IngredientMatch, MatchStatus
+                new_match = IngredientMatch(
+                    receipt_item_name="Новый товар",
+                    matched_ingredient_name="",
+                    matched_ingredient_id="",
+                    match_status=MatchStatus.NO_MATCH,
+                    similarity_score=0.0,
+                    suggested_matches=[]
+                )
+                matching_result.matches.append(new_match)
+                
+            elif change_type == "item_edit":
+                # For item edits, we need to regenerate matching for that specific item
+                # This is more complex, so for now we'll just mark that matching needs to be redone
+                # The user will need to redo ingredient matching if they want accurate results
+                print("DEBUG: Item edited - ingredient matching may need to be redone")
+                return
+                
+            # Update context
+            context.user_data['ingredient_matching_result'] = matching_result
+            context.user_data['changed_ingredient_indices'] = changed_indices
+            
+            # Save updated matching result with new receipt hash
+            user_id = update.effective_user.id
+            new_receipt_hash = receipt_data.get_receipt_hash()
+            success = self.ingredient_storage.save_matching_result(user_id, matching_result, changed_indices, new_receipt_hash)
+            
+            # Clear old matching result file if hash changed
+            if context.user_data.get('original_data'):
+                old_receipt_hash = context.user_data['original_data'].get_receipt_hash()
+                if old_receipt_hash != new_receipt_hash:
+                    self.ingredient_storage.clear_matching_result(user_id, old_receipt_hash)
+            
+            print(f"DEBUG: Updated ingredient matching after {change_type}, new hash: {new_receipt_hash}, success: {success}")
+                
+        except Exception as e:
+            print(f"DEBUG: Error updating ingredient matching after {change_type}: {e}")
+    
+    async def _auto_match_ingredient_for_new_item(self, update: Update, context: ContextTypes.DEFAULT_TYPE, 
+                                                new_item: ReceiptItem, receipt_data: ReceiptData) -> None:
+        """Automatically match ingredient for a newly added item and update matching result"""
+        try:
+            print(f"DEBUG: Starting auto-match for new item: '{new_item.name}'")
+            
+            # Get current matching result from context or storage
+            matching_result = context.user_data.get('ingredient_matching_result')
+            changed_indices = context.user_data.get('changed_ingredient_indices', set())
+            
+            print(f"DEBUG: Current matching result in context: {matching_result is not None}")
+            
+            if not matching_result:
+                # Try to load from storage using old hash
+                user_id = update.effective_user.id
+                old_receipt_data = context.user_data.get('original_data')
+                if old_receipt_data:
+                    old_receipt_hash = old_receipt_data.get_receipt_hash()
+                    print(f"DEBUG: Trying to load matching from old hash: {old_receipt_hash}")
+                    saved_data = self.ingredient_storage.load_matching_result(user_id, old_receipt_hash)
+                    if saved_data:
+                        matching_result, changed_indices = saved_data
+                        print(f"DEBUG: Loaded matching with {len(matching_result.matches)} matches")
+                        # Update context with loaded data
+                        context.user_data['ingredient_matching_result'] = matching_result
+                        context.user_data['changed_ingredient_indices'] = changed_indices
+                    else:
+                        print("DEBUG: No saved data found for old hash")
+            
+            if not matching_result:
+                print("DEBUG: No matching result found, creating new one for new item")
+                # Create new matching result if none exists
+                from models.ingredient_matching import IngredientMatchingResult
+                matching_result = IngredientMatchingResult()
+                changed_indices = set()
+            
+            # Get poster ingredients from bot data
+            poster_ingredients = context.bot_data.get('poster_ingredients', {})
+            
+            if not poster_ingredients:
+                print("DEBUG: Poster ingredients not loaded, adding empty match for new item")
+                # Add empty match if no poster ingredients available
+                from models.ingredient_matching import IngredientMatch, MatchStatus
+                new_match = IngredientMatch(
+                    receipt_item_name=new_item.name,
+                    matched_ingredient_name="",
+                    matched_ingredient_id="",
+                    match_status=MatchStatus.NO_MATCH,
+                    similarity_score=0.0,
+                    suggested_matches=[]
+                )
+            else:
+                # Perform automatic ingredient matching for the new item
+                from models.receipt import ReceiptData
+                temp_receipt = ReceiptData(items=[new_item])
+                temp_matching_result = self.ingredient_matching_service.match_ingredients(temp_receipt, poster_ingredients)
+                
+                print(f"DEBUG: Matching result for '{new_item.name}': {len(temp_matching_result.matches)} matches")
+                
+                if temp_matching_result.matches:
+                    new_match = temp_matching_result.matches[0]
+                    print(f"DEBUG: Auto-matched '{new_item.name}' with '{new_match.matched_ingredient_name}' (score: {new_match.similarity_score}, status: {new_match.match_status})")
+                else:
+                    # Fallback to empty match
+                    from models.ingredient_matching import IngredientMatch, MatchStatus
+                    new_match = IngredientMatch(
+                        receipt_item_name=new_item.name,
+                        matched_ingredient_name="",
+                        matched_ingredient_id="",
+                        match_status=MatchStatus.NO_MATCH,
+                        similarity_score=0.0,
+                        suggested_matches=[]
+                    )
+                    print(f"DEBUG: No matches found for '{new_item.name}', using empty match")
+            
+            # Add the new match to the existing matching result
+            matching_result.matches.append(new_match)
+            
+            # Update context
+            context.user_data['ingredient_matching_result'] = matching_result
+            context.user_data['changed_ingredient_indices'] = changed_indices
+            
+            # Save updated matching result with new receipt hash
+            user_id = update.effective_user.id
+            new_receipt_hash = receipt_data.get_receipt_hash()
+            success = self.ingredient_storage.save_matching_result(user_id, matching_result, changed_indices, new_receipt_hash)
+            
+            # Clear old matching result file if hash changed
+            if context.user_data.get('original_data'):
+                old_receipt_hash = context.user_data['original_data'].get_receipt_hash()
+                if old_receipt_hash != new_receipt_hash:
+                    self.ingredient_storage.clear_matching_result(user_id, old_receipt_hash)
+            
+            print(f"DEBUG: Auto-matched ingredient for new item, new hash: {new_receipt_hash}, success: {success}")
+                
+        except Exception as e:
+            print(f"DEBUG: Error auto-matching ingredient for new item: {e}")
+    
+    async def _attempt_automatic_matching_for_all_items(self, update: Update, context: ContextTypes.DEFAULT_TYPE, 
+                                                      receipt_data: ReceiptData) -> None:
+        """Attempt to automatically match all items and either generate file or show manual matching menu"""
+        try:
+            print("DEBUG: Starting automatic matching for all items")
+            
+            # Get poster ingredients from bot data
+            poster_ingredients = context.bot_data.get('poster_ingredients', {})
+            
+            if not poster_ingredients:
+                print("DEBUG: No poster ingredients available, showing manual matching menu")
+                await self._show_manual_matching_menu(update, context)
+                return
+            
+            # Perform automatic ingredient matching for all items
+            matching_result = self.ingredient_matching_service.match_ingredients(receipt_data, poster_ingredients)
+            
+            print(f"DEBUG: Automatic matching completed: {len(matching_result.matches)} matches")
+            print(f"DEBUG: Exact matches: {matching_result.exact_matches}")
+            print(f"DEBUG: Partial matches: {matching_result.partial_matches}")
+            print(f"DEBUG: No matches: {matching_result.no_matches}")
+            
+            # Check if we have at least some matches
+            matched_count = sum(1 for match in matching_result.matches 
+                               if match.match_status.value != 'no_match' and match.matched_ingredient_name)
+            
+            if matched_count > 0:
+                print(f"DEBUG: Found {matched_count} matches, proceeding with file generation")
+                
+                # Save the matching result
+                user_id = update.effective_user.id
+                receipt_hash = receipt_data.get_receipt_hash()
+                success = self.ingredient_storage.save_matching_result(user_id, matching_result, set(), receipt_hash)
+                
+                # Update context
+                context.user_data['ingredient_matching_result'] = matching_result
+                context.user_data['changed_ingredient_indices'] = set()
+                
+                # Generate and send file
+                await self._generate_and_send_supply_file(update, context, receipt_data, matching_result)
+            else:
+                print("DEBUG: No matches found, showing manual matching menu")
+                await self._show_manual_matching_menu(update, context)
+                
+        except Exception as e:
+            print(f"DEBUG: Error in automatic matching for all items: {e}")
+            await self._show_manual_matching_menu(update, context)
+    
+    async def _fix_matching_for_changed_items(self, update: Update, context: ContextTypes.DEFAULT_TYPE, 
+                                            receipt_data: ReceiptData, existing_matching: IngredientMatchingResult) -> None:
+        """Fix matching when item count has changed"""
+        try:
+            print("DEBUG: Fixing matching for changed items")
+            
+            # Get poster ingredients from bot data
+            poster_ingredients = context.bot_data.get('poster_ingredients', {})
+            
+            if not poster_ingredients:
+                print("DEBUG: No poster ingredients available, showing manual matching menu")
+                await self._show_manual_matching_menu(update, context)
+                return
+            
+            # Create new matching result with all current items
+            matching_result = self.ingredient_matching_service.match_ingredients(receipt_data, poster_ingredients)
+            
+            print(f"DEBUG: Fixed matching completed: {len(matching_result.matches)} matches")
+            
+            # Save the updated matching result
+            user_id = update.effective_user.id
+            receipt_hash = receipt_data.get_receipt_hash()
+            success = self.ingredient_storage.save_matching_result(user_id, matching_result, set(), receipt_hash)
+            
+            # Update context
+            context.user_data['ingredient_matching_result'] = matching_result
+            context.user_data['changed_ingredient_indices'] = set()
+            
+            # Check if we have matches and proceed accordingly
+            matched_count = sum(1 for match in matching_result.matches 
+                               if match.match_status.value != 'no_match' and match.matched_ingredient_name)
+            
+            if matched_count > 0:
+                print(f"DEBUG: Fixed matching has {matched_count} matches, proceeding with file generation")
+                await self._generate_and_send_supply_file(update, context, receipt_data, matching_result)
+            else:
+                print("DEBUG: Fixed matching has no matches, showing manual matching menu")
+                await self._show_manual_matching_menu(update, context)
+                
+        except Exception as e:
+            print(f"DEBUG: Error fixing matching for changed items: {e}")
+            await self._show_manual_matching_menu(update, context)
+    
+    async def _show_manual_matching_menu(self, update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+        """Show the manual matching menu when automatic matching fails"""
+        await self.ui_manager.send_menu(
+            update, context,
+            "📄 **Получить файл для загрузки в постер**\n\n"
+            "❌ Необходимо выполнить сопоставление ингредиентов.\n\n"
+            "**Что нужно сделать:**\n"
+            "1️⃣ В главном меню нажмите '🔍 Сопоставить ингредиенты'\n"
+            "2️⃣ Выполните сопоставление всех товаров с ингредиентами Poster\n"
+            "3️⃣ Нажмите '✅ Применить' для сохранения\n"
+            "4️⃣ Затем вернитесь к этой кнопке для получения файла\n\n"
+            "Файл будет содержать товары с сопоставленными наименованиями из Poster.",
+            InlineKeyboardMarkup([
+                [InlineKeyboardButton("🔍 Сопоставить ингредиенты", callback_data="match_ingredients")],
+                [InlineKeyboardButton("◀️ Назад", callback_data="back_to_receipt")]
+            ]),
+            'Markdown'
+        )

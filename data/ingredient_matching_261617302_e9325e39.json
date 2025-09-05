@@ -3,11 +3,37 @@
     "matches": [
       {
         "receipt_item_name": "White Cabbage",
-        "matched_ingredient_name": "red cabbage",
-        "matched_ingredient_id": 27,
-        "match_status": "exact",
-        "similarity_score": 1.0,
-        "suggested_matches": []
+        "matched_ingredient_name": "cabbage",
+        "matched_ingredient_id": 26,
+        "match_status": "partial",
+        "similarity_score": 0.6399999999999999,
+        "suggested_matches": [
+          {
+            "name": "cabbage",
+            "id": 26,
+            "score": 0.6399999999999999
+          },
+          {
+            "name": "red cabbage",
+            "id": 27,
+            "score": 0.6249999999999999
+          },
+          {
+            "name": "onion white",
+            "id": 75,
+            "score": 0.39166666666666666
+          },
+          {
+            "name": "pickles cucumber",
+            "id": 128,
+            "score": 0.28965517241379307
+          },
+          {
+            "name": "iceberg salad",
+            "id": 46,
+            "score": 0.2692307692307692
+          }
+        ]
       },
       {
         "receipt_item_name": "Cucumber",
@@ -144,14 +170,22 @@
             "score": 0.2545454545454545
           }
         ]
+      },
+      {
+        "receipt_item_name": "Соль",
+        "matched_ingredient_name": "mayonase",
+        "matched_ingredient_id": 123,
+        "match_status": "exact",
+        "similarity_score": 1.0,
+        "suggested_matches": []
       }
     ],
-    "total_items": 5,
+    "total_items": 6,
     "exact_matches": 4,
     "partial_matches": 1,
-    "no_matches": 0
+    "no_matches": 1
   },
   "changed_indices": [
-    0
+    5
   ]
 }

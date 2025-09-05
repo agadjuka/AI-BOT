@@ -169,6 +169,9 @@ class MessageHandlers:
             item_to_edit = self.processor.auto_calculate_total_if_needed(item_to_edit)
             item_to_edit = self.processor.auto_update_item_status(item_to_edit)
             
+            # Update ingredient matching after item edit
+            await self._update_ingredient_matching_after_data_change(update, context, data, "item_edit")
+            
             # Show success message
             field_labels = {
                 'name': 'название товара',
@@ -221,6 +224,9 @@ class MessageHandlers:
                 item.total = total
                 # Automatically update status based on new data
                 item = self.processor.auto_update_item_status(item)
+            
+            # Update ingredient matching after item edit
+            await self._update_ingredient_matching_after_data_change(update, context, data, "item_edit")
             
             # Update report with new data
             await self.show_final_report_with_edit_button(update, context)
@@ -306,6 +312,13 @@ class MessageHandlers:
             # Remove line from data
             success = data.remove_item(line_number)
             if success:
+                # Update original_data to reflect the changes
+                if context.user_data.get('original_data'):
+                    context.user_data['original_data'].remove_item(line_number)
+                
+                # Update ingredient matching after line deletion
+                await self._update_ingredient_matching_after_deletion(update, context, data, line_number)
+                
                 # Show success message
                 await self.ui_manager.send_temp(
                     update, context, f"✅ Строка {line_number} удалена! Обновляю таблицу...", duration=2
@@ -349,6 +362,13 @@ class MessageHandlers:
             # Update total sum in data
             data: ReceiptData = context.user_data.get('receipt_data')
             data.grand_total_text = str(int(new_total)) if new_total == int(new_total) else str(new_total)
+            
+            # Update original_data to reflect the changes
+            if context.user_data.get('original_data'):
+                context.user_data['original_data'].grand_total_text = data.grand_total_text
+            
+            # Update ingredient matching after total change
+            await self._update_ingredient_matching_after_data_change(update, context, data, "total_change")
             
             # Show success message
             formatted_total = self.number_formatter.format_number_with_spaces(new_total)
@@ -828,6 +848,169 @@ class MessageHandlers:
             
         except Exception as e:
             print(f"DEBUG: Error creating automatic ingredient matching: {e}")
+    
+    async def _auto_match_ingredient_for_item(self, update: Update, context: ContextTypes.DEFAULT_TYPE, 
+                                            receipt_item: ReceiptItem) -> None:
+        """Automatically match ingredient for a single item"""
+        try:
+            # Get poster ingredients from bot data
+            poster_ingredients = context.bot_data.get('poster_ingredients', {})
+            
+            if not poster_ingredients:
+                print("DEBUG: Poster ingredients not loaded, skipping automatic matching for new item")
+                return None
+            
+            # Perform ingredient matching for this single item
+            from models.receipt import ReceiptData
+            temp_receipt = ReceiptData(items=[receipt_item])
+            matching_result = self.ingredient_matching_service.match_ingredients(temp_receipt, poster_ingredients)
+            
+            if matching_result.matches:
+                return matching_result.matches[0]  # Return the first (and only) match
+            return None
+            
+        except Exception as e:
+            print(f"DEBUG: Error in automatic ingredient matching for item: {e}")
+            return None
+
+    async def _update_ingredient_matching_after_data_change(self, update: Update, context: ContextTypes.DEFAULT_TYPE, 
+                                                           receipt_data: ReceiptData, change_type: str = "general") -> None:
+        """Update ingredient matching after any data change"""
+        try:
+            # Get current matching result from context or storage
+            matching_result = context.user_data.get('ingredient_matching_result')
+            changed_indices = context.user_data.get('changed_ingredient_indices', set())
+            
+            if not matching_result:
+                # Try to load from storage using old hash
+                user_id = update.effective_user.id
+                old_receipt_data = context.user_data.get('original_data')
+                if old_receipt_data:
+                    old_receipt_hash = old_receipt_data.get_receipt_hash()
+                    saved_data = self.ingredient_storage.load_matching_result(user_id, old_receipt_hash)
+                    if saved_data:
+                        matching_result, changed_indices = saved_data
+                        # Update context with loaded data
+                        context.user_data['ingredient_matching_result'] = matching_result
+                        context.user_data['changed_ingredient_indices'] = changed_indices
+            
+            if not matching_result:
+                print(f"DEBUG: No matching result found to update after {change_type}")
+                return
+            
+            # For different change types, we need different handling
+            if change_type == "deletion":
+                # This will be handled by the specific deletion function
+                return
+            elif change_type == "addition":
+                # Add a new empty match for the new item
+                from models.ingredient_matching import IngredientMatch, MatchStatus
+                new_match = IngredientMatch(
+                    receipt_item_name="Новый товар",
+                    matched_ingredient_name="",
+                    matched_ingredient_id="",
+                    match_status=MatchStatus.NO_MATCH,
+                    similarity_score=0.0,
+                    suggested_matches=[]
+                )
+                matching_result.matches.append(new_match)
+                
+            elif change_type == "item_edit":
+                # For item edits, we need to regenerate matching for that specific item
+                # This is more complex, so for now we'll just mark that matching needs to be redone
+                # The user will need to redo ingredient matching if they want accurate results
+                print("DEBUG: Item edited - ingredient matching may need to be redone")
+                return
+                
+            # Update context
+            context.user_data['ingredient_matching_result'] = matching_result
+            context.user_data['changed_ingredient_indices'] = changed_indices
+            
+            # Save updated matching result with new receipt hash
+            user_id = update.effective_user.id
+            new_receipt_hash = receipt_data.get_receipt_hash()
+            success = self.ingredient_storage.save_matching_result(user_id, matching_result, changed_indices, new_receipt_hash)
+            
+            # Clear old matching result file if hash changed
+            if context.user_data.get('original_data'):
+                old_receipt_hash = context.user_data['original_data'].get_receipt_hash()
+                if old_receipt_hash != new_receipt_hash:
+                    self.ingredient_storage.clear_matching_result(user_id, old_receipt_hash)
+            
+            print(f"DEBUG: Updated ingredient matching after {change_type}, new hash: {new_receipt_hash}, success: {success}")
+                
+        except Exception as e:
+            print(f"DEBUG: Error updating ingredient matching after {change_type}: {e}")
+    
+    async def _update_ingredient_matching_after_deletion(self, update: Update, context: ContextTypes.DEFAULT_TYPE, 
+                                                       receipt_data: ReceiptData, deleted_line_number: int) -> None:
+        """Update ingredient matching after line deletion"""
+        try:
+            # Get current matching result from context or storage
+            matching_result = context.user_data.get('ingredient_matching_result')
+            changed_indices = context.user_data.get('changed_ingredient_indices', set())
+            
+            if not matching_result:
+                # Try to load from storage using old hash
+                user_id = update.effective_user.id
+                old_receipt_data = context.user_data.get('original_data')
+                if old_receipt_data:
+                    old_receipt_hash = old_receipt_data.get_receipt_hash()
+                    saved_data = self.ingredient_storage.load_matching_result(user_id, old_receipt_hash)
+                    if saved_data:
+                        matching_result, changed_indices = saved_data
+                        # Update context with loaded data
+                        context.user_data['ingredient_matching_result'] = matching_result
+                        context.user_data['changed_ingredient_indices'] = changed_indices
+            
+            if not matching_result:
+                print("DEBUG: No matching result found to update after deletion")
+                return
+            
+            # Find the index of the deleted item in the matching result
+            # The matching result should have the same order as the original receipt items
+            deleted_index = None
+            for i, match in enumerate(matching_result.matches):
+                # We need to find the match that corresponds to the deleted line
+                # Since we don't have direct mapping, we'll use the order
+                if i == deleted_line_number - 1:  # Convert line number to 0-based index
+                    deleted_index = i
+                    break
+            
+            if deleted_index is not None:
+                # Remove the match at the deleted index
+                matching_result.matches.pop(deleted_index)
+                
+                # Update changed indices - remove any indices >= deleted_index and decrement others
+                updated_changed_indices = set()
+                for idx in changed_indices:
+                    if idx < deleted_index:
+                        updated_changed_indices.add(idx)
+                    elif idx > deleted_index:
+                        updated_changed_indices.add(idx - 1)
+                # Don't add the deleted index itself
+                
+                # Update context
+                context.user_data['ingredient_matching_result'] = matching_result
+                context.user_data['changed_ingredient_indices'] = updated_changed_indices
+                
+                # Save updated matching result with new receipt hash
+                user_id = update.effective_user.id
+                new_receipt_hash = receipt_data.get_receipt_hash()
+                success = self.ingredient_storage.save_matching_result(user_id, matching_result, updated_changed_indices, new_receipt_hash)
+                
+                # Clear old matching result file
+                if context.user_data.get('original_data'):
+                    old_receipt_hash = context.user_data['original_data'].get_receipt_hash()
+                    if old_receipt_hash != new_receipt_hash:
+                        self.ingredient_storage.clear_matching_result(user_id, old_receipt_hash)
+                
+                print(f"DEBUG: Updated ingredient matching after deletion, new hash: {new_receipt_hash}, success: {success}")
+            else:
+                print(f"DEBUG: Could not find matching index for deleted line {deleted_line_number}")
+                
+        except Exception as e:
+            print(f"DEBUG: Error updating ingredient matching after deletion: {e}")
     
     def _clear_receipt_data(self, context: ContextTypes.DEFAULT_TYPE) -> None:
         """Clear all receipt-related data from context"""
