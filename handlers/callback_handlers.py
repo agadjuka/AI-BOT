@@ -839,33 +839,26 @@ class CallbackHandlers:
         
         if action.startswith("select_google_sheets_line_"):
             # User selected a line for Google Sheets matching
-            line_number = int(action.split("_")[3])
+            line_number = int(action.split("_")[4])  # Fixed: line_number is at position 4
+            item_index = line_number - 1  # Convert to 0-based index
             await query.answer(f"Выбрана строка {line_number}")
             
-            # Set the selected line number
-            context.user_data['selected_google_sheets_line'] = line_number
-            
-            # Show instruction to enter ingredient name
-            await self.ui_manager.send_temp(
-                update, context, 
-                f"Выбрана строка {line_number}. Теперь введите название ингредиента из Google Таблиц для поиска:", 
-                duration=10
-            )
-            context.user_data['awaiting_google_sheets_ingredient_name'] = True
+            # Show manual matching interface for this specific item
+            await self._show_google_sheets_manual_matching_for_item(update, context, item_index)
             return self.config.AWAITING_CORRECTION
         
         if action.startswith("select_google_sheets_suggestion_"):
             # User selected a suggestion for Google Sheets matching
             parts = action.split("_")
-            item_index = int(parts[3])
-            suggestion_index = int(parts[4])
+            item_index = int(parts[4])  # Fixed: item_index is at position 4
+            suggestion_index = int(parts[5])  # Fixed: suggestion_index is at position 5
             
             await self._handle_google_sheets_suggestion_selection(update, context, item_index, suggestion_index)
             return self.config.AWAITING_CORRECTION
         
         if action.startswith("search_google_sheets_ingredient_"):
             # User wants to search for Google Sheets ingredient
-            item_index = int(action.split("_")[3])
+            item_index = int(action.split("_")[4])  # Fixed: item_index is at position 4
             await query.answer("🔍 Введите поисковый запрос...")
             
             # Set search mode
@@ -877,6 +870,15 @@ class CallbackHandlers:
                 "Введите поисковый запрос для поиска ингредиента в Google Таблицах:", 
                 duration=30
             )
+            return self.config.AWAITING_CORRECTION
+        
+        if action.startswith("select_google_sheets_search_"):
+            # User selected a search result for Google Sheets matching
+            parts = action.split("_")
+            item_index = int(parts[4])
+            result_index = int(parts[5])
+            
+            await self._handle_google_sheets_search_selection(update, context, item_index, result_index)
             return self.config.AWAITING_CORRECTION
         
         if action.startswith("skip_google_sheets_item_"):
@@ -2660,8 +2662,62 @@ class CallbackHandlers:
             duration=2
         )
         
-        # Return to matching table
-        await self._show_google_sheets_matching_table(update, context, 
+        # Return to Google Sheets preview with updated data
+        await self._show_google_sheets_preview(update, context, 
+            pending_data['receipt_data'], matching_result)
+
+    async def _handle_google_sheets_search_selection(self, update: Update, context: ContextTypes.DEFAULT_TYPE, 
+                                                   item_index: int, result_index: int):
+        """Handle Google Sheets search result selection"""
+        pending_data = context.user_data.get('pending_google_sheets_upload')
+        if not pending_data:
+            await self.ui_manager.send_temp(
+                update, context, "Ошибка: данные для сопоставления не найдены.", duration=5
+            )
+            return
+        
+        matching_result = pending_data['matching_result']
+        
+        if item_index >= len(matching_result.matches):
+            await self.ui_manager.send_temp(
+                update, context, "Ошибка: неверный индекс товара.", duration=5
+            )
+            return
+        
+        current_match = matching_result.matches[item_index]
+        
+        # Get search results from user data
+        search_results = context.user_data.get('google_sheets_search_results', [])
+        if not search_results or result_index >= len(search_results):
+            await self.ui_manager.send_temp(
+                update, context, "Ошибка: неверный индекс результата поиска.", duration=5
+            )
+            return
+        
+        # Get selected search result
+        selected_result = search_results[result_index]
+        
+        # Update the match
+        current_match.matched_ingredient_name = selected_result['name']
+        current_match.matched_ingredient_id = selected_result.get('id', '')
+        from models.ingredient_matching import MatchStatus
+        current_match.match_status = MatchStatus.EXACT_MATCH
+        current_match.similarity_score = 1.0  # Exact match from search
+        
+        # Clear search data
+        context.user_data.pop('google_sheets_search_results', None)
+        context.user_data.pop('google_sheets_search_mode', None)
+        context.user_data.pop('google_sheets_search_item_index', None)
+        
+        # Show success message
+        await self.ui_manager.send_temp(
+            update, context,
+            f"✅ Сопоставлено: {current_match.receipt_item_name} → {selected_result['name']}",
+            duration=2
+        )
+        
+        # Return to Google Sheets preview with updated data
+        await self._show_google_sheets_preview(update, context, 
             pending_data['receipt_data'], matching_result)
 
     async def _handle_google_sheets_position_match_selection(self, update: Update, context: ContextTypes.DEFAULT_TYPE, 

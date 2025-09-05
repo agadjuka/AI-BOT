@@ -1405,6 +1405,9 @@ class MessageHandlers:
         
         text = f"**Результаты поиска в Google Таблицах для '{query}':**\n\n"
         
+        # Save search results for callback handling
+        context.user_data['google_sheets_search_results'] = results
+        
         # Create buttons for results
         keyboard = []
         for i, result in enumerate(results[:10], 1):  # Show max 10 results
