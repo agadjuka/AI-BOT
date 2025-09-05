@@ -109,11 +109,13 @@ class ReceiptData:
         return max(item.line_number for item in self.items)
     
     def get_receipt_hash(self) -> str:
-        """Generate hash for this receipt based on its content"""
+        """Generate hash for this receipt based on its content (stable hash)"""
+        import hashlib
+        
         # Create a string representation of the receipt content
         content = f"total:{self.grand_total_text}|"
         for item in sorted(self.items, key=lambda x: x.line_number):
             content += f"item:{item.name}|"
         
-        # Generate MD5 hash
+        # Generate MD5 hash (stable for same content)
         return hashlib.md5(content.encode('utf-8')).hexdigest()[:8]

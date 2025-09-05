@@ -51,6 +51,8 @@ class IngredientStorage:
             }
             
             file_path = self._get_storage_file(user_id, receipt_hash)
+            print(f"DEBUG: Saving to file: {file_path}")
+            print(f"DEBUG: Storage data changed_indices: {storage_data['changed_indices']}")
             with open(file_path, 'w', encoding='utf-8') as f:
                 json.dump(storage_data, f, ensure_ascii=False, indent=2)
             
@@ -72,7 +74,10 @@ class IngredientStorage:
         """
         try:
             file_path = self._get_storage_file(user_id, receipt_hash)
+            print(f"DEBUG: Looking for file: {file_path}")
+            print(f"DEBUG: User ID: {user_id}, Receipt hash: {receipt_hash}")
             if not os.path.exists(file_path):
+                print(f"DEBUG: File does not exist: {file_path}")
                 return None
             
             with open(file_path, 'r', encoding='utf-8') as f:
@@ -80,6 +85,7 @@ class IngredientStorage:
             
             matching_result = IngredientMatchingResult.from_dict(storage_data['matching_result'])
             changed_indices = set(storage_data.get('changed_indices', []))
+            print(f"DEBUG: Successfully loaded from file - {len(matching_result.matches)} matches, changed_indices: {changed_indices}")
             
             return matching_result, changed_indices
         except Exception as e:

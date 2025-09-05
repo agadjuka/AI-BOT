@@ -14,6 +14,7 @@ from services.ai_service import ReceiptAnalysisService
 from services.ingredient_matching_service import IngredientMatchingService
 from utils.formatters import ReceiptFormatter, NumberFormatter, TextParser
 from utils.ingredient_formatter import IngredientFormatter
+from utils.ingredient_storage import IngredientStorage
 from utils.receipt_processor import ReceiptProcessor
 from utils.ui_manager import UIManager
 from validators.receipt_validator import ReceiptValidator
@@ -32,6 +33,7 @@ class MessageHandlers:
         self.validator = ReceiptValidator()
         self.ingredient_matching_service = IngredientMatchingService()
         self.ingredient_formatter = IngredientFormatter()
+        self.ingredient_storage = IngredientStorage()
         self.ui_manager = UIManager(config)
     
     async def start(self, update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
@@ -46,11 +48,9 @@ class MessageHandlers:
         # Set anchor message (first receipt message)
         self.ui_manager.set_anchor(context, update.message.message_id)
         
-        # Check if there's already receipt data being processed
-        if context.user_data.get('receipt_data'):
-            await self.ui_manager.send_temp(update, context, "📋 Обнаружена новая квитанция. Заменяю предыдущую...")
-            # Clear old data related to previous receipt
-            self._clear_receipt_data(context)
+        # ALWAYS clear ALL data when uploading new photo to ensure completely fresh start
+        self._clear_receipt_data(context)
+        print(f"DEBUG: Cleared all data for new receipt upload")
         
         processing_message = await self.ui_manager.send_temp(update, context, "Обрабатываю квитанцию", duration=10)
         
@@ -71,6 +71,9 @@ class MessageHandlers:
             context.user_data['receipt_data'] = receipt_data
             # Save original data for change tracking
             context.user_data['original_data'] = ReceiptData.from_dict(receipt_data.to_dict())  # Deep copy
+            
+            # AUTOMATICALLY create ingredient matching table for this receipt
+            await self._create_ingredient_matching_for_receipt(update, context, receipt_data)
             
         except (json.JSONDecodeError, KeyError, IndexError, ValueError) as e:
             print(f"Ошибка парсинга JSON или структуры данных от Gemini: {e}")
@@ -666,6 +669,33 @@ class MessageHandlers:
             update, context, final_text, reply_markup, 'Markdown'
         )
     
+    async def _create_ingredient_matching_for_receipt(self, update: Update, context: ContextTypes.DEFAULT_TYPE, receipt_data: ReceiptData) -> None:
+        """Automatically create ingredient matching table for the receipt"""
+        try:
+            # Get poster ingredients from bot data
+            poster_ingredients = context.bot_data.get('poster_ingredients', {})
+            
+            if not poster_ingredients:
+                print("DEBUG: Poster ingredients not loaded, skipping automatic matching")
+                return
+            
+            # Perform ingredient matching
+            matching_result = self.ingredient_matching_service.match_ingredients(receipt_data, poster_ingredients)
+            
+            # Save matching result to context
+            context.user_data['ingredient_matching_result'] = matching_result
+            context.user_data['changed_ingredient_indices'] = set()
+            context.user_data['current_match_index'] = 0
+            
+            # Save to persistent storage
+            user_id = update.effective_user.id
+            receipt_hash = receipt_data.get_receipt_hash()
+            success = self.ingredient_storage.save_matching_result(user_id, matching_result, set(), receipt_hash)
+            print(f"DEBUG: Auto-created matching for receipt {receipt_hash}, success: {success}")
+            
+        except Exception as e:
+            print(f"DEBUG: Error creating automatic ingredient matching: {e}")
+    
     def _clear_receipt_data(self, context: ContextTypes.DEFAULT_TYPE) -> None:
         """Clear all receipt-related data from context"""
         keys_to_clear = [
@@ -674,7 +704,8 @@ class MessageHandlers:
             'instruction_message_id', 'line_number_instruction_message_id',
             'delete_line_number_instruction_message_id', 'total_edit_instruction_message_id',
             'total_edit_menu_message_id', 'ingredient_matching_result', 'current_match_index',
-            'processing_message_id'
+            'processing_message_id', 'changed_ingredient_indices', 'search_results',
+            'position_search_results', 'awaiting_search', 'awaiting_position_search'
         ]
         for key in keys_to_clear:
             context.user_data.pop(key, None)

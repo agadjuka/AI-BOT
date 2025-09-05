@@ -3,10 +3,10 @@
     "matches": [
       {
         "receipt_item_name": "White Cabbage",
-        "matched_ingredient_name": null,
-        "matched_ingredient_id": null,
-        "match_status": "no_match",
-        "similarity_score": 0.0,
+        "matched_ingredient_name": "red cabbage",
+        "matched_ingredient_id": 27,
+        "match_status": "exact",
+        "similarity_score": 1.0,
         "suggested_matches": []
       },
       {

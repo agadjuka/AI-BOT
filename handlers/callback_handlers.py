@@ -140,7 +140,7 @@ class CallbackHandlers:
         
         if action == "match_ingredients":
             # Start ingredient matching process
-            await query.answer("🔍 Начинаю сопоставление ингредиентов...")
+            await query.answer("🔍 Загружаю таблицу сопоставления ингредиентов...")
             
             # Clean up all messages except anchor before showing new menu
             await self.ui_manager.cleanup_all_except_anchor(update, context)
@@ -157,22 +157,24 @@ class CallbackHandlers:
                 await query.message.reply_text("Ошибка: справочник ингредиентов не загружен.")
                 return self.config.AWAITING_CORRECTION
             
-            # Check if we already have saved matching data
+            # Get current receipt hash
             user_id = update.effective_user.id
             receipt_hash = receipt_data.get_receipt_hash()
             print(f"DEBUG: Looking for saved data for user {user_id}, receipt {receipt_hash}")
+            
+            # ALWAYS try to load from persistent storage first (this ensures we get the correct data for this specific receipt)
             saved_data = self.ingredient_storage.load_matching_result(user_id, receipt_hash)
             
             if saved_data:
-                # Load existing matching data
+                # Load existing matching data for this specific receipt
                 matching_result, changed_indices = saved_data
                 context.user_data['ingredient_matching_result'] = matching_result
                 context.user_data['changed_ingredient_indices'] = changed_indices
                 context.user_data['current_match_index'] = 0
-                print(f"DEBUG: Loaded existing matching data with {len(matching_result.matches)} matches, {len(changed_indices)} changed indices")
+                print(f"DEBUG: Loaded existing matching data from storage with {len(matching_result.matches)} matches, {len(changed_indices)} changed indices")
             else:
-                # Perform new ingredient matching
-                print(f"DEBUG: No saved data found, creating new matching")
+                # No saved data found - this should not happen if auto-creation works correctly
+                print(f"DEBUG: No saved data found for receipt {receipt_hash}, creating new matching")
                 matching_result = self.ingredient_matching_service.match_ingredients(receipt_data, poster_ingredients)
                 
                 # Save matching result
@@ -228,16 +230,45 @@ class CallbackHandlers:
             user_id = update.effective_user.id
             self._save_ingredient_matching_data(user_id, context)
             
-            # Show matching results
+            # Clear matching data from context so it will be loaded from storage next time
+            context.user_data.pop('ingredient_matching_result', None)
+            context.user_data.pop('changed_ingredient_indices', None)
+            context.user_data.pop('current_match_index', None)
+            
+            # Show matching results (will load from storage)
             await self._show_ingredient_matching_results(update, context)
             return self.config.AWAITING_INGREDIENT_MATCHING
         
         if action == "back_to_receipt":
-            # Return to receipt view - clean up all messages except anchor
-            await query.answer("📋 Возвращаюсь к чеку...")
-            await self.ui_manager.cleanup_all_except_anchor(update, context)
-            await self._show_final_report_with_edit_button_callback(update, context)
-            return self.config.AWAITING_CORRECTION
+            # Check if there are any changes made
+            changed_indices = context.user_data.get('changed_ingredient_indices', set())
+            has_changes = len(changed_indices) > 0
+            
+            if has_changes:
+                # Show confirmation dialog
+                await self._show_back_confirmation_dialog(update, context)
+                return self.config.AWAITING_INGREDIENT_MATCHING
+            else:
+                # No changes, but still save current state before returning
+                matching_result = context.user_data.get('ingredient_matching_result')
+                receipt_data = context.user_data.get('receipt_data')
+                
+                if matching_result and receipt_data:
+                    # Save current state to persistent storage
+                    user_id = update.effective_user.id
+                    receipt_hash = receipt_data.get_receipt_hash()
+                    success = self.ingredient_storage.save_matching_result(user_id, matching_result, changed_indices, receipt_hash)
+                    print(f"DEBUG: Saved state before returning - success: {success}")
+                
+                # Always clear matching data from context so it will be loaded from storage next time
+                context.user_data.pop('ingredient_matching_result', None)
+                context.user_data.pop('changed_ingredient_indices', None)
+                context.user_data.pop('current_match_index', None)
+                
+                await query.answer("📋 Возвращаюсь к чеку...")
+                await self.ui_manager.cleanup_all_except_anchor(update, context)
+                await self._show_final_report_with_edit_button_callback(update, context)
+                return self.config.AWAITING_CORRECTION
         
         if action == "next_ingredient_match":
             # Move to next ingredient match
@@ -358,6 +389,36 @@ class CallbackHandlers:
             await self._handle_item_position_matching(update, context, item_index, position_id)
             return self.config.AWAITING_MANUAL_MATCH
         
+        if action == "confirm_back_without_changes":
+            # User confirmed to go back without saving changes
+            # But we still save the current state to preserve any work done
+            matching_result = context.user_data.get('ingredient_matching_result')
+            receipt_data = context.user_data.get('receipt_data')
+            changed_indices = context.user_data.get('changed_ingredient_indices', set())
+            
+            if matching_result and receipt_data:
+                # Save current state to persistent storage
+                user_id = update.effective_user.id
+                receipt_hash = receipt_data.get_receipt_hash()
+                success = self.ingredient_storage.save_matching_result(user_id, matching_result, changed_indices, receipt_hash)
+                print(f"DEBUG: Saved state before returning without applying - success: {success}")
+            
+            # Always clear matching data from context so it will be loaded from storage next time
+            context.user_data.pop('ingredient_matching_result', None)
+            context.user_data.pop('changed_ingredient_indices', None)
+            context.user_data.pop('current_match_index', None)
+            
+            await query.answer("📋 Возвращаюсь к чеку...")
+            await self.ui_manager.cleanup_all_except_anchor(update, context)
+            await self._show_final_report_with_edit_button_callback(update, context)
+            return self.config.AWAITING_CORRECTION
+        
+        if action == "cancel_back":
+            # User cancelled going back, return to ingredient matching
+            await query.answer("❌ Отменено")
+            await self._show_ingredient_matching_results(update, context)
+            return self.config.AWAITING_INGREDIENT_MATCHING
+        
         if action == "apply_matching_changes":
             # Apply matching changes and return to main receipt
             await query.answer("✅ Применяю изменения...")
@@ -370,14 +431,17 @@ class CallbackHandlers:
                 await query.message.reply_text("Ошибка: данные сопоставления или чека не найдены.")
                 return self.config.AWAITING_CORRECTION
             
-            # Save matching data to persistent storage (don't clear it)
+            # Save matching data to persistent storage
             user_id = update.effective_user.id
             receipt_hash = receipt_data.get_receipt_hash()
             changed_indices = context.user_data.get('changed_ingredient_indices', set())
+            print(f"DEBUG: Before saving - user_id: {user_id}, receipt_hash: {receipt_hash}")
+            print(f"DEBUG: Before saving - changed_indices: {changed_indices}")
             success = self.ingredient_storage.save_matching_result(user_id, matching_result, changed_indices, receipt_hash)
             print(f"DEBUG: Applied changes - saved {len(matching_result.matches)} matches, {len(changed_indices)} changed indices, success: {success}")
             
             # Clear matching data from context so it will be loaded from storage next time
+            # This ensures we always get the latest saved version
             context.user_data.pop('ingredient_matching_result', None)
             context.user_data.pop('changed_ingredient_indices', None)
             context.user_data.pop('current_match_index', None)
@@ -385,7 +449,7 @@ class CallbackHandlers:
             # Clean up all messages except anchor before showing new menu
             await self.ui_manager.cleanup_all_except_anchor(update, context)
             
-            # Return to main receipt (unchanged)
+            # Return to main receipt
             await self._show_final_report_with_edit_button_callback(update, context)
             return self.config.AWAITING_CORRECTION
         
@@ -646,7 +710,7 @@ class CallbackHandlers:
             [
                 InlineKeyboardButton("💵 Сумма", callback_data=f"field_{line_number}_total"),
                 InlineKeyboardButton("✅ Применить", callback_data=f"apply_{line_number}"),
-                InlineKeyboardButton("❌ Отмена", callback_data="cancel")
+                InlineKeyboardButton("◀️ Назад", callback_data="back_to_receipt")
             ]
         ]
         
@@ -844,36 +908,50 @@ class CallbackHandlers:
             'cached_final_report', 'table_message_id', 'edit_menu_message_id',
             'instruction_message_id', 'line_number_instruction_message_id',
             'delete_line_number_instruction_message_id', 'total_edit_instruction_message_id',
-            'total_edit_menu_message_id', 'ingredient_matching_result', 'current_match_index'
+            'total_edit_menu_message_id', 'ingredient_matching_result', 'current_match_index',
+            'changed_ingredient_indices', 'search_results', 'position_search_results',
+            'awaiting_search', 'awaiting_position_search'
         ]
         for key in keys_to_clear:
             context.user_data.pop(key, None)
     
     async def _show_ingredient_matching_results(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         """Show ingredient matching results"""
-        # Get data from context (should already be loaded)
-        matching_result = context.user_data.get('ingredient_matching_result')
-        changed_indices = context.user_data.get('changed_ingredient_indices', set())
+        # Always load from persistent storage to ensure we have the correct data for this receipt
+        user_id = update.effective_user.id
+        receipt_data = context.user_data.get('receipt_data')
         
-        if not matching_result:
+        if not receipt_data:
+            if hasattr(update, 'callback_query') and update.callback_query:
+                await update.callback_query.message.reply_text("Ошибка: данные чека не найдены.")
+            return
+        
+        # Get current receipt hash
+        current_receipt_hash = receipt_data.get_receipt_hash()
+        
+        # Try to load from persistent storage for current receipt
+        saved_data = self.ingredient_storage.load_matching_result(user_id, current_receipt_hash)
+        
+        if saved_data:
+            # Load existing matching data for current receipt
+            matching_result, changed_indices = saved_data
+            context.user_data['ingredient_matching_result'] = matching_result
+            context.user_data['changed_ingredient_indices'] = changed_indices
+            print(f"DEBUG: Loaded matching data from storage for current receipt with {len(matching_result.matches)} matches, {len(changed_indices)} changed indices")
+        else:
+            print(f"DEBUG: No saved data for current receipt")
             if hasattr(update, 'callback_query') and update.callback_query:
                 await update.callback_query.message.reply_text("Ошибка: результаты сопоставления не найдены.")
             return
         
         # Format results
+        print(f"DEBUG: Formatting table with changed_indices: {changed_indices}")
         results_text = self.ingredient_formatter.format_matching_table(matching_result, changed_indices)
         
         # Create action buttons
         keyboard = []
         
-        # Check if there are items that need manual matching
-        needs_manual_matching = any(
-            match.match_status.value in ['partial', 'no_match'] 
-            for match in matching_result.matches
-        )
-        
-        if needs_manual_matching:
-            keyboard.append([InlineKeyboardButton("✋ Ручное сопоставление", callback_data="manual_match_ingredients")])
+        # Manual matching button is now always available as "Сопоставить вручную"
         
         # Check if all items are matched
         all_matched = all(
@@ -881,20 +959,30 @@ class CallbackHandlers:
             for match in matching_result.matches
         )
         
+        # Check if there are any changes made
+        has_changes = len(changed_indices) > 0
+        
         if all_matched:
-            # All items are matched, show Apply button instead of Return to receipt
-            keyboard.extend([
-                [InlineKeyboardButton("✅ Применить", callback_data="apply_matching_changes")],
-                [InlineKeyboardButton("🔄 Сопоставить заново", callback_data="rematch_ingredients")],
-                [InlineKeyboardButton("◀️ Вернуться к чеку", callback_data="back_to_receipt")],
-                [InlineKeyboardButton("❌ Отмена", callback_data="cancel")]
-            ])
+            # All items are matched, show Apply button only if there are changes
+            if has_changes:
+                keyboard.extend([
+                    [InlineKeyboardButton("✅ Применить", callback_data="apply_matching_changes")],
+                    [InlineKeyboardButton("✋ Сопоставить вручную", callback_data="manual_match_ingredients")],
+                    [InlineKeyboardButton("🔄 Сопоставить заново", callback_data="rematch_ingredients")],
+                    [InlineKeyboardButton("◀️ Назад", callback_data="back_to_receipt")]
+                ])
+            else:
+                keyboard.extend([
+                    [InlineKeyboardButton("✋ Сопоставить вручную", callback_data="manual_match_ingredients")],
+                    [InlineKeyboardButton("🔄 Сопоставить заново", callback_data="rematch_ingredients")],
+                    [InlineKeyboardButton("◀️ Назад", callback_data="back_to_receipt")]
+                ])
         else:
             # Some items need matching, show regular buttons
             keyboard.extend([
+                [InlineKeyboardButton("✋ Сопоставить вручную", callback_data="manual_match_ingredients")],
                 [InlineKeyboardButton("🔄 Сопоставить заново", callback_data="rematch_ingredients")],
-                [InlineKeyboardButton("◀️ Вернуться к чеку", callback_data="back_to_receipt")],
-                [InlineKeyboardButton("❌ Отмена", callback_data="cancel")]
+                [InlineKeyboardButton("◀️ Назад", callback_data="back_to_receipt")]
             ])
         
         reply_markup = InlineKeyboardMarkup(keyboard)
@@ -906,22 +994,25 @@ class CallbackHandlers:
     
     async def _show_manual_matching_overview(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         """Show manual matching overview with all items that need matching"""
-        # Try to load from persistent storage first
-        user_id = update.effective_user.id
-        receipt_data = context.user_data.get('receipt_data')
-        
-        if receipt_data:
-            receipt_hash = receipt_data.get_receipt_hash()
-            saved_data = self.ingredient_storage.load_matching_result(user_id, receipt_hash)
-            if saved_data:
-                matching_result, changed_indices = saved_data
-                # Update context with loaded data
-                context.user_data['ingredient_matching_result'] = matching_result
-                context.user_data['changed_ingredient_indices'] = changed_indices
-                # Reset current match index when loading from storage
-                context.user_data['current_match_index'] = 0
-        
+        # First check if we have data in context
         matching_result = context.user_data.get('ingredient_matching_result')
+        changed_indices = context.user_data.get('changed_ingredient_indices', set())
+        
+        if not matching_result:
+            # Try to load from persistent storage
+            user_id = update.effective_user.id
+            receipt_data = context.user_data.get('receipt_data')
+            
+            if receipt_data:
+                receipt_hash = receipt_data.get_receipt_hash()
+                saved_data = self.ingredient_storage.load_matching_result(user_id, receipt_hash)
+                if saved_data:
+                    matching_result, changed_indices = saved_data
+                    # Update context with loaded data
+                    context.user_data['ingredient_matching_result'] = matching_result
+                    context.user_data['changed_ingredient_indices'] = changed_indices
+                    # Reset current match index when loading from storage
+                    context.user_data['current_match_index'] = 0
         
         if not matching_result:
             if hasattr(update, 'callback_query') and update.callback_query:
@@ -944,7 +1035,7 @@ class CallbackHandlers:
             
             keyboard = [
                 [InlineKeyboardButton("✅ Применить", callback_data="apply_matching_changes")],
-                [InlineKeyboardButton("❌ Отмена", callback_data="cancel")]
+                [InlineKeyboardButton("◀️ Назад", callback_data="back_to_receipt")]
             ]
         else:
             # Show all items with their current status
@@ -954,8 +1045,15 @@ class CallbackHandlers:
             
             # Show status table
             overview_text += "**Статус сопоставления:**\n"
+            changed_indices = context.user_data.get('changed_ingredient_indices', set())
             for i, match in enumerate(matching_result.matches):
-                status_emoji = self.ingredient_formatter._get_status_emoji(match.match_status)
+                # Check if this item was manually changed
+                is_changed = i in changed_indices
+                if is_changed:
+                    status_emoji = "✏️"
+                else:
+                    status_emoji = self.ingredient_formatter._get_status_emoji(match.match_status)
+                
                 if match.match_status.value == 'exact':
                     overview_text += f"{status_emoji} {match.receipt_item_name} → {match.matched_ingredient_name}\n"
                 else:
@@ -966,7 +1064,12 @@ class CallbackHandlers:
             # Create horizontal buttons for items that need matching (max 2 per row)
             keyboard = []
             for i, (index, match) in enumerate(items_needing_matching):
-                status_emoji = self.ingredient_formatter._get_status_emoji(match.match_status)
+                # Check if this item was manually changed
+                is_changed = index in changed_indices
+                if is_changed:
+                    status_emoji = "✏️"
+                else:
+                    status_emoji = self.ingredient_formatter._get_status_emoji(match.match_status)
                 button_text = f"{status_emoji} {self.ingredient_formatter._truncate_name(match.receipt_item_name, 15)}"
                 
                 if i % 2 == 0:
@@ -980,8 +1083,7 @@ class CallbackHandlers:
             keyboard.extend([
                 [InlineKeyboardButton("🔍 Выбрать позицию для сопоставления", callback_data="select_position_for_matching")],
                 [InlineKeyboardButton("✅ Применить изменения", callback_data="apply_matching_changes")],
-                [InlineKeyboardButton("📋 Вернуться к чеку", callback_data="back_to_receipt")],
-                [InlineKeyboardButton("❌ Отмена", callback_data="cancel")]
+                [InlineKeyboardButton("◀️ Назад", callback_data="back_to_receipt")]
             ])
         
         reply_markup = InlineKeyboardMarkup(keyboard)
@@ -993,22 +1095,25 @@ class CallbackHandlers:
     
     async def _handle_item_selection_for_matching(self, update: Update, context: ContextTypes.DEFAULT_TYPE, item_index: int):
         """Handle selection of specific item for manual matching"""
-        # Try to load from persistent storage first
-        user_id = update.effective_user.id
-        receipt_data = context.user_data.get('receipt_data')
-        
-        if receipt_data:
-            receipt_hash = receipt_data.get_receipt_hash()
-            saved_data = self.ingredient_storage.load_matching_result(user_id, receipt_hash)
-            if saved_data:
-                matching_result, changed_indices = saved_data
-                # Update context with loaded data
-                context.user_data['ingredient_matching_result'] = matching_result
-                context.user_data['changed_ingredient_indices'] = changed_indices
-                # Reset current match index when loading from storage
-                context.user_data['current_match_index'] = 0
-        
+        # First check if we have data in context
         matching_result = context.user_data.get('ingredient_matching_result')
+        changed_indices = context.user_data.get('changed_ingredient_indices', set())
+        
+        if not matching_result:
+            # Try to load from persistent storage
+            user_id = update.effective_user.id
+            receipt_data = context.user_data.get('receipt_data')
+            
+            if receipt_data:
+                receipt_hash = receipt_data.get_receipt_hash()
+                saved_data = self.ingredient_storage.load_matching_result(user_id, receipt_hash)
+                if saved_data:
+                    matching_result, changed_indices = saved_data
+                    # Update context with loaded data
+                    context.user_data['ingredient_matching_result'] = matching_result
+                    context.user_data['changed_ingredient_indices'] = changed_indices
+                    # Reset current match index when loading from storage
+                    context.user_data['current_match_index'] = 0
         poster_ingredients = context.bot_data.get('poster_ingredients', {})
         
         if not matching_result or item_index >= len(matching_result.matches):
@@ -1046,7 +1151,7 @@ class CallbackHandlers:
                 [InlineKeyboardButton("🔍 Поиск", callback_data="search_ingredient")],
                 [InlineKeyboardButton("⏭️ Пропустить", callback_data="skip_ingredient")],
                 [InlineKeyboardButton("📋 Назад к обзору", callback_data="back_to_matching_overview")],
-                [InlineKeyboardButton("❌ Отмена", callback_data="cancel")]
+                [InlineKeyboardButton("◀️ Назад", callback_data="back_to_receipt")]
             ])
         else:
             progress_text += "❌ **Подходящих вариантов не найдено**\n\n"
@@ -1056,7 +1161,7 @@ class CallbackHandlers:
                 [InlineKeyboardButton("🔍 Поиск", callback_data="search_ingredient")],
                 [InlineKeyboardButton("⏭️ Пропустить", callback_data="skip_ingredient")],
                 [InlineKeyboardButton("📋 Назад к обзору", callback_data="back_to_matching_overview")],
-                [InlineKeyboardButton("❌ Отмена", callback_data="cancel")]
+                [InlineKeyboardButton("◀️ Назад", callback_data="back_to_receipt")]
             ]
         
         reply_markup = InlineKeyboardMarkup(keyboard)
@@ -1070,20 +1175,25 @@ class CallbackHandlers:
     
     async def _handle_position_selection(self, update: Update, context: ContextTypes.DEFAULT_TYPE, position_number: int):
         """Handle position selection from search results"""
-        # Try to load from persistent storage first
-        user_id = update.effective_user.id
-        receipt_data = context.user_data.get('receipt_data')
+        # First check if we have data in context
+        matching_result = context.user_data.get('ingredient_matching_result')
+        changed_indices = context.user_data.get('changed_ingredient_indices', set())
         
-        if receipt_data:
-            receipt_hash = receipt_data.get_receipt_hash()
-            saved_data = self.ingredient_storage.load_matching_result(user_id, receipt_hash)
-            if saved_data:
-                matching_result, changed_indices = saved_data
-                # Update context with loaded data
-                context.user_data['ingredient_matching_result'] = matching_result
-                context.user_data['changed_ingredient_indices'] = changed_indices
-                # Reset current match index when loading from storage
-                context.user_data['current_match_index'] = 0
+        if not matching_result:
+            # Try to load from persistent storage
+            user_id = update.effective_user.id
+            receipt_data = context.user_data.get('receipt_data')
+            
+            if receipt_data:
+                receipt_hash = receipt_data.get_receipt_hash()
+                saved_data = self.ingredient_storage.load_matching_result(user_id, receipt_hash)
+                if saved_data:
+                    matching_result, changed_indices = saved_data
+                    # Update context with loaded data
+                    context.user_data['ingredient_matching_result'] = matching_result
+                    context.user_data['changed_ingredient_indices'] = changed_indices
+                    # Reset current match index when loading from storage
+                    context.user_data['current_match_index'] = 0
         
         position_search_results = context.user_data.get('position_search_results', [])
         matching_result = context.user_data.get('ingredient_matching_result')
@@ -1106,8 +1216,14 @@ class CallbackHandlers:
         
         # Create horizontal buttons for all items (max 2 per row)
         keyboard = []
+        changed_indices = context.user_data.get('changed_ingredient_indices', set())
         for i, match in enumerate(matching_result.matches):
-            status_emoji = self.ingredient_formatter._get_status_emoji(match.match_status)
+            # Check if this item was manually changed
+            is_changed = i in changed_indices
+            if is_changed:
+                status_emoji = "✏️"
+            else:
+                status_emoji = self.ingredient_formatter._get_status_emoji(match.match_status)
             button_text = f"{status_emoji} {self.ingredient_formatter._truncate_name(match.receipt_item_name, 15)}"
             
             if i % 2 == 0:
@@ -1121,7 +1237,7 @@ class CallbackHandlers:
         keyboard.extend([
             [InlineKeyboardButton("🔍 Выбрать другую позицию", callback_data="select_position_for_matching")],
             [InlineKeyboardButton("📋 Назад к обзору", callback_data="back_to_matching_overview")],
-            [InlineKeyboardButton("❌ Отмена", callback_data="cancel")]
+            [InlineKeyboardButton("◀️ Назад", callback_data="back_to_receipt")]
         ])
         
         reply_markup = InlineKeyboardMarkup(keyboard)
@@ -1132,20 +1248,25 @@ class CallbackHandlers:
     
     async def _handle_item_position_matching(self, update: Update, context: ContextTypes.DEFAULT_TYPE, item_index: int, position_id: str):
         """Handle matching of item with selected position"""
-        # Try to load from persistent storage first
-        user_id = update.effective_user.id
-        receipt_data = context.user_data.get('receipt_data')
+        # First check if we have data in context
+        matching_result = context.user_data.get('ingredient_matching_result')
+        changed_indices = context.user_data.get('changed_ingredient_indices', set())
         
-        if receipt_data:
-            receipt_hash = receipt_data.get_receipt_hash()
-            saved_data = self.ingredient_storage.load_matching_result(user_id, receipt_hash)
-            if saved_data:
-                matching_result, changed_indices = saved_data
-                # Update context with loaded data
-                context.user_data['ingredient_matching_result'] = matching_result
-                context.user_data['changed_ingredient_indices'] = changed_indices
-                # Reset current match index when loading from storage
-                context.user_data['current_match_index'] = 0
+        if not matching_result:
+            # Try to load from persistent storage
+            user_id = update.effective_user.id
+            receipt_data = context.user_data.get('receipt_data')
+            
+            if receipt_data:
+                receipt_hash = receipt_data.get_receipt_hash()
+                saved_data = self.ingredient_storage.load_matching_result(user_id, receipt_hash)
+                if saved_data:
+                    matching_result, changed_indices = saved_data
+                    # Update context with loaded data
+                    context.user_data['ingredient_matching_result'] = matching_result
+                    context.user_data['changed_ingredient_indices'] = changed_indices
+                    # Reset current match index when loading from storage
+                    context.user_data['current_match_index'] = 0
         
         matching_result = context.user_data.get('ingredient_matching_result')
         poster_ingredients = context.bot_data.get('poster_ingredients', {})
@@ -1176,6 +1297,7 @@ class CallbackHandlers:
         if 'changed_ingredient_indices' not in context.user_data:
             context.user_data['changed_ingredient_indices'] = set()
         context.user_data['changed_ingredient_indices'].add(item_index)
+        print(f"DEBUG: Added item_index {item_index} to changed_indices. Current changed_indices: {context.user_data['changed_ingredient_indices']}")
         
         # Save to persistent storage
         user_id = update.effective_user.id
@@ -1256,7 +1378,7 @@ class CallbackHandlers:
             
             keyboard = [
                 [InlineKeyboardButton("➡️ Продолжить", callback_data="next_ingredient_match")],
-                [InlineKeyboardButton("❌ Отмена", callback_data="cancel")]
+                [InlineKeyboardButton("◀️ Назад", callback_data="back_to_receipt")]
             ]
         else:
             # Get filtered suggestions (score >= 50%)
@@ -1276,7 +1398,7 @@ class CallbackHandlers:
                 # Add control buttons
                 keyboard.append([InlineKeyboardButton("🔍 Поиск", callback_data="search_ingredient")])
                 keyboard.append([InlineKeyboardButton("⏭️ Пропустить", callback_data="skip_ingredient")])
-                keyboard.append([InlineKeyboardButton("❌ Отмена", callback_data="cancel")])
+                keyboard.append([InlineKeyboardButton("◀️ Назад", callback_data="back_to_receipt")])
             else:
                 progress_text += "❌ **Подходящих вариантов не найдено**\n\n"
                 progress_text += "Попробуйте поиск или пропустите этот товар."
@@ -1284,7 +1406,7 @@ class CallbackHandlers:
                 keyboard = [
                     [InlineKeyboardButton("🔍 Поиск", callback_data="search_ingredient")],
                     [InlineKeyboardButton("⏭️ Пропустить", callback_data="skip_ingredient")],
-                    [InlineKeyboardButton("❌ Отмена", callback_data="cancel")]
+                    [InlineKeyboardButton("◀️ Назад", callback_data="back_to_receipt")]
                 ]
         
         reply_markup = InlineKeyboardMarkup(keyboard)
@@ -1311,8 +1433,7 @@ class CallbackHandlers:
         # Add action buttons
         keyboard = [
             [InlineKeyboardButton("🔄 Сопоставить заново", callback_data="rematch_ingredients")],
-            [InlineKeyboardButton("📋 Вернуться к чеку", callback_data="back_to_receipt")],
-            [InlineKeyboardButton("❌ Отмена", callback_data="cancel")]
+            [InlineKeyboardButton("◀️ Назад", callback_data="back_to_receipt")]
         ]
         
         reply_markup = InlineKeyboardMarkup(keyboard)
@@ -1434,3 +1555,24 @@ class CallbackHandlers:
         
         # Return to main ingredient matching results
         await self._show_ingredient_matching_results(update, context)
+    
+    async def _show_back_confirmation_dialog(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
+        """Show confirmation dialog for going back without saving changes"""
+        changed_indices = context.user_data.get('changed_ingredient_indices', set())
+        
+        text = f"⚠️ **Внимание!**\n\n"
+        text += f"У вас есть несохраненные изменения в сопоставлении ингредиентов.\n"
+        text += f"Количество измененных элементов: **{len(changed_indices)}**\n\n"
+        text += "Вернуться назад без сохранения изменений?"
+        
+        keyboard = [
+            [InlineKeyboardButton("✅ Да", callback_data="confirm_back_without_changes")],
+            [InlineKeyboardButton("❌ Нет", callback_data="cancel_back")]
+        ]
+        
+        reply_markup = InlineKeyboardMarkup(keyboard)
+        
+        if hasattr(update, 'callback_query') and update.callback_query:
+            await self.ui_manager.send_menu(
+                update, context, text, reply_markup, 'Markdown'
+            )
