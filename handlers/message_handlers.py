@@ -15,6 +15,7 @@ from services.ingredient_matching_service import IngredientMatchingService
 from utils.formatters import ReceiptFormatter, NumberFormatter, TextParser
 from utils.ingredient_formatter import IngredientFormatter
 from utils.receipt_processor import ReceiptProcessor
+from utils.ui_manager import UIManager
 from validators.receipt_validator import ReceiptValidator
 
 
@@ -31,6 +32,7 @@ class MessageHandlers:
         self.validator = ReceiptValidator()
         self.ingredient_matching_service = IngredientMatchingService()
         self.ingredient_formatter = IngredientFormatter()
+        self.ui_manager = UIManager(config)
     
     async def start(self, update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         """Handle /start command"""
@@ -41,15 +43,16 @@ class MessageHandlers:
     
     async def handle_photo(self, update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
         """Handle photo upload"""
+        # Set anchor message (first receipt message)
+        self.ui_manager.set_anchor(context, update.message.message_id)
+        
         # Check if there's already receipt data being processed
         if context.user_data.get('receipt_data'):
-            await update.message.reply_text("📋 Обнаружена новая квитанция. Заменяю предыдущую...")
+            await self.ui_manager.send_temp(update, context, "📋 Обнаружена новая квитанция. Заменяю предыдущую...")
             # Clear old data related to previous receipt
             self._clear_receipt_data(context)
         
-        processing_message = await update.message.reply_text("Обрабатываю квитанцию")
-        # Сохраняем ID сообщения для последующего удаления
-        context.user_data['processing_message_id'] = processing_message.message_id
+        processing_message = await self.ui_manager.send_temp(update, context, "Обрабатываю квитанцию", duration=10)
         
         photo_file = await update.message.photo[-1].get_file()
         await photo_file.download_to_drive(self.config.PHOTO_FILE_NAME)
@@ -93,17 +96,6 @@ class MessageHandlers:
         except Exception as e:
             print(f"Не удалось удалить сообщение пользователя: {e}")
         
-        # Delete instruction message
-        instruction_message_id = context.user_data.get('instruction_message_id')
-        if instruction_message_id:
-            try:
-                await context.bot.delete_message(
-                    chat_id=update.message.chat_id,
-                    message_id=instruction_message_id
-                )
-            except Exception as e:
-                print(f"Не удалось удалить сообщение с инструкцией: {e}")
-        
         if field_to_edit:
             # Edit specific field
             return await self._handle_field_edit(update, context, user_input, line_number, field_to_edit)
@@ -126,7 +118,9 @@ class MessageHandlers:
             if field_to_edit == 'name':
                 is_valid, message = self.validator.validate_text_input(user_input, "название товара")
                 if not is_valid:
-                    await update.message.reply_text(f"Ошибка: {message}")
+                    await self.ui_manager.send_temp(
+                        update, context, f"Ошибка: {message}", duration=5
+                    )
                     return self.config.AWAITING_FIELD_EDIT
                 item_to_edit.name = user_input
                 
@@ -134,7 +128,9 @@ class MessageHandlers:
                 # Parse number, considering possible separators (including decimal fractions)
                 numeric_value = self.text_parser.parse_user_input_number(user_input)
                 if numeric_value < 0:
-                    await update.message.reply_text("Значение не может быть отрицательным. Попробуйте еще раз.")
+                    await self.ui_manager.send_temp(
+                        update, context, "Значение не может быть отрицательным. Попробуйте еще раз.", duration=5
+                    )
                     return self.config.AWAITING_FIELD_EDIT
                 
                 setattr(item_to_edit, field_to_edit, numeric_value)
@@ -169,24 +165,16 @@ class MessageHandlers:
             
             status_icon = "✅" if item_to_edit.status == 'confirmed' else "🔴" if item_to_edit.status == 'error' else "⚠️"
             
-            success_message = await update.message.reply_text(
+            # Show success message
+            await self.ui_manager.send_temp(
+                update, context,
                 f"✅ Обновлено! {field_labels[field_to_edit].capitalize()}: **{new_value}** {status_icon}",
-                parse_mode='Markdown'
+                duration=2
             )
             
             # Show updated edit menu with new data
             edit_menu_message_id = context.user_data.get('edit_menu_message_id')
             await self._send_edit_menu(update, context, edit_menu_message_id)
-            
-            # Delete success message after 2 seconds
-            await asyncio.sleep(2)
-            try:
-                await context.bot.delete_message(
-                    chat_id=update.message.chat_id,
-                    message_id=success_message.message_id
-                )
-            except Exception as e:
-                print(f"Не удалось удалить сообщение об успехе: {e}")
             
             return self.config.AWAITING_FIELD_EDIT
             
@@ -221,11 +209,12 @@ class MessageHandlers:
             return self.config.AWAITING_CORRECTION
 
         except (ValueError, IndexError):
-            await update.message.reply_text(
+            await self.ui_manager.send_temp(
+                update, context,
                 "Ошибка формата. Пожалуйста, попробуйте еще раз.\n"
                 "Формат: `Название, Количество, Цена, Сумма` (4 значения через запятую)\n"
                 "Пример: `Udang Kupas, 4, 150000, 600000`",
-                parse_mode='Markdown'
+                duration=10
             )
             return self.config.AWAITING_INPUT
     
@@ -241,7 +230,9 @@ class MessageHandlers:
             is_valid, message = self.validator.validate_line_number(data, line_number)
             
             if not is_valid:
-                await update.message.reply_text(f"{message}\n\nПопробуйте еще раз:")
+                await self.ui_manager.send_temp(
+                    update, context, f"{message}\n\nПопробуйте еще раз:", duration=10
+                )
                 return self.config.AWAITING_LINE_NUMBER
             
             # Delete user message
@@ -253,16 +244,6 @@ class MessageHandlers:
             except Exception as e:
                 print(f"Не удалось удалить сообщение пользователя: {e}")
             
-            # Delete instruction message
-            instruction_message_id = context.user_data.get('line_number_instruction_message_id')
-            if instruction_message_id:
-                try:
-                    await context.bot.delete_message(
-                        chat_id=update.message.chat_id,
-                        message_id=instruction_message_id
-                    )
-                except Exception as e:
-                    print(f"Не удалось удалить сообщение с инструкцией: {e}")
             
             # Set line number for editing
             context.user_data['line_to_edit'] = line_number
@@ -272,9 +253,8 @@ class MessageHandlers:
             return self.config.AWAITING_FIELD_EDIT
             
         except ValueError:
-            await update.message.reply_text(
-                "Неверный формат. Введите только номер строки (например: `3`):",
-                parse_mode='Markdown'
+            await self.ui_manager.send_temp(
+                update, context, "Неверный формат. Введите только номер строки (например: `3`):", duration=10
             )
             return self.config.AWAITING_LINE_NUMBER
     
@@ -290,7 +270,9 @@ class MessageHandlers:
             is_valid, message = self.validator.validate_line_number(data, line_number)
             
             if not is_valid:
-                await update.message.reply_text(f"{message}\n\nПопробуйте еще раз:")
+                await self.ui_manager.send_temp(
+                    update, context, f"{message}\n\nПопробуйте еще раз:", duration=10
+                )
                 return self.config.AWAITING_DELETE_LINE_NUMBER
             
             # Delete user message
@@ -302,41 +284,23 @@ class MessageHandlers:
             except Exception as e:
                 print(f"Не удалось удалить сообщение пользователя: {e}")
             
-            # Delete instruction message
-            instruction_message_id = context.user_data.get('delete_line_number_instruction_message_id')
-            if instruction_message_id:
-                try:
-                    await context.bot.delete_message(
-                        chat_id=update.message.chat_id,
-                        message_id=instruction_message_id
-                    )
-                except Exception as e:
-                    print(f"Не удалось удалить сообщение с инструкцией: {e}")
             
             # Remove line from data
             success = data.remove_item(line_number)
             if success:
                 # Show success message
-                success_message = await update.message.reply_text(f"✅ Строка {line_number} удалена! Обновляю таблицу...")
+                await self.ui_manager.send_temp(
+                    update, context, f"✅ Строка {line_number} удалена! Обновляю таблицу...", duration=2
+                )
                 
                 # Return to updated report
                 await self.show_final_report_with_edit_button(update, context)
-                
-                # Delete success message
-                try:
-                    await context.bot.delete_message(
-                        chat_id=update.message.chat_id,
-                        message_id=success_message.message_id
-                    )
-                except Exception as e:
-                    print(f"Не удалось удалить сообщение об успехе: {e}")
             
             return self.config.AWAITING_CORRECTION
             
         except ValueError:
-            await update.message.reply_text(
-                "Неверный формат. Введите только номер строки (например: `3`):",
-                parse_mode='Markdown'
+            await self.ui_manager.send_temp(
+                update, context, "Неверный формат. Введите только номер строки (например: `3`):", duration=10
             )
             return self.config.AWAITING_DELETE_LINE_NUMBER
     
@@ -353,23 +317,15 @@ class MessageHandlers:
         except Exception as e:
             print(f"Не удалось удалить сообщение пользователя: {e}")
         
-        # Delete instruction message
-        instruction_message_id = context.user_data.get('total_edit_instruction_message_id')
-        if instruction_message_id:
-            try:
-                await context.bot.delete_message(
-                    chat_id=update.message.chat_id,
-                    message_id=instruction_message_id
-                )
-            except Exception as e:
-                print(f"Не удалось удалить сообщение с инструкцией: {e}")
         
         try:
             # Parse new total sum
             new_total = self.text_parser.parse_user_input_number(user_input)
             
             if new_total < 0:
-                await update.message.reply_text("Итоговая сумма не может быть отрицательной. Попробуйте еще раз.")
+                await self.ui_manager.send_temp(
+                    update, context, "Итоговая сумма не может быть отрицательной. Попробуйте еще раз.", duration=5
+                )
                 return self.config.AWAITING_TOTAL_EDIT
             
             # Update total sum in data
@@ -378,25 +334,20 @@ class MessageHandlers:
             
             # Show success message
             formatted_total = self.number_formatter.format_number_with_spaces(new_total)
-            success_message = await update.message.reply_text(f"✅ Итоговая сумма обновлена: **{formatted_total}**", parse_mode='Markdown')
+            await self.ui_manager.send_temp(
+                update, context, f"✅ Итоговая сумма обновлена: **{formatted_total}**", duration=2
+            )
             
             # Return to updated report
             await self.show_final_report_with_edit_button(update, context)
-            
-            # Delete success message
-            try:
-                await context.bot.delete_message(
-                    chat_id=update.message.chat_id,
-                    message_id=success_message.message_id
-                )
-            except Exception as e:
-                print(f"Не удалось удалить сообщение об успехе: {e}")
             
             return self.config.AWAITING_CORRECTION
             
         except Exception as e:
             print(f"Ошибка при обновлении итоговой суммы: {e}")
-            await update.message.reply_text("Ошибка при обновлении итоговой суммы. Попробуйте еще раз.")
+            await self.ui_manager.send_temp(
+                update, context, "Ошибка при обновлении итоговой суммы. Попробуйте еще раз.", duration=5
+            )
             return self.config.AWAITING_TOTAL_EDIT
     
     async def handle_ingredient_matching_input(self, update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
@@ -428,7 +379,9 @@ class MessageHandlers:
         poster_ingredients = context.bot_data.get('poster_ingredients', {})
         
         if not matching_result or current_match_index >= len(matching_result.matches):
-            await update.message.reply_text("Ошибка: данные сопоставления не найдены.")
+            await self.ui_manager.send_temp(
+                update, context, "Ошибка: данные сопоставления не найдены.", duration=5
+            )
             return self.config.AWAITING_CORRECTION
         
         current_match = matching_result.matches[current_match_index]
@@ -436,14 +389,18 @@ class MessageHandlers:
         try:
             if user_input == "0":
                 # Skip this ingredient
-                await update.message.reply_text(f"✅ Пропущен ингредиент: {current_match.receipt_item_name}")
+                await self.ui_manager.send_temp(
+                    update, context, f"✅ Пропущен ингредиент: {current_match.receipt_item_name}", duration=2
+                )
                 await self._process_next_ingredient_match(update, context)
                 
             elif user_input.startswith("search:"):
                 # Search for ingredients
                 query = user_input[7:].strip()
                 if not query:
-                    await update.message.reply_text("Введите поисковый запрос после 'search:'")
+                    await self.ui_manager.send_temp(
+                        update, context, "Введите поисковый запрос после 'search:'", duration=5
+                    )
                     return self.config.AWAITING_MANUAL_MATCH
                 
                 return await self._handle_ingredient_search(update, context, query)
@@ -465,26 +422,28 @@ class MessageHandlers:
                         matching_result.matches[current_match_index] = manual_match
                         context.user_data['ingredient_matching_result'] = matching_result
                         
-                        await update.message.reply_text(
-                            f"✅ Сопоставлено: {current_match.receipt_item_name} → {selected_suggestion['name']}"
+                        await self.ui_manager.send_temp(
+                            update, context, f"✅ Сопоставлено: {current_match.receipt_item_name} → {selected_suggestion['name']}", duration=2
                         )
                         await self._process_next_ingredient_match(update, context)
                         
                     else:
-                        await update.message.reply_text(
-                            f"Неверный номер. Введите число от 1 до {len(current_match.suggested_matches)} или 0 для пропуска."
+                        await self.ui_manager.send_temp(
+                            update, context, f"Неверный номер. Введите число от 1 до {len(current_match.suggested_matches)} или 0 для пропуска.", duration=5
                         )
                         return self.config.AWAITING_MANUAL_MATCH
                         
                 except ValueError:
-                    await update.message.reply_text(
-                        "Неверный формат. Введите номер предложения, 0 для пропуска или 'search: запрос' для поиска."
+                    await self.ui_manager.send_temp(
+                        update, context, "Неверный формат. Введите номер предложения, 0 для пропуска или 'search: запрос' для поиска.", duration=5
                     )
                     return self.config.AWAITING_MANUAL_MATCH
                     
         except Exception as e:
             print(f"Ошибка при обработке ручного сопоставления: {e}")
-            await update.message.reply_text("Произошла ошибка. Попробуйте еще раз.")
+            await self.ui_manager.send_temp(
+                update, context, "Произошла ошибка. Попробуйте еще раз.", duration=5
+            )
             return self.config.AWAITING_MANUAL_MATCH
         
         return self.config.AWAITING_MANUAL_MATCH
@@ -495,7 +454,9 @@ class MessageHandlers:
         poster_ingredients = context.bot_data.get('poster_ingredients', {})
         
         if not matching_result:
-            await update.message.reply_text("Ошибка: данные сопоставления не найдены.")
+            await self.ui_manager.send_temp(
+                update, context, "Ошибка: данные сопоставления не найдены.", duration=5
+            )
             return self.config.AWAITING_CORRECTION
         
         # Search for ingredients in the loaded list
@@ -536,46 +497,36 @@ class MessageHandlers:
                 
                 reply_markup = InlineKeyboardMarkup(keyboard)
                 
-                sent_message = await update.message.reply_text(
-                    search_text,
-                    reply_markup=reply_markup,
-                    parse_mode='Markdown'
+                await self.ui_manager.send_menu(
+                    update, context, search_text, reply_markup, 'Markdown'
                 )
-                # Store message ID for cleanup
-                if 'menu_message_ids' not in context.user_data:
-                    context.user_data['menu_message_ids'] = []
-                context.user_data['menu_message_ids'].append(sent_message.message_id)
                 
                 # Save search results for selection
                 context.user_data['position_search_results'] = filtered_results
             else:
-                sent_message = await update.message.reply_text(
+                await self.ui_manager.send_menu(
+                    update, context,
                     f"❌ **По запросу '{query}' не найдено подходящих вариантов**\n\n"
                     "Попробуйте другой поисковый запрос или вернитесь к обзору.",
-                    reply_markup=InlineKeyboardMarkup([
+                    InlineKeyboardMarkup([
                         [InlineKeyboardButton("🔍 Новый поиск", callback_data="select_position_for_matching")],
                         [InlineKeyboardButton("📋 Назад к обзору", callback_data="back_to_matching_overview")],
                         [InlineKeyboardButton("❌ Отмена", callback_data="cancel")]
-                    ])
+                    ]),
+                    'Markdown'
                 )
-                # Store message ID for cleanup
-                if 'menu_message_ids' not in context.user_data:
-                    context.user_data['menu_message_ids'] = []
-                context.user_data['menu_message_ids'].append(sent_message.message_id)
         else:
-            sent_message = await update.message.reply_text(
+            await self.ui_manager.send_menu(
+                update, context,
                 f"❌ **По запросу '{query}' ничего не найдено**\n\n"
                 "Попробуйте другой поисковый запрос или вернитесь к обзору.",
-                reply_markup=InlineKeyboardMarkup([
+                InlineKeyboardMarkup([
                     [InlineKeyboardButton("🔍 Новый поиск", callback_data="select_position_for_matching")],
                     [InlineKeyboardButton("📋 Назад к обзору", callback_data="back_to_matching_overview")],
                     [InlineKeyboardButton("❌ Отмена", callback_data="cancel")]
-                ])
+                ]),
+                'Markdown'
             )
-            # Store message ID for cleanup
-            if 'menu_message_ids' not in context.user_data:
-                context.user_data['menu_message_ids'] = []
-            context.user_data['menu_message_ids'].append(sent_message.message_id)
         
         return self.config.AWAITING_MANUAL_MATCH
     
@@ -586,7 +537,9 @@ class MessageHandlers:
         poster_ingredients = context.bot_data.get('poster_ingredients', {})
         
         if not matching_result or current_match_index >= len(matching_result.matches):
-            await update.message.reply_text("Ошибка: данные сопоставления не найдены.")
+            await self.ui_manager.send_temp(
+                update, context, "Ошибка: данные сопоставления не найдены.", duration=5
+            )
             return self.config.AWAITING_CORRECTION
         
         current_match = matching_result.matches[current_match_index]
@@ -621,18 +574,20 @@ class MessageHandlers:
                 
                 reply_markup = InlineKeyboardMarkup(keyboard)
                 
-                await update.message.reply_text(
-                    progress_text,
-                    reply_markup=reply_markup,
-                    parse_mode='Markdown'
+                await self.ui_manager.send_menu(
+                    update, context, progress_text, reply_markup, 'Markdown'
                 )
                 
                 # Save search results for selection
                 context.user_data['search_results'] = filtered_results
             else:
-                await update.message.reply_text(f"По запросу '{query}' не найдено подходящих вариантов (с вероятностью > 50%).")
+                await self.ui_manager.send_temp(
+                    update, context, f"По запросу '{query}' не найдено подходящих вариантов (с вероятностью > 50%).", duration=5
+                )
         else:
-            await update.message.reply_text(f"По запросу '{query}' ничего не найдено.")
+            await self.ui_manager.send_temp(
+                update, context, f"По запросу '{query}' ничего не найдено.", duration=5
+            )
         
         return self.config.AWAITING_MANUAL_MATCH
     
@@ -681,14 +636,18 @@ class MessageHandlers:
             instructions = self.ingredient_formatter.format_manual_matching_instructions()
             progress_text += instructions
         
-        await update.message.reply_text(progress_text, parse_mode='Markdown')
+        await self.ui_manager.send_menu(
+            update, context, progress_text, InlineKeyboardMarkup([]), 'Markdown'
+        )
     
     async def _show_final_ingredient_matching_result(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         """Show final ingredient matching result"""
         matching_result = context.user_data.get('ingredient_matching_result')
         
         if not matching_result:
-            await update.message.reply_text("Ошибка: данные сопоставления не найдены.")
+            await self.ui_manager.send_temp(
+                update, context, "Ошибка: данные сопоставления не найдены.", duration=5
+            )
             return
         
         # Format final result
@@ -703,10 +662,8 @@ class MessageHandlers:
         
         reply_markup = InlineKeyboardMarkup(keyboard)
         
-        await update.message.reply_text(
-            final_text,
-            reply_markup=reply_markup,
-            parse_mode='Markdown'
+        await self.ui_manager.send_menu(
+            update, context, final_text, reply_markup, 'Markdown'
         )
     
     def _clear_receipt_data(self, context: ContextTypes.DEFAULT_TYPE) -> None:
@@ -724,32 +681,15 @@ class MessageHandlers:
     
     async def show_final_report_with_edit_button(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         """Show final report with edit buttons"""
-        # Удаляем сообщение "Обрабатываю квитанцию" если оно есть
-        processing_message_id = context.user_data.get('processing_message_id')
-        if processing_message_id:
-            try:
-                if hasattr(update, 'message') and update.message:
-                    await context.bot.delete_message(
-                        chat_id=update.message.chat_id,
-                        message_id=processing_message_id
-                    )
-                elif hasattr(update, 'callback_query') and update.callback_query:
-                    await context.bot.delete_message(
-                        chat_id=update.callback_query.message.chat_id,
-                        message_id=processing_message_id
-                    )
-            except Exception as e:
-                print(f"Не удалось удалить сообщение об обработке: {e}")
-            # Очищаем ID сообщения из контекста
-            context.user_data.pop('processing_message_id', None)
+        # Clean up all messages except anchor
+        await self.ui_manager.cleanup_all_except_anchor(update, context)
         
         final_data: ReceiptData = context.user_data.get('receipt_data')
         
         if not final_data:
-            if hasattr(update, 'message') and update.message:
-                await update.message.reply_text("Произошла ошибка, данные не найдены.")
-            elif hasattr(update, 'callback_query') and update.callback_query:
-                await update.callback_query.message.reply_text("Произошла ошибка, данные не найдены.")
+            await self.ui_manager.send_temp(
+                update, context, "Произошла ошибка, данные не найдены.", duration=5
+            )
             return
 
         try:
@@ -831,25 +771,21 @@ class MessageHandlers:
             
             # Add general buttons
             keyboard.append([InlineKeyboardButton("🔢 Редактировать строку по номеру", callback_data="edit_line_number")])
+            keyboard.append([InlineKeyboardButton("◀️ Вернуться к чеку", callback_data="back_to_receipt")])
             keyboard.append([InlineKeyboardButton("❌ Отмена", callback_data="cancel")])
             
             reply_markup = InlineKeyboardMarkup(keyboard)
             
-            # Send report with buttons
-            if hasattr(update, 'message') and update.message:
-                message = await self._send_long_message_with_keyboard(update.message, final_report, reply_markup)
-                # Save table message ID for subsequent editing
-                if hasattr(message, 'message_id'):
-                    context.user_data['table_message_id'] = message.message_id
-            elif hasattr(update, 'callback_query') and update.callback_query:
-                await self._send_long_message_with_keyboard_callback(update.callback_query.message, final_report, reply_markup)
+            # Send report with buttons using UI manager
+            message = await self.ui_manager.send_menu(update, context, final_report, reply_markup)
+            # Save table message ID for subsequent editing
+            context.user_data['table_message_id'] = message.message_id
         
         except Exception as e:
             print(f"Ошибка при формировании отчета: {e}")
-            if hasattr(update, 'message') and update.message:
-                await update.message.reply_text(f"Произошла ошибка при формировании отчета: {e}")
-            elif hasattr(update, 'callback_query') and update.callback_query:
-                await update.callback_query.message.reply_text(f"Произошла ошибка при формировании отчета: {e}")
+            await self.ui_manager.send_temp(
+                update, context, f"Произошла ошибка при формировании отчета: {e}", duration=5
+            )
     
     async def _send_edit_menu(self, update: Update, context: ContextTypes.DEFAULT_TYPE, message_id_to_edit: int = None):
         """Send edit menu for specific line"""
@@ -858,10 +794,9 @@ class MessageHandlers:
         item_to_edit = data.get_item(line_number)
         
         if not item_to_edit:
-            if hasattr(update, 'callback_query') and update.callback_query:
-                await update.callback_query.message.reply_text("Ошибка: строка не найдена")
-            elif hasattr(update, 'message') and update.message:
-                await update.message.reply_text("Ошибка: строка не найдена")
+            await self.ui_manager.send_temp(
+                update, context, "Ошибка: строка не найдена", duration=5
+            )
             return
         
         # Automatically calculate sum and update status before display
@@ -914,31 +849,21 @@ class MessageHandlers:
         
         reply_markup = InlineKeyboardMarkup(keyboard)
         
-        # Determine chat_id and message sending method
-        if hasattr(update, 'callback_query') and update.callback_query:
-            chat_id = update.callback_query.message.chat_id
-            reply_method = update.callback_query.message.reply_text
-        elif hasattr(update, 'message') and update.message:
-            chat_id = update.message.chat_id
-            reply_method = update.message.reply_text
-        else:
-            return
-        
         if message_id_to_edit:
             # Edit existing message
-            await context.bot.edit_message_text(
-                chat_id=chat_id,
-                message_id=message_id_to_edit,
-                text=text,
-                reply_markup=reply_markup,
-                parse_mode='Markdown'
+            success = await self.ui_manager.edit_menu(
+                update, context, message_id_to_edit, text, reply_markup, 'Markdown'
             )
+            if not success:
+                # If couldn't edit, send new message
+                message = await self.ui_manager.send_menu(
+                    update, context, text, reply_markup, 'Markdown'
+                )
+                context.user_data['edit_menu_message_id'] = message.message_id
         else:
             # Create new message
-            message = await reply_method(
-                text,
-                reply_markup=reply_markup,
-                parse_mode='Markdown'
+            message = await self.ui_manager.send_menu(
+                update, context, text, reply_markup, 'Markdown'
             )
             # Save message ID for subsequent editing
             context.user_data['edit_menu_message_id'] = message.message_id

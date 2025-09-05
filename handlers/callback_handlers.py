@@ -16,6 +16,7 @@ from utils.formatters import ReceiptFormatter, NumberFormatter, TextParser
 from utils.ingredient_formatter import IngredientFormatter
 from utils.ingredient_storage import IngredientStorage
 from utils.receipt_processor import ReceiptProcessor
+from utils.ui_manager import UIManager
 from validators.receipt_validator import ReceiptValidator
 
 
@@ -33,6 +34,7 @@ class CallbackHandlers:
         self.ingredient_matching_service = IngredientMatchingService()
         self.ingredient_formatter = IngredientFormatter()
         self.ingredient_storage = IngredientStorage()
+        self.ui_manager = UIManager(config)
     
     async def handle_correction_choice(self, update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
         """Handle correction choice callback"""
@@ -48,22 +50,27 @@ class CallbackHandlers:
             return self.config.AWAITING_CORRECTION
         
         if action == "add_row":
+            # Clean up all messages except anchor before showing new menu
+            await self.ui_manager.cleanup_all_except_anchor(update, context)
+            
             # Add new row
             await self._add_new_row(update, context)
             return self.config.AWAITING_FIELD_EDIT
         
         if action == "delete_row":
             # Request line number for deletion
-            instruction_message = await query.message.reply_text(
+            await self.ui_manager.send_temp(
+                update, context,
                 "Введите номер строки для удаления:\n\n"
                 "Например: `3` (для удаления строки 3)",
-                parse_mode='Markdown'
+                duration=30
             )
-            # Save instruction message ID for subsequent deletion
-            context.user_data['delete_line_number_instruction_message_id'] = instruction_message.message_id
             return self.config.AWAITING_DELETE_LINE_NUMBER
         
         if action == "edit_total":
+            # Clean up all messages except anchor before showing new menu
+            await self.ui_manager.cleanup_all_except_anchor(update, context)
+            
             # Show total edit menu
             await self._show_total_edit_menu(update, context)
             return self.config.AWAITING_CORRECTION
@@ -78,38 +85,30 @@ class CallbackHandlers:
             current_total = context.user_data.get('receipt_data', {}).grand_total_text
             formatted_total = self.number_formatter.format_number_with_spaces(self.text_parser.parse_number_from_text(current_total))
             
-            instruction_message = await query.message.reply_text(
+            await self.ui_manager.send_temp(
+                update, context,
                 f"Текущая итоговая сумма: **{formatted_total}**\n\n"
                 "Введите новую итоговую сумму:",
-                parse_mode='Markdown'
+                duration=30
             )
-            # Save instruction message ID for subsequent deletion
-            context.user_data['total_edit_instruction_message_id'] = instruction_message.message_id
             return self.config.AWAITING_TOTAL_EDIT
         
         if action == "edit_line_number":
             # Request line number for editing
-            instruction_message = await query.message.reply_text(
+            await self.ui_manager.send_temp(
+                update, context,
                 "Введите номер строки для редактирования:\n\n"
                 "Например: `3` (для редактирования строки 3)",
-                parse_mode='Markdown'
+                duration=30
             )
-            # Save instruction message ID for subsequent deletion
-            context.user_data['line_number_instruction_message_id'] = instruction_message.message_id
             return self.config.AWAITING_LINE_NUMBER
         
         if action == "reanalyze":
             # Delete old report
             await query.answer("🔄 Анализирую фото заново...")
             
-            # Delete report message
-            try:
-                await context.bot.delete_message(
-                    chat_id=query.message.chat_id,
-                    message_id=query.message.message_id
-                )
-            except Exception as e:
-                print(f"Не удалось удалить сообщение с отчетом: {e}")
+            # Clean up all messages except anchor before showing new menu
+            await self.ui_manager.cleanup_all_except_anchor(update, context)
             
             # Clear all old data
             self._clear_receipt_data(context)
@@ -142,6 +141,9 @@ class CallbackHandlers:
         if action == "match_ingredients":
             # Start ingredient matching process
             await query.answer("🔍 Начинаю сопоставление ингредиентов...")
+            
+            # Clean up all messages except anchor before showing new menu
+            await self.ui_manager.cleanup_all_except_anchor(update, context)
             
             # Get receipt data and poster ingredients
             receipt_data = context.user_data.get('receipt_data')
@@ -195,6 +197,9 @@ class CallbackHandlers:
                 await query.message.reply_text("Ошибка: результаты сопоставления не найдены.")
                 return self.config.AWAITING_CORRECTION
             
+            # Clean up all messages except anchor before showing new menu
+            await self.ui_manager.cleanup_all_except_anchor(update, context)
+            
             # Show new manual matching interface with all items that need matching
             await self._show_manual_matching_overview(update, context)
             return self.config.AWAITING_MANUAL_MATCH
@@ -209,6 +214,9 @@ class CallbackHandlers:
             if not receipt_data or not poster_ingredients:
                 await query.message.reply_text("Ошибка: данные не найдены.")
                 return self.config.AWAITING_CORRECTION
+            
+            # Clean up all messages except anchor before showing new menu
+            await self.ui_manager.cleanup_all_except_anchor(update, context)
             
             # Perform ingredient matching again
             matching_result = self.ingredient_matching_service.match_ingredients(receipt_data, poster_ingredients)
@@ -225,8 +233,9 @@ class CallbackHandlers:
             return self.config.AWAITING_INGREDIENT_MATCHING
         
         if action == "back_to_receipt":
-            # Return to receipt view
+            # Return to receipt view - clean up all messages except anchor
             await query.answer("📋 Возвращаюсь к чеку...")
+            await self.ui_manager.cleanup_all_except_anchor(update, context)
             await self._show_final_report_with_edit_button_callback(update, context)
             return self.config.AWAITING_CORRECTION
         
@@ -244,6 +253,9 @@ class CallbackHandlers:
             current_match_index += 1
             context.user_data['current_match_index'] = current_match_index
             
+            # Clean up all messages except anchor before showing new menu
+            await self.ui_manager.cleanup_all_except_anchor(update, context)
+            
             if current_match_index >= len(matching_result.matches):
                 # All matches processed, show final result
                 await self._show_final_ingredient_matching_result(update, context)
@@ -256,49 +268,81 @@ class CallbackHandlers:
         if action.startswith("select_ingredient_"):
             # Handle ingredient selection
             suggestion_number = int(action.split('_')[2])
+            
+            # Clean up all messages except anchor before showing new menu
+            await self.ui_manager.cleanup_all_except_anchor(update, context)
+            
             await self._handle_ingredient_selection(update, context, suggestion_number)
             return self.config.AWAITING_MANUAL_MATCH
         
         if action == "search_ingredient":
             # Handle search request
-            await query.answer("🔍 Введите поисковый запрос в текстовом сообщении")
+            await self.ui_manager.send_temp(
+                update, context, "🔍 Введите поисковый запрос в текстовом сообщении", duration=10
+            )
             context.user_data['awaiting_search'] = True
             return self.config.AWAITING_MANUAL_MATCH
         
         if action == "skip_ingredient":
             # Skip current ingredient
             await query.answer("⏭️ Пропускаю ингредиент...")
+            
+            # Clean up all messages except anchor before showing new menu
+            await self.ui_manager.cleanup_all_except_anchor(update, context)
+            
             await self._process_next_ingredient_match(update, context)
             return self.config.AWAITING_MANUAL_MATCH
         
         if action.startswith("select_search_"):
             # Handle search result selection
             suggestion_number = int(action.split('_')[2])
+            
+            # Clean up all messages except anchor before showing new menu
+            await self.ui_manager.cleanup_all_except_anchor(update, context)
+            
             await self._handle_search_result_selection(update, context, suggestion_number)
             return self.config.AWAITING_MANUAL_MATCH
         
         if action.startswith("select_item_"):
             # Handle item selection for manual matching
             item_index = int(action.split('_')[2])
+            
+            # Clean up all messages except anchor before showing new menu
+            await self.ui_manager.cleanup_all_except_anchor(update, context)
+            
             await self._handle_item_selection_for_matching(update, context, item_index)
             return self.config.AWAITING_MANUAL_MATCH
         
         if action == "select_position_for_matching":
             # Handle position selection request
             print(f"DEBUG: select_position_for_matching called")
-            await query.answer("🔍 Введите название ингредиента для поиска")
+            
+            # Clean up all messages except anchor before showing new menu
+            await self.ui_manager.cleanup_all_except_anchor(update, context)
+            
+            await self.ui_manager.send_temp(
+                update, context, "🔍 Введите название ингредиента для поиска", duration=10
+            )
             context.user_data['awaiting_position_search'] = True
             return self.config.AWAITING_MANUAL_MATCH
         
         if action == "back_to_matching_overview":
             # Return to matching overview
             await query.answer("📋 Возвращаюсь к обзору сопоставления...")
+            
+            # Clean up all messages except anchor before showing new menu
+            await self.ui_manager.cleanup_all_except_anchor(update, context)
+            
             await self._show_manual_matching_overview(update, context)
             return self.config.AWAITING_MANUAL_MATCH
         
         if action.startswith("select_position_"):
             # Handle position selection from search results
             position_number = int(action.split('_')[2])
+            
+            # Clean up all messages except anchor before showing new menu
+            await self.ui_manager.cleanup_all_except_anchor(update, context)
+            
             await self._handle_position_selection(update, context, position_number)
             return self.config.AWAITING_MANUAL_MATCH
         
@@ -307,6 +351,10 @@ class CallbackHandlers:
             parts = action.split('_')
             item_index = int(parts[2])
             position_id = parts[3]
+            
+            # Clean up all messages except anchor before showing new menu
+            await self.ui_manager.cleanup_all_except_anchor(update, context)
+            
             await self._handle_item_position_matching(update, context, item_index, position_id)
             return self.config.AWAITING_MANUAL_MATCH
         
@@ -334,14 +382,8 @@ class CallbackHandlers:
             context.user_data.pop('changed_ingredient_indices', None)
             context.user_data.pop('current_match_index', None)
             
-            # Delete current message and show updated receipt
-            try:
-                await context.bot.delete_message(
-                    chat_id=query.message.chat_id,
-                    message_id=query.message.message_id
-                )
-            except Exception as e:
-                print(f"Не удалось удалить сообщение: {e}")
+            # Clean up all messages except anchor before showing new menu
+            await self.ui_manager.cleanup_all_except_anchor(update, context)
             
             # Return to main receipt (unchanged)
             await self._show_final_report_with_edit_button_callback(update, context)
@@ -350,14 +392,8 @@ class CallbackHandlers:
         if action == "cancel":
             # Check if we're in edit menu
             if context.user_data.get('line_to_edit'):
-                # Delete edit menu message
-                try:
-                    await context.bot.delete_message(
-                        chat_id=query.message.chat_id,
-                        message_id=query.message.message_id
-                    )
-                except Exception as e:
-                    print(f"Не удалось удалить сообщение меню редактирования: {e}")
+                # Clean up all messages except anchor before showing new menu
+                await self.ui_manager.cleanup_all_except_anchor(update, context)
                 
                 # Return to updated report
                 await self._show_final_report_with_edit_button_callback(update, context)
@@ -370,6 +406,10 @@ class CallbackHandlers:
         if action.startswith("edit_"):
             line_number_to_edit = int(action.split('_')[1])
             context.user_data['line_to_edit'] = line_number_to_edit
+            
+            # Clean up all messages except anchor before showing new menu
+            await self.ui_manager.cleanup_all_except_anchor(update, context)
+            
             await self._send_edit_menu(update, context)
             return self.config.AWAITING_FIELD_EDIT
         
@@ -381,6 +421,9 @@ class CallbackHandlers:
             
             context.user_data['line_to_edit'] = line_number
             context.user_data['field_to_edit'] = field_name
+            
+            # Clean up all messages except anchor before showing new menu
+            await self.ui_manager.cleanup_all_except_anchor(update, context)
             
             data: ReceiptData = context.user_data['receipt_data']
             item_to_edit = data.get_item(line_number)
@@ -396,14 +439,13 @@ class CallbackHandlers:
             if field_name in ['quantity', 'price', 'total'] and isinstance(current_value, (int, float)):
                 current_value = self.number_formatter.format_number_with_spaces(current_value)
             
-            instruction_message = await query.message.reply_text(
+            await self.ui_manager.send_temp(
+                update, context,
                 f"Редактируете строку {line_number}\n"
                 f"Текущее {field_labels[field_name]}: **{current_value}**\n\n"
                 f"Введите новое {field_labels[field_name]}:",
-                parse_mode='Markdown'
+                duration=30
             )
-            
-            context.user_data['instruction_message_id'] = instruction_message.message_id
             return self.config.AWAITING_FIELD_EDIT
         
         if action.startswith("apply_"):
@@ -415,29 +457,16 @@ class CallbackHandlers:
             if item_to_apply:
                 item_to_apply = self.processor.auto_update_item_status(item_to_apply)
             
-            # Delete edit menu message
-            try:
-                await context.bot.delete_message(
-                    chat_id=query.message.chat_id,
-                    message_id=query.message.message_id
-                )
-            except Exception as e:
-                print(f"Не удалось удалить сообщение меню редактирования: {e}")
+            # Clean up all messages except anchor before showing new menu
+            await self.ui_manager.cleanup_all_except_anchor(update, context)
             
             # Show message about applying changes
-            status_message = await query.message.reply_text("✅ Изменения применены! Обновляю таблицу...")
+            await self.ui_manager.send_temp(
+                update, context, "✅ Изменения применены! Обновляю таблицу...", duration=2
+            )
             
             # Apply changes and return to updated report
             await self._show_final_report_with_edit_button_callback(update, context)
-            
-            # Delete status message
-            try:
-                await context.bot.delete_message(
-                    chat_id=query.message.chat_id,
-                    message_id=status_message.message_id
-                )
-            except Exception as e:
-                print(f"Не удалось удалить сообщение о применении изменений: {e}")
             
             return self.config.AWAITING_CORRECTION
         
@@ -445,19 +474,20 @@ class CallbackHandlers:
         line_number_to_edit = int(action.split('_')[1])
         context.user_data['line_to_edit'] = line_number_to_edit
         
+        # Clean up all messages except anchor before showing new menu
+        await self.ui_manager.cleanup_all_except_anchor(update, context)
+        
         data: ReceiptData = context.user_data['receipt_data']
         item_to_edit = data.get_item(line_number_to_edit)
         
-        instruction_message = await query.message.reply_text(
+        await self.ui_manager.send_temp(
+            update, context,
             f"Вы исправляете строку: **{item_to_edit.name}**.\n\n"
             "Введите правильные данные в формате:\n"
             "`Название, Количество, Цена за единицу, Сумма`\n\n"
             "Пример: `Udang Kupas, 4, 150000, 600000`",
-            parse_mode='Markdown'
+            duration=30
         )
-        
-        # Save instruction message ID for subsequent deletion
-        context.user_data['instruction_message_id'] = instruction_message.message_id
         
         return self.config.AWAITING_INPUT
     
@@ -526,10 +556,8 @@ class CallbackHandlers:
         else:
             return
         
-        message = await reply_method(
-            text,
-            reply_markup=reply_markup,
-            parse_mode='Markdown'
+        message = await self.ui_manager.send_menu(
+            update, context, text, reply_markup, 'Markdown'
         )
         
         # Save message ID for subsequent deletion
@@ -556,23 +584,12 @@ class CallbackHandlers:
         
         # Show success message
         formatted_total = self.number_formatter.format_number_with_spaces(calculated_total)
-        if hasattr(update, 'callback_query') and update.callback_query:
-            success_message = await update.callback_query.message.reply_text(
-                f"✅ Итого автоматически рассчитано: **{formatted_total}**", 
-                parse_mode='Markdown'
-            )
+        await self.ui_manager.send_temp(
+            update, context, f"✅ Итого автоматически рассчитано: **{formatted_total}**", duration=2
+        )
         
         # Return to updated report
         await self._show_final_report_with_edit_button_callback(update, context)
-        
-        # Delete success message
-        try:
-            await context.bot.delete_message(
-                chat_id=update.callback_query.message.chat_id,
-                message_id=success_message.message_id
-            )
-        except Exception as e:
-            print(f"Не удалось удалить сообщение об успехе: {e}")
     
     async def _send_edit_menu(self, update: Update, context: ContextTypes.DEFAULT_TYPE, message_id_to_edit: int = None):
         """Send edit menu for specific line"""
@@ -647,19 +664,19 @@ class CallbackHandlers:
         
         if message_id_to_edit:
             # Edit existing message
-            await context.bot.edit_message_text(
-                chat_id=chat_id,
-                message_id=message_id_to_edit,
-                text=text,
-                reply_markup=reply_markup,
-                parse_mode='Markdown'
+            success = await self.ui_manager.edit_menu(
+                update, context, message_id_to_edit, text, reply_markup, 'Markdown'
             )
+            if not success:
+                # If couldn't edit, send new message
+                message = await self.ui_manager.send_menu(
+                    update, context, text, reply_markup, 'Markdown'
+                )
+                context.user_data['edit_menu_message_id'] = message.message_id
         else:
             # Create new message
-            message = await reply_method(
-                text,
-                reply_markup=reply_markup,
-                parse_mode='Markdown'
+            message = await self.ui_manager.send_menu(
+                update, context, text, reply_markup, 'Markdown'
             )
             # Save message ID for subsequent editing
             context.user_data['edit_menu_message_id'] = message.message_id
@@ -760,22 +777,18 @@ class CallbackHandlers:
             table_message_id = context.user_data.get('table_message_id')
             
             if table_message_id:
-                try:
-                    # Edit existing table message
-                    await context.bot.edit_message_text(
-                        chat_id=update.callback_query.message.chat_id,
-                        message_id=table_message_id,
-                        text=final_report,
-                        reply_markup=reply_markup,
-                        parse_mode='Markdown'
-                    )
-                except Exception as e:
-                    print(f"Не удалось отредактировать сообщение с таблицей: {e}")
+                # Try to edit existing table message
+                success = await self.ui_manager.edit_menu(
+                    update, context, table_message_id, final_report, reply_markup
+                )
+                if not success:
                     # If couldn't edit, send new message
-                    await self._send_long_message_with_keyboard_callback(update.callback_query.message, final_report, reply_markup)
+                    message = await self.ui_manager.send_menu(update, context, final_report, reply_markup)
+                    context.user_data['table_message_id'] = message.message_id
             else:
                 # If no saved ID, send new message
-                await self._send_long_message_with_keyboard_callback(update.callback_query.message, final_report, reply_markup)
+                message = await self.ui_manager.send_menu(update, context, final_report, reply_markup)
+                context.user_data['table_message_id'] = message.message_id
         
         except Exception as e:
             print(f"Ошибка при формировании отчета: {e}")
@@ -873,23 +886,22 @@ class CallbackHandlers:
             keyboard.extend([
                 [InlineKeyboardButton("✅ Применить", callback_data="apply_matching_changes")],
                 [InlineKeyboardButton("🔄 Сопоставить заново", callback_data="rematch_ingredients")],
+                [InlineKeyboardButton("◀️ Вернуться к чеку", callback_data="back_to_receipt")],
                 [InlineKeyboardButton("❌ Отмена", callback_data="cancel")]
             ])
         else:
             # Some items need matching, show regular buttons
             keyboard.extend([
                 [InlineKeyboardButton("🔄 Сопоставить заново", callback_data="rematch_ingredients")],
-                [InlineKeyboardButton("📋 Вернуться к чеку", callback_data="back_to_receipt")],
+                [InlineKeyboardButton("◀️ Вернуться к чеку", callback_data="back_to_receipt")],
                 [InlineKeyboardButton("❌ Отмена", callback_data="cancel")]
             ])
         
         reply_markup = InlineKeyboardMarkup(keyboard)
         
         if hasattr(update, 'callback_query') and update.callback_query:
-            await update.callback_query.message.reply_text(
-                results_text,
-                reply_markup=reply_markup,
-                parse_mode='Markdown'
+            await self.ui_manager.send_menu(
+                update, context, results_text, reply_markup, 'Markdown'
             )
     
     async def _show_manual_matching_overview(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -975,15 +987,9 @@ class CallbackHandlers:
         reply_markup = InlineKeyboardMarkup(keyboard)
         
         if hasattr(update, 'callback_query') and update.callback_query:
-            sent_message = await update.callback_query.message.reply_text(
-                overview_text,
-                reply_markup=reply_markup,
-                parse_mode='Markdown'
+            await self.ui_manager.send_menu(
+                update, context, overview_text, reply_markup, 'Markdown'
             )
-            # Store message ID for cleanup
-            if 'menu_message_ids' not in context.user_data:
-                context.user_data['menu_message_ids'] = []
-            context.user_data['menu_message_ids'].append(sent_message.message_id)
     
     async def _handle_item_selection_for_matching(self, update: Update, context: ContextTypes.DEFAULT_TYPE, item_index: int):
         """Handle selection of specific item for manual matching"""
@@ -1058,15 +1064,9 @@ class CallbackHandlers:
         # Save current item index for later processing
         context.user_data['current_match_index'] = item_index
         
-        sent_message = await update.callback_query.message.reply_text(
-            progress_text,
-            reply_markup=reply_markup,
-            parse_mode='Markdown'
+        await self.ui_manager.send_menu(
+            update, context, progress_text, reply_markup, 'Markdown'
         )
-        # Store message ID for cleanup
-        if 'menu_message_ids' not in context.user_data:
-            context.user_data['menu_message_ids'] = []
-        context.user_data['menu_message_ids'].append(sent_message.message_id)
     
     async def _handle_position_selection(self, update: Update, context: ContextTypes.DEFAULT_TYPE, position_number: int):
         """Handle position selection from search results"""
@@ -1126,15 +1126,9 @@ class CallbackHandlers:
         
         reply_markup = InlineKeyboardMarkup(keyboard)
         
-        sent_message = await update.callback_query.message.reply_text(
-            items_text,
-            reply_markup=reply_markup,
-            parse_mode='Markdown'
+        await self.ui_manager.send_menu(
+            update, context, items_text, reply_markup, 'Markdown'
         )
-        # Store message ID for cleanup
-        if 'menu_message_ids' not in context.user_data:
-            context.user_data['menu_message_ids'] = []
-        context.user_data['menu_message_ids'].append(sent_message.message_id)
     
     async def _handle_item_position_matching(self, update: Update, context: ContextTypes.DEFAULT_TYPE, item_index: int, position_id: str):
         """Handle matching of item with selected position"""
