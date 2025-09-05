@@ -4,6 +4,7 @@ Main entry point for the AI Bot application
 import logging
 import asyncio
 import time
+import threading
 from telegram.ext import (
     Application,
     CommandHandler,
@@ -19,11 +20,12 @@ from config.settings import BotConfig, PromptConfig
 from services.ai_service import AIService, ReceiptAnalysisService
 from handlers.message_handlers import MessageHandlers
 from handlers.callback_handlers import CallbackHandlers
+from utils.ingredient_storage import IngredientStorage
 # 👇 --- ДОБАВЛЕН ИМПОРТ --- 👇
 from poster_handler import get_all_poster_ingredients
 
 
-def safe_start_bot(application: Application, max_retries: int = 3) -> None:
+def safe_start_bot(application: Application, ingredient_storage: IngredientStorage, max_retries: int = 3) -> None:
     """Безопасный запуск бота с обработкой конфликтов"""
     for attempt in range(max_retries):
         try:
@@ -70,6 +72,16 @@ def safe_start_bot(application: Application, max_retries: int = 3) -> None:
             raise
 
 
+def cleanup_old_files_periodically(ingredient_storage: IngredientStorage) -> None:
+    """Background task to clean up old files every 30 minutes"""
+    while True:
+        try:
+            time.sleep(1800)  # 30 minutes = 1800 seconds
+            ingredient_storage.cleanup_old_files()
+            print("🧹 Выполнена очистка старых файлов сопоставления")
+        except Exception as e:
+            print(f"Ошибка при очистке файлов: {e}")
+
 def main() -> None:
     """Main function to start the bot"""
     # 1. Загружаем справочник ингредиентов из Poster
@@ -86,6 +98,9 @@ def main() -> None:
     # Initialize handlers
     message_handlers = MessageHandlers(config, analysis_service)
     callback_handlers = CallbackHandlers(config, analysis_service)
+    
+    # Initialize ingredient storage with 1 hour cleanup
+    ingredient_storage = IngredientStorage(max_age_hours=1)
     
     # Create application
     application = Application.builder().token(config.BOT_TOKEN).concurrent_updates(True).build()
@@ -141,10 +156,17 @@ def main() -> None:
     application.add_handler(CommandHandler("start", message_handlers.start))
     application.add_handler(conv_handler)
 
-    # 4. Запускаем бота с улучшенной обработкой ошибок
+    # 4. Запускаем бота с улучшенной обработкой ошибок и автоочисткой
     print("🚀 Бот запускается...")
+    print("🧹 Автоочистка файлов сопоставления: каждые 30 минут, файлы старше 1 часа")
+    
+    # Запускаем фоновый поток для очистки
+    cleanup_thread = threading.Thread(target=cleanup_old_files_periodically, args=(ingredient_storage,), daemon=True)
+    cleanup_thread.start()
+    print("✅ Фоновый поток очистки запущен")
+    
     try:
-        safe_start_bot(application)
+        safe_start_bot(application, ingredient_storage)
     except KeyboardInterrupt:
         print("\n⏹️ Бот остановлен пользователем")
     except Exception as e:

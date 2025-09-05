@@ -12,12 +12,13 @@ class IngredientFormatter:
         self.max_name_length = 15  # Maximum length for ingredient names in table
         self.max_suggestion_length = 15  # Maximum length for suggestion names
     
-    def format_matching_table(self, result: IngredientMatchingResult) -> str:
+    def format_matching_table(self, result: IngredientMatchingResult, changed_indices: set = None) -> str:
         """
         Format ingredient matching results as a table
         
         Args:
             result: IngredientMatchingResult to format
+            changed_indices: Set of indices that were manually changed (0-based)
             
         Returns:
             Formatted table string
@@ -43,7 +44,8 @@ class IngredientFormatter:
         
         # Add table rows
         for i, match in enumerate(result.matches, 1):
-            table_lines.append(self._create_table_row(i, match))
+            is_changed = changed_indices is not None and (i-1) in changed_indices
+            table_lines.append(self._create_table_row(i, match, is_changed))
         
         table_lines.append("```")
         
@@ -58,7 +60,7 @@ class IngredientFormatter:
         total_width = 2 + 3 + self.max_name_length + 3 + self.max_name_length + 3 + 4
         return "-" * total_width
     
-    def _create_table_row(self, row_number: int, match: IngredientMatch) -> str:
+    def _create_table_row(self, row_number: int, match: IngredientMatch, is_changed: bool = False) -> str:
         """Create a table row for a match"""
         # Truncate names if too long
         receipt_name = self._truncate_name(match.receipt_item_name, self.max_name_length)
@@ -67,8 +69,11 @@ class IngredientFormatter:
             self.max_name_length
         )
         
-        # Get status emoji
-        status_emoji = self._get_status_emoji(match.match_status)
+        # Get status emoji - if changed, show pencil instead of regular status
+        if is_changed:
+            status_emoji = "✏️"
+        else:
+            status_emoji = self._get_status_emoji(match.match_status)
         
         return f"{row_number:<2} | {receipt_name:<{self.max_name_length}} | {ingredient_name:<{self.max_name_length}} | {status_emoji:<4}"
     

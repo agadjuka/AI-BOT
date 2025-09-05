@@ -1,6 +1,7 @@
 """
 Data models for receipt processing
 """
+import hashlib
 from typing import List, Optional, Dict, Any
 from dataclasses import dataclass, field
 
@@ -106,3 +107,13 @@ class ReceiptData:
         if not self.items:
             return 0
         return max(item.line_number for item in self.items)
+    
+    def get_receipt_hash(self) -> str:
+        """Generate hash for this receipt based on its content"""
+        # Create a string representation of the receipt content
+        content = f"total:{self.grand_total_text}|"
+        for item in sorted(self.items, key=lambda x: x.line_number):
+            content += f"item:{item.name}|"
+        
+        # Generate MD5 hash
+        return hashlib.md5(content.encode('utf-8')).hexdigest()[:8]
