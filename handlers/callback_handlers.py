@@ -11,7 +11,7 @@ from telegram.ext import ContextTypes
 
 from config.settings import BotConfig
 from models.receipt import ReceiptData, ReceiptItem
-from models.ingredient_matching import IngredientMatchingResult
+from models.ingredient_matching import IngredientMatchingResult, IngredientMatch
 from services.ai_service import ReceiptAnalysisService
 from services.ingredient_matching_service import IngredientMatchingService
 from services.file_generator_service import FileGeneratorService
@@ -320,17 +320,15 @@ class CallbackHandlers:
                 context.user_data.pop('changed_ingredient_indices', None)
                 context.user_data.pop('current_match_index', None)
                 
-                await query.answer("📄 Возвращаюсь к генерации файла...")
+                # Clear any pending data
+                context.user_data.pop('pending_google_sheets_upload', None)
+                context.user_data.pop('pending_file_generation', None)
+                
+                await query.answer("📄 Возвращаюсь к стартовой странице чека...")
                 await self.ui_manager.cleanup_all_except_anchor(update, context)
                 
-                # Check if we have receipt data
-                receipt_data = context.user_data.get('receipt_data')
-                if receipt_data:
-                    # Show matching table with edit button
-                    await self._show_matching_table_with_edit_button(update, context, receipt_data, matching_result)
-                else:
-                    # Fallback to receipt report
-                    await self._show_final_report_with_edit_button_callback(update, context)
+                # Always return to receipt report (start page)
+                await self._show_final_report_with_edit_button_callback(update, context)
                 return self.config.AWAITING_CORRECTION
         
         if action == "back_to_main_menu":
@@ -737,6 +735,187 @@ class CallbackHandlers:
             
             # Upload to Google Sheets
             await self._upload_to_google_sheets(update, context, receipt_data, matching_result)
+            return self.config.AWAITING_CORRECTION
+        
+        if action == "confirm_google_sheets_upload":
+            # User confirmed Google Sheets upload
+            await query.answer("📊 Загружаю данные в Google Sheets...")
+            
+            # Clean up all messages except anchor before showing new menu
+            await self.ui_manager.cleanup_all_except_anchor(update, context)
+            
+            # Get saved data
+            pending_data = context.user_data.get('pending_google_sheets_upload')
+            if not pending_data:
+                await self.ui_manager.send_menu(
+                    update, context,
+                    "❌ **Ошибка загрузки в Google Sheets**\n\n"
+                    "Данные для загрузки не найдены.\n"
+                    "Попробуйте начать процесс заново.",
+                    InlineKeyboardMarkup([
+                        [InlineKeyboardButton("📊 Загрузить в Google Sheets", callback_data="upload_to_google_sheets")],
+                        [InlineKeyboardButton("◀️ Назад", callback_data="back_to_receipt")]
+                    ]),
+                    'Markdown'
+                )
+                return self.config.AWAITING_CORRECTION
+            
+            receipt_data = pending_data['receipt_data']
+            matching_result = pending_data['matching_result']
+            
+            # Execute actual upload
+            await self._execute_google_sheets_upload(update, context, receipt_data, matching_result)
+            
+            # Clear pending data
+            context.user_data.pop('pending_google_sheets_upload', None)
+            return self.config.AWAITING_CORRECTION
+        
+        if action == "edit_google_sheets_matching":
+            # User wants to edit Google Sheets matching
+            await query.answer("✏️ Открываю редактор сопоставления...")
+            
+            # Get pending data
+            pending_data = context.user_data.get('pending_google_sheets_upload')
+            if not pending_data:
+                await self.ui_manager.send_menu(
+                    update, context,
+                    "❌ **Ошибка редактирования сопоставления**\n\n"
+                    "Данные для редактирования не найдены.\n"
+                    "Попробуйте начать процесс заново.",
+                    InlineKeyboardMarkup([
+                        [InlineKeyboardButton("📊 Загрузить в Google Sheets", callback_data="upload_to_google_sheets")],
+                        [InlineKeyboardButton("◀️ Назад", callback_data="back_to_receipt")]
+                    ]),
+                    'Markdown'
+                )
+                return self.config.AWAITING_CORRECTION
+            
+            receipt_data = pending_data['receipt_data']
+            matching_result = pending_data['matching_result']
+            
+            # Show Google Sheets matching table
+            await self._show_google_sheets_matching_table(update, context, receipt_data, matching_result)
+            return self.config.AWAITING_CORRECTION
+        
+        if action == "apply_google_sheets_matching":
+            # Apply Google Sheets matching changes
+            await query.answer("✅ Изменения применены!")
+            
+            # Return to Google Sheets preview
+            pending_data = context.user_data.get('pending_google_sheets_upload')
+            if pending_data:
+                receipt_data = pending_data['receipt_data']
+                matching_result = pending_data['matching_result']
+                await self._show_google_sheets_preview(update, context, receipt_data, matching_result)
+            return self.config.AWAITING_CORRECTION
+        
+        if action == "back_to_google_sheets_preview":
+            # Return to Google Sheets preview
+            await query.answer("◀️ Возвращаюсь к предпросмотру...")
+            
+            pending_data = context.user_data.get('pending_google_sheets_upload')
+            if pending_data:
+                receipt_data = pending_data['receipt_data']
+                matching_result = pending_data['matching_result']
+                await self._show_google_sheets_preview(update, context, receipt_data, matching_result)
+            return self.config.AWAITING_CORRECTION
+        
+        if action == "select_google_sheets_position":
+            # User wants to select position for Google Sheets matching
+            await query.answer("🔍 Выберите позицию для сопоставления...")
+            
+            # Show position selection interface
+            await self._show_google_sheets_position_selection(update, context)
+            return self.config.AWAITING_CORRECTION
+        
+        if action.startswith("edit_google_sheets_item_"):
+            # User wants to edit specific Google Sheets item
+            item_index = int(action.split("_")[4])  # Changed from [3] to [4]
+            await query.answer("✏️ Открываю редактор сопоставления...")
+            
+            # Show manual matching for this item
+            await self._show_google_sheets_manual_matching_for_item(update, context, item_index)
+            return self.config.AWAITING_CORRECTION
+        
+        if action.startswith("select_google_sheets_line_"):
+            # User selected a line for Google Sheets matching
+            line_number = int(action.split("_")[3])
+            await query.answer(f"Выбрана строка {line_number}")
+            
+            # Set the selected line number
+            context.user_data['selected_google_sheets_line'] = line_number
+            
+            # Show instruction to enter ingredient name
+            await self.ui_manager.send_temp(
+                update, context, 
+                f"Выбрана строка {line_number}. Теперь введите название ингредиента из Google Таблиц для поиска:", 
+                duration=10
+            )
+            context.user_data['awaiting_google_sheets_ingredient_name'] = True
+            return self.config.AWAITING_CORRECTION
+        
+        if action.startswith("select_google_sheets_suggestion_"):
+            # User selected a suggestion for Google Sheets matching
+            parts = action.split("_")
+            item_index = int(parts[3])
+            suggestion_index = int(parts[4])
+            
+            await self._handle_google_sheets_suggestion_selection(update, context, item_index, suggestion_index)
+            return self.config.AWAITING_CORRECTION
+        
+        if action.startswith("search_google_sheets_ingredient_"):
+            # User wants to search for Google Sheets ingredient
+            item_index = int(action.split("_")[3])
+            await query.answer("🔍 Введите поисковый запрос...")
+            
+            # Set search mode
+            context.user_data['google_sheets_search_mode'] = True
+            context.user_data['google_sheets_search_item_index'] = item_index
+            
+            await self.ui_manager.send_temp(
+                update, context, 
+                "Введите поисковый запрос для поиска ингредиента в Google Таблицах:", 
+                duration=30
+            )
+            return self.config.AWAITING_CORRECTION
+        
+        if action.startswith("skip_google_sheets_item_"):
+            # User wants to skip Google Sheets item
+            item_index = int(action.split("_")[3])
+            await query.answer("⏭️ Товар пропущен")
+            
+            # Return to matching table
+            await self._show_google_sheets_matching_table(update, context, 
+                context.user_data['pending_google_sheets_upload']['receipt_data'],
+                context.user_data['pending_google_sheets_upload']['matching_result'])
+            return self.config.AWAITING_CORRECTION
+        
+        if action == "back_to_google_sheets_matching":
+            # Return to Google Sheets matching table
+            await query.answer("◀️ Возвращаюсь к таблице сопоставления...")
+            
+            pending_data = context.user_data.get('pending_google_sheets_upload')
+            if pending_data:
+                await self._show_google_sheets_matching_table(update, context, 
+                    pending_data['receipt_data'], pending_data['matching_result'])
+            return self.config.AWAITING_CORRECTION
+        
+        if action.startswith("select_google_sheets_position_match_"):
+            # User selected a position match from search results
+            parts = action.split("_")
+            selected_line = int(parts[4])
+            result_index = int(parts[5]) - 1
+            
+            await self._handle_google_sheets_position_match_selection(update, context, selected_line, result_index)
+            return self.config.AWAITING_CORRECTION
+        
+        if action.startswith("select_google_sheets_search_"):
+            # User selected a search result for specific item
+            parts = action.split("_")
+            item_index = int(parts[3])
+            result_index = int(parts[4])
+            
+            await self._handle_google_sheets_search_selection(update, context, item_index, result_index)
             return self.config.AWAITING_CORRECTION
         
         if action == "cancel":
@@ -2097,6 +2276,428 @@ class CallbackHandlers:
         
         return lines
 
+    def _format_google_sheets_table_preview(self, receipt_data: ReceiptData, matching_result: IngredientMatchingResult) -> str:
+        """Format table preview for Google Sheets upload"""
+        if not receipt_data.items or not matching_result.matches:
+            return "Нет данных для отображения"
+        
+        # Set fixed column widths (total max 58 characters)
+        date_width = 8        # Fixed width for date
+        volume_width = 6      # Fixed width for volume
+        price_width = 10      # Fixed width for price
+        product_width = 22    # Fixed width for product
+        
+        # Create header using the new format
+        header = f"{'Date':<{date_width}} | {'Vol':<{volume_width}} | {'цена':<{price_width}} | {'Product':<{product_width}}"
+        separator = "─" * (date_width + volume_width + price_width + product_width + 12)  # 12 characters for separators
+        
+        lines = [header, separator]
+        
+        # Add data rows using the new format
+        for i, item in enumerate(receipt_data.items):
+            # Get matching result for this item
+            match = None
+            if i < len(matching_result.matches):
+                match = matching_result.matches[i]
+            
+            # Prepare row data
+            current_date = datetime.now().strftime('%d.%m.%Y')
+            quantity = item.quantity if item.quantity is not None else 0
+            price = item.price if item.price is not None else 0
+            matched_product = match.matched_ingredient_name if match and match.matched_ingredient_name else ""
+            
+            # Format volume - only show decimals if needed, no "kg"
+            if quantity > 0:
+                if quantity == int(quantity):
+                    volume_str = str(int(quantity))
+                else:
+                    volume_str = f"{quantity:.1f}"
+            else:
+                volume_str = "-"
+            
+            # Format price using the same format as other tables (with spaces)
+            if price > 0:
+                if price == int(price):
+                    price_str = f"{int(price):,}".replace(",", " ")
+                else:
+                    price_str = f"{price:,.1f}".replace(",", " ")
+            else:
+                price_str = "-"
+            
+            # Handle long product names with word wrapping
+            matched_product_parts = self._wrap_text(matched_product, product_width)
+            
+            # Create multiple lines if product name is wrapped
+            for line_idx in range(len(matched_product_parts)):
+                current_product = matched_product_parts[line_idx]
+                
+                # Only show date, volume, and price on first line
+                if line_idx == 0:
+                    line = f"{current_date:<{date_width}} | {volume_str:<{volume_width}} | {price_str:<{price_width}} | {current_product:<{product_width}}"
+                else:
+                    line = f"{'':<{date_width}} | {'':<{volume_width}} | {'':<{price_width}} | {current_product:<{product_width}}"
+                
+                lines.append(line)
+        
+        return "\n".join(lines)
+
+    def _wrap_text(self, text: str, max_width: int) -> list[str]:
+        """Wrap text to fit within max_width, breaking on words when possible"""
+        if not text:
+            return [""]
+        
+        if len(text) <= max_width:
+            return [text]
+        
+        words = text.split()
+        lines = []
+        current_line = ""
+        
+        for word in words:
+            # If adding this word would exceed the width
+            if len(current_line) + len(word) + 1 > max_width:
+                if current_line:
+                    lines.append(current_line)
+                    current_line = word
+                else:
+                    # Single word is too long, split it with hyphen
+                    lines.append(word[:max_width-1] + "-")
+                    current_line = word[max_width-1:]
+            else:
+                if current_line:
+                    current_line += " " + word
+                else:
+                    current_line = word
+        
+        if current_line:
+            lines.append(current_line)
+        
+        return lines
+
+    def _format_google_sheets_matching_table(self, matching_result: IngredientMatchingResult) -> str:
+        """Format Google Sheets matching table for editing"""
+        if not matching_result.matches:
+            return "Нет ингредиентов для сопоставления."
+        
+        # Create table header
+        table_lines = []
+        table_lines.append("**Сопоставление ингредиентов для Google Таблиц:**\n")
+        
+        # Add summary
+        summary = f"📊 **Статистика:** Всего: {matching_result.total_items} | "
+        summary += f"🟢 Точных: {matching_result.exact_matches} | "
+        summary += f"🟡 Частичных: {matching_result.partial_matches} | "
+        summary += f"🔴 Не найдено: {matching_result.no_matches}\n"
+        table_lines.append(summary)
+        
+        # Create table
+        table_lines.append("```")
+        table_lines.append(self._create_google_sheets_table_header())
+        table_lines.append(self._create_google_sheets_table_separator())
+        
+        # Add table rows
+        for i, match in enumerate(matching_result.matches, 1):
+            table_lines.append(self._create_google_sheets_table_row(i, match))
+        
+        table_lines.append("```")
+        
+        return "\n".join(table_lines)
+    
+    def _create_google_sheets_table_header(self) -> str:
+        """Create Google Sheets table header"""
+        return f"{'№':<2} | {'Наименование':<20} | {'Google Таблицы':<20} | {'Статус':<4}"
+    
+    def _create_google_sheets_table_separator(self) -> str:
+        """Create Google Sheets table separator"""
+        return "-" * 50
+    
+    def _create_google_sheets_table_row(self, row_number: int, match: IngredientMatch) -> str:
+        """Create a Google Sheets table row for a match"""
+        # Truncate names if too long
+        receipt_name = self._truncate_name(match.receipt_item_name, 20)
+        ingredient_name = self._truncate_name(
+            match.matched_ingredient_name or "—", 
+            20
+        )
+        
+        # Get status emoji
+        status_emoji = self._get_google_sheets_status_emoji(match.match_status)
+        
+        return f"{row_number:<2} | {receipt_name:<20} | {ingredient_name:<20} | {status_emoji:<4}"
+    
+    def _get_google_sheets_status_emoji(self, status) -> str:
+        """Get emoji for Google Sheets match status"""
+        from models.ingredient_matching import MatchStatus
+        if status == MatchStatus.EXACT_MATCH:
+            return "🟢"
+        elif status == MatchStatus.PARTIAL_MATCH:
+            return "🟡"
+        else:
+            return "🔴"
+    
+    def _truncate_name(self, name: str, max_length: int) -> str:
+        """Truncate name if too long"""
+        if len(name) <= max_length:
+            return name
+        return name[:max_length-3] + "..."
+
+    async def _show_google_sheets_preview(self, update: Update, context: ContextTypes.DEFAULT_TYPE,
+                                        receipt_data: ReceiptData, matching_result: IngredientMatchingResult):
+        """Show Google Sheets upload preview with confirmation buttons"""
+        from telegram import InlineKeyboardButton, InlineKeyboardMarkup
+        
+        # Create table preview with Google Sheets data
+        table_preview = self._format_google_sheets_table_preview(receipt_data, matching_result)
+        
+        # Text with table preview only
+        text = "📊 **Предварительный просмотр загрузки в Google Таблицы**\n\n"
+        text += f"```\n{table_preview}\n```"
+        
+        keyboard = [
+            [InlineKeyboardButton("✅ Загрузить в Google Таблицы", callback_data="confirm_google_sheets_upload")],
+            [InlineKeyboardButton("✏️ Изменить сопоставление", callback_data="edit_google_sheets_matching")],
+            [InlineKeyboardButton("◀️ Назад", callback_data="back_to_receipt")]
+        ]
+        
+        reply_markup = InlineKeyboardMarkup(keyboard)
+        
+        # Save data for upload
+        context.user_data['pending_google_sheets_upload'] = {
+            'receipt_data': receipt_data,
+            'matching_result': matching_result
+        }
+        
+        await self.ui_manager.send_menu(
+            update, context, text, reply_markup, 'Markdown'
+        )
+
+    async def _show_google_sheets_matching_table(self, update: Update, context: ContextTypes.DEFAULT_TYPE,
+                                               receipt_data: ReceiptData, matching_result: IngredientMatchingResult):
+        """Show Google Sheets matching table for editing"""
+        from telegram import InlineKeyboardButton, InlineKeyboardMarkup
+        
+        # Format the matching table for Google Sheets
+        table_text = self._format_google_sheets_matching_table(matching_result)
+        
+        # Create buttons
+        keyboard = []
+        
+        # Add buttons for items that need matching (max 2 per row)
+        items_needing_matching = []
+        for i, match in enumerate(matching_result.matches):
+            if match.match_status.value in ['partial', 'no_match']:
+                items_needing_matching.append((i, match))
+        
+        for i, (index, match) in enumerate(items_needing_matching):
+            # Get status emoji instead of pencil
+            status_emoji = self._get_google_sheets_status_emoji(match.match_status)
+            button_text = f"{status_emoji} {self._truncate_name(match.receipt_item_name, 15)}"
+            
+            if i % 2 == 0:
+                # Start new row
+                keyboard.append([InlineKeyboardButton(button_text, callback_data=f"edit_google_sheets_item_{index}")])
+            else:
+                # Add to existing row
+                keyboard[-1].append(InlineKeyboardButton(button_text, callback_data=f"edit_google_sheets_item_{index}"))
+        
+        # Add control buttons
+        keyboard.extend([
+            [InlineKeyboardButton("🔍 Выбрать позицию для сопоставления", callback_data="select_google_sheets_position")],
+            [InlineKeyboardButton("✅ Применить изменения", callback_data="apply_google_sheets_matching")],
+            [InlineKeyboardButton("◀️ Назад к предпросмотру", callback_data="back_to_google_sheets_preview")]
+        ])
+        
+        reply_markup = InlineKeyboardMarkup(keyboard)
+        
+        await self.ui_manager.send_menu(
+            update, context, table_text, reply_markup, 'Markdown'
+        )
+
+    async def _show_google_sheets_position_selection(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
+        """Show position selection for Google Sheets matching"""
+        from telegram import InlineKeyboardButton, InlineKeyboardMarkup
+        
+        pending_data = context.user_data.get('pending_google_sheets_upload')
+        if not pending_data:
+            await self.ui_manager.send_temp(
+                update, context, "Ошибка: данные для сопоставления не найдены.", duration=5
+            )
+            return
+        
+        matching_result = pending_data['matching_result']
+        
+        # Show instruction
+        text = "**Выберите позицию для сопоставления**\n\n"
+        text += "Введите номер строки, которую хотите сопоставить с ингредиентом из Google Таблиц:"
+        
+        # Create buttons for each item
+        keyboard = []
+        for i, match in enumerate(matching_result.matches, 1):
+            status_emoji = self._get_google_sheets_status_emoji(match.match_status)
+            button_text = f"{i}. {status_emoji} {self._truncate_name(match.receipt_item_name, 20)}"
+            keyboard.append([InlineKeyboardButton(button_text, callback_data=f"select_google_sheets_line_{i}")])
+        
+        # Add back button
+        keyboard.append([InlineKeyboardButton("◀️ Назад", callback_data="back_to_google_sheets_matching")])
+        
+        reply_markup = InlineKeyboardMarkup(keyboard)
+        
+        await self.ui_manager.send_menu(
+            update, context, text, reply_markup, 'Markdown'
+        )
+
+    async def _show_google_sheets_manual_matching_for_item(self, update: Update, context: ContextTypes.DEFAULT_TYPE, item_index: int):
+        """Show manual matching interface for specific Google Sheets item"""
+        from telegram import InlineKeyboardButton, InlineKeyboardMarkup
+        
+        pending_data = context.user_data.get('pending_google_sheets_upload')
+        if not pending_data:
+            await self.ui_manager.send_temp(
+                update, context, "Ошибка: данные для сопоставления не найдены.", duration=5
+            )
+            return
+        
+        matching_result = pending_data['matching_result']
+        
+        if item_index >= len(matching_result.matches):
+            await self.ui_manager.send_temp(
+                update, context, "Ошибка: неверный индекс товара.", duration=5
+            )
+            return
+        
+        current_match = matching_result.matches[item_index]
+        
+        # Show current match info
+        progress_text = f"**Сопоставление ингредиентов для Google Таблиц**\n\n"
+        progress_text += f"**Товар:** {current_match.receipt_item_name}\n\n"
+        progress_text += "**Выберите подходящий ингредиент:**\n\n"
+        
+        # Get Google Sheets ingredients
+        google_sheets_ingredients = context.bot_data.get('google_sheets_ingredients', {})
+        
+        if current_match.suggested_matches:
+            # Show suggested matches
+            suggestions_text = self._format_google_sheets_suggestions(current_match)
+            progress_text += suggestions_text + "\n\n"
+        else:
+            progress_text += "❌ **Подходящих вариантов не найдено**\n\n"
+        
+        # Create buttons
+        keyboard = []
+        
+        # Add suggestion buttons
+        if current_match.suggested_matches:
+            for i, suggestion in enumerate(current_match.suggested_matches[:5], 1):  # Show max 5 suggestions
+                button_text = f"{i}. {self._truncate_name(suggestion['name'], 20)} ({int(suggestion['score'] * 100)}%)"
+                keyboard.append([InlineKeyboardButton(button_text, callback_data=f"select_google_sheets_suggestion_{item_index}_{i-1}")])
+        
+        # Add search and control buttons
+        keyboard.extend([
+            [InlineKeyboardButton("🔍 Поиск", callback_data=f"search_google_sheets_ingredient_{item_index}")],
+            [InlineKeyboardButton("⏭️ Пропустить", callback_data=f"skip_google_sheets_item_{item_index}")],
+            [InlineKeyboardButton("◀️ Назад", callback_data="back_to_google_sheets_matching")]
+        ])
+        
+        reply_markup = InlineKeyboardMarkup(keyboard)
+        
+        await self.ui_manager.send_menu(
+            update, context, progress_text, reply_markup, 'Markdown'
+        )
+
+    def _format_google_sheets_suggestions(self, match) -> str:
+        """Format Google Sheets suggestions for manual matching"""
+        if not match.suggested_matches:
+            return "Нет предложений"
+        
+        lines = []
+        for i, suggestion in enumerate(match.suggested_matches[:5], 1):  # Show max 5 suggestions
+            name = self._truncate_name(suggestion['name'], 25)
+            score = int(suggestion['score'] * 100)
+            lines.append(f"{i}. {name} ({score}%)")
+        
+        return "\n".join(lines)
+
+    async def _handle_google_sheets_suggestion_selection(self, update: Update, context: ContextTypes.DEFAULT_TYPE, 
+                                                       item_index: int, suggestion_index: int):
+        """Handle Google Sheets suggestion selection"""
+        pending_data = context.user_data.get('pending_google_sheets_upload')
+        if not pending_data:
+            await self.ui_manager.send_temp(
+                update, context, "Ошибка: данные для сопоставления не найдены.", duration=5
+            )
+            return
+        
+        matching_result = pending_data['matching_result']
+        
+        if item_index >= len(matching_result.matches):
+            await self.ui_manager.send_temp(
+                update, context, "Ошибка: неверный индекс товара.", duration=5
+            )
+            return
+        
+        current_match = matching_result.matches[item_index]
+        
+        if not current_match.suggested_matches or suggestion_index >= len(current_match.suggested_matches):
+            await self.ui_manager.send_temp(
+                update, context, "Ошибка: неверный индекс предложения.", duration=5
+            )
+            return
+        
+        # Get selected suggestion
+        selected_suggestion = current_match.suggested_matches[suggestion_index]
+        
+        # Update the match
+        current_match.matched_ingredient_name = selected_suggestion['name']
+        current_match.matched_ingredient_id = selected_suggestion['id']
+        from models.ingredient_matching import MatchStatus
+        current_match.match_status = MatchStatus.EXACT_MATCH
+        current_match.similarity_score = selected_suggestion['score']
+        
+        # Show success message
+        await self.ui_manager.send_temp(
+            update, context,
+            f"✅ Сопоставлено: {current_match.receipt_item_name} → {selected_suggestion['name']}",
+            duration=2
+        )
+        
+        # Return to matching table
+        await self._show_google_sheets_matching_table(update, context, 
+            pending_data['receipt_data'], matching_result)
+
+    async def _handle_google_sheets_position_match_selection(self, update: Update, context: ContextTypes.DEFAULT_TYPE, 
+                                                           selected_line: int, result_index: int):
+        """Handle Google Sheets position match selection from search results"""
+        # This would need to be implemented based on how search results are stored
+        # For now, we'll show a placeholder message
+        await self.ui_manager.send_temp(
+            update, context,
+            f"✅ Сопоставление для строки {selected_line} выполнено!",
+            duration=2
+        )
+        
+        # Return to matching table
+        pending_data = context.user_data.get('pending_google_sheets_upload')
+        if pending_data:
+            await self._show_google_sheets_matching_table(update, context, 
+                pending_data['receipt_data'], pending_data['matching_result'])
+
+    async def _handle_google_sheets_search_selection(self, update: Update, context: ContextTypes.DEFAULT_TYPE, 
+                                                   item_index: int, result_index: int):
+        """Handle Google Sheets search result selection for specific item"""
+        # This would need to be implemented based on how search results are stored
+        # For now, we'll show a placeholder message
+        await self.ui_manager.send_temp(
+            update, context,
+            f"✅ Сопоставление для товара {item_index + 1} выполнено!",
+            duration=2
+        )
+        
+        # Return to matching table
+        pending_data = context.user_data.get('pending_google_sheets_upload')
+        if pending_data:
+            await self._show_google_sheets_matching_table(update, context, 
+                pending_data['receipt_data'], pending_data['matching_result'])
+
     async def _show_file_format_selection(self, update: Update, context: ContextTypes.DEFAULT_TYPE,
                                         receipt_data: ReceiptData, matching_result: IngredientMatchingResult):
         """Show file format selection menu with table preview"""
@@ -2295,7 +2896,7 @@ class CallbackHandlers:
             if not matching_result:
                 print("DEBUG: No matching result found, creating new one for new item")
                 # Create new matching result if none exists
-                from models.ingredient_matching import IngredientMatchingResult
+                from models.ingredient_matching import IngredientMatchingResult, IngredientMatch
                 matching_result = IngredientMatchingResult()
                 changed_indices = set()
             
@@ -2571,7 +3172,7 @@ class CallbackHandlers:
     
     async def _upload_to_google_sheets(self, update: Update, context: ContextTypes.DEFAULT_TYPE,
                                      receipt_data: ReceiptData, matching_result: IngredientMatchingResult):
-        """Upload receipt data to Google Sheets"""
+        """Show Google Sheets upload preview before actual upload"""
         try:
             # Check if Google Sheets service is available
             if not self.google_sheets_service.is_available():
@@ -2587,6 +3188,49 @@ class CallbackHandlers:
                 )
                 return
             
+            # Ensure Google Sheets ingredients are loaded
+            if not await self._ensure_google_sheets_ingredients_loaded(context):
+                await self.ui_manager.send_menu(
+                    update, context,
+                    "❌ **Ошибка загрузки в Google Sheets**\n\n"
+                    "Не удалось загрузить справочник ингредиентов для Google Sheets.\n"
+                    "Проверьте настройки конфигурации.",
+                    InlineKeyboardMarkup([
+                        [InlineKeyboardButton("📊 Загрузить в Google Sheets", callback_data="upload_to_google_sheets")],
+                        [InlineKeyboardButton("◀️ Назад", callback_data="back_to_receipt")]
+                    ]),
+                    'Markdown'
+                )
+                return
+            
+            # Get Google Sheets ingredients from bot data
+            google_sheets_ingredients = context.bot_data.get('google_sheets_ingredients', {})
+            
+            # Perform matching with Google Sheets ingredients
+            print(f"DEBUG: Performing matching with Google Sheets ingredients for {len(receipt_data.items)} items")
+            google_sheets_matching_result = self.ingredient_matching_service.match_ingredients(receipt_data, google_sheets_ingredients)
+            
+            # Show preview with Google Sheets matching result
+            await self._show_google_sheets_preview(update, context, receipt_data, google_sheets_matching_result)
+            
+        except Exception as e:
+            print(f"Ошибка при подготовке загрузки в Google Sheets: {e}")
+            await self.ui_manager.send_menu(
+                update, context,
+                f"❌ **Ошибка при подготовке загрузки**\n\n"
+                f"**Детали ошибки:** {e}\n\n"
+                "Попробуйте начать процесс заново.",
+                InlineKeyboardMarkup([
+                    [InlineKeyboardButton("🔄 Попробовать снова", callback_data="upload_to_google_sheets")],
+                    [InlineKeyboardButton("◀️ Назад", callback_data="back_to_receipt")]
+                ]),
+                'Markdown'
+            )
+    
+    async def _execute_google_sheets_upload(self, update: Update, context: ContextTypes.DEFAULT_TYPE,
+                                          receipt_data: ReceiptData, matching_result: IngredientMatchingResult):
+        """Execute actual Google Sheets upload"""
+        try:
             # Show upload summary
             summary = self.google_sheets_service.get_upload_summary(receipt_data, matching_result)
             

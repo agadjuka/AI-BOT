@@ -114,6 +114,14 @@ class MessageHandlers:
         except Exception as e:
             print(f"Не удалось удалить сообщение пользователя: {e}")
         
+        # Check for Google Sheets ingredient search
+        if context.user_data.get('awaiting_google_sheets_ingredient_name'):
+            return await self._handle_google_sheets_ingredient_search(update, context, user_input)
+        
+        # Check for Google Sheets search mode
+        if context.user_data.get('google_sheets_search_mode'):
+            return await self._handle_google_sheets_search(update, context, user_input)
+        
         if field_to_edit:
             # Edit specific field
             return await self._handle_field_edit(update, context, user_input, line_number, field_to_edit)
@@ -543,7 +551,7 @@ class MessageHandlers:
                 # Add control buttons
                 keyboard.extend([
                     [InlineKeyboardButton("🔍 Новый поиск", callback_data="select_position_for_matching")],
-                    [InlineKeyboardButton("📋 Назад к обзору", callback_data="back_to_matching_overview")]
+                    [InlineKeyboardButton("📋 Назад к обзору", callback_data="back_to_receipt")]
                 ])
                 
                 reply_markup = InlineKeyboardMarkup(keyboard)
@@ -561,7 +569,7 @@ class MessageHandlers:
                     "Попробуйте другой поисковый запрос или вернитесь к обзору.",
                     InlineKeyboardMarkup([
                         [InlineKeyboardButton("🔍 Новый поиск", callback_data="select_position_for_matching")],
-                        [InlineKeyboardButton("📋 Назад к обзору", callback_data="back_to_matching_overview")]
+                        [InlineKeyboardButton("📋 Назад к обзору", callback_data="back_to_receipt")]
                     ]),
                     'Markdown'
                 )
@@ -572,7 +580,7 @@ class MessageHandlers:
                 "Попробуйте другой поисковый запрос или вернитесь к обзору.",
                 InlineKeyboardMarkup([
                     [InlineKeyboardButton("🔍 Новый поиск", callback_data="select_position_for_matching")],
-                    [InlineKeyboardButton("📋 Назад к обзору", callback_data="back_to_matching_overview")]
+                    [InlineKeyboardButton("📋 Назад к обзору", callback_data="back_to_receipt")]
                 ]),
                 'Markdown'
             )
@@ -714,7 +722,7 @@ class MessageHandlers:
                 
                 # Add control buttons
                 keyboard.extend([
-                    [InlineKeyboardButton("◀️ Назад", callback_data="back_to_matching_overview")]
+                    [InlineKeyboardButton("◀️ Назад", callback_data="back_to_receipt")]
                 ])
                 
                 reply_markup = InlineKeyboardMarkup(keyboard)
@@ -731,7 +739,7 @@ class MessageHandlers:
                     f"❌ **По запросу '{user_input}' не найдено подходящих вариантов**\n\n"
                     "Попробуйте другой поисковый запрос или вернитесь к обзору.",
                     InlineKeyboardMarkup([
-                        [InlineKeyboardButton("◀️ Назад", callback_data="back_to_matching_overview")]
+                        [InlineKeyboardButton("◀️ Назад", callback_data="back_to_receipt")]
                     ]),
                     'Markdown'
                 )
@@ -741,7 +749,7 @@ class MessageHandlers:
                 f"❌ **По запросу '{user_input}' ничего не найдено**\n\n"
                 "Попробуйте другой поисковый запрос или вернитесь к обзору.",
                 InlineKeyboardMarkup([
-                    [InlineKeyboardButton("◀️ Назад", callback_data="back_to_matching_overview")]
+                    [InlineKeyboardButton("◀️ Назад", callback_data="back_to_receipt")]
                 ]),
                 'Markdown'
             )
@@ -1277,3 +1285,143 @@ class MessageHandlers:
         
         # Send last part with keyboard
         await message.reply_text(parts[-1], reply_markup=reply_markup, parse_mode='Markdown')
+    
+    async def _handle_google_sheets_ingredient_search(self, update: Update, context: ContextTypes.DEFAULT_TYPE, user_input: str) -> int:
+        """Handle Google Sheets ingredient name search"""
+        from handlers.callback_handlers import CallbackHandlers
+        
+        # Get the selected line number
+        selected_line = context.user_data.get('selected_google_sheets_line')
+        if not selected_line:
+            await self.ui_manager.send_temp(
+                update, context, "Ошибка: не выбрана строка для сопоставления.", duration=5
+            )
+            return self.config.AWAITING_CORRECTION
+        
+        # Get Google Sheets ingredients
+        google_sheets_ingredients = context.bot_data.get('google_sheets_ingredients', {})
+        
+        if not google_sheets_ingredients:
+            await self.ui_manager.send_temp(
+                update, context, "Ошибка: справочник Google Таблиц не загружен.", duration=5
+            )
+            return self.config.AWAITING_CORRECTION
+        
+        # Search for ingredients
+        search_results = []
+        query_lower = user_input.lower()
+        
+        for ingredient_id, ingredient_data in google_sheets_ingredients.items():
+            if query_lower in ingredient_data.get('name', '').lower():
+                search_results.append({
+                    'id': ingredient_id,
+                    'name': ingredient_data.get('name', ''),
+                    'score': 1.0  # Exact match
+                })
+        
+        # Clear the search flag
+        context.user_data.pop('awaiting_google_sheets_ingredient_name', None)
+        
+        if search_results:
+            # Show search results
+            await self._show_google_sheets_search_results(update, context, user_input, search_results, selected_line)
+        else:
+            await self.ui_manager.send_temp(
+                update, context, f"По запросу '{user_input}' в Google Таблицах ничего не найдено.", duration=5
+            )
+        
+        return self.config.AWAITING_CORRECTION
+    
+    async def _handle_google_sheets_search(self, update: Update, context: ContextTypes.DEFAULT_TYPE, user_input: str) -> int:
+        """Handle Google Sheets search mode"""
+        item_index = context.user_data.get('google_sheets_search_item_index')
+        if item_index is None:
+            await self.ui_manager.send_temp(
+                update, context, "Ошибка: не выбран товар для поиска.", duration=5
+            )
+            return self.config.AWAITING_CORRECTION
+        
+        # Get Google Sheets ingredients
+        google_sheets_ingredients = context.bot_data.get('google_sheets_ingredients', {})
+        
+        if not google_sheets_ingredients:
+            await self.ui_manager.send_temp(
+                update, context, "Ошибка: справочник Google Таблиц не загружен.", duration=5
+            )
+            return self.config.AWAITING_CORRECTION
+        
+        # Search for ingredients
+        search_results = []
+        query_lower = user_input.lower()
+        
+        for ingredient_id, ingredient_data in google_sheets_ingredients.items():
+            if query_lower in ingredient_data.get('name', '').lower():
+                search_results.append({
+                    'id': ingredient_id,
+                    'name': ingredient_data.get('name', ''),
+                    'score': 1.0  # Exact match
+                })
+        
+        # Clear search mode
+        context.user_data.pop('google_sheets_search_mode', None)
+        context.user_data.pop('google_sheets_search_item_index', None)
+        
+        if search_results:
+            # Show search results for specific item
+            await self._show_google_sheets_item_search_results(update, context, user_input, search_results, item_index)
+        else:
+            await self.ui_manager.send_temp(
+                update, context, f"По запросу '{user_input}' в Google Таблицах ничего не найдено.", duration=5
+            )
+        
+        return self.config.AWAITING_CORRECTION
+    
+    async def _show_google_sheets_search_results(self, update: Update, context: ContextTypes.DEFAULT_TYPE, 
+                                               query: str, results: list, selected_line: int):
+        """Show Google Sheets search results for position selection"""
+        from telegram import InlineKeyboardButton, InlineKeyboardMarkup
+        
+        text = f"**Результаты поиска в Google Таблицах для '{query}':**\n\n"
+        
+        # Create buttons for results
+        keyboard = []
+        for i, result in enumerate(results[:10], 1):  # Show max 10 results
+            button_text = f"{i}. {self._truncate_name(result['name'], 25)}"
+            keyboard.append([InlineKeyboardButton(button_text, callback_data=f"select_google_sheets_position_match_{selected_line}_{i}")])
+        
+        # Add back button
+        keyboard.append([InlineKeyboardButton("◀️ Назад", callback_data="back_to_google_sheets_matching")])
+        
+        reply_markup = InlineKeyboardMarkup(keyboard)
+        
+        await self.ui_manager.send_menu(
+            update, context, text, reply_markup, 'Markdown'
+        )
+    
+    async def _show_google_sheets_item_search_results(self, update: Update, context: ContextTypes.DEFAULT_TYPE, 
+                                                    query: str, results: list, item_index: int):
+        """Show Google Sheets search results for specific item"""
+        from telegram import InlineKeyboardButton, InlineKeyboardMarkup
+        
+        text = f"**Результаты поиска в Google Таблицах для '{query}':**\n\n"
+        
+        # Create buttons for results
+        keyboard = []
+        for i, result in enumerate(results[:10], 1):  # Show max 10 results
+            button_text = f"{i}. {self._truncate_name(result['name'], 25)}"
+            keyboard.append([InlineKeyboardButton(button_text, callback_data=f"select_google_sheets_search_{item_index}_{i-1}")])
+        
+        # Add back button
+        keyboard.append([InlineKeyboardButton("◀️ Назад", callback_data="back_to_google_sheets_matching")])
+        
+        reply_markup = InlineKeyboardMarkup(keyboard)
+        
+        await self.ui_manager.send_menu(
+            update, context, text, reply_markup, 'Markdown'
+        )
+    
+    def _truncate_name(self, name: str, max_length: int) -> str:
+        """Truncate name if too long"""
+        if len(name) <= max_length:
+            return name
+        return name[:max_length-3] + "..."

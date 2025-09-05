@@ -3,136 +3,136 @@
     "matches": [
       {
         "receipt_item_name": "Cabbage",
-        "matched_ingredient_name": "cabbage",
-        "matched_ingredient_id": 26,
-        "match_status": "exact",
-        "similarity_score": 1.0,
+        "matched_ingredient_name": "cabbage red",
+        "matched_ingredient_id": "cabbage_red_011",
+        "match_status": "partial",
+        "similarity_score": 0.6944444444444444,
         "suggested_matches": [
           {
-            "name": "cabbage",
-            "id": 26,
-            "score": 1.0
-          },
-          {
-            "name": "red cabbage",
-            "id": 27,
+            "name": "cabbage red",
+            "id": "cabbage_red_011",
             "score": 0.6944444444444444
           },
           {
-            "name": "cranberry",
-            "id": 61,
-            "score": 0.35
-          },
-          {
-            "name": "babu cucumber",
-            "id": 55,
-            "score": 0.27999999999999997
+            "name": "cabbage white",
+            "id": "cabbage_white_012",
+            "score": 0.6399999999999999
           },
           {
             "name": "cucumber",
-            "id": 21,
+            "id": "cucumber_010",
             "score": 0.27999999999999997
+          },
+          {
+            "name": "mayonnaise",
+            "id": "mayonnaise_030",
+            "score": 0.24705882352941178
+          },
+          {
+            "name": "carrot",
+            "id": "carrot_009",
+            "score": 0.2153846153846154
           }
         ]
       },
       {
         "receipt_item_name": "Cucumber",
         "matched_ingredient_name": "cucumber",
-        "matched_ingredient_id": 21,
+        "matched_ingredient_id": "cucumber_010",
         "match_status": "exact",
         "similarity_score": 1.0,
         "suggested_matches": [
           {
             "name": "cucumber",
-            "id": 21,
+            "id": "cucumber_010",
             "score": 1.0
           },
           {
-            "name": "babu cucumber",
-            "id": 55,
-            "score": 0.6833333333333332
+            "name": "cabbage red",
+            "id": "cabbage_red_011",
+            "score": 0.29473684210526313
           },
           {
-            "name": "pickles cucumber",
-            "id": 128,
-            "score": 0.6166666666666666
+            "name": "chicken",
+            "id": "chicken_002",
+            "score": 0.27999999999999997
           },
           {
-            "name": "cranberry",
-            "id": 61,
-            "score": 0.32941176470588235
+            "name": "lettuce",
+            "id": "lettuce_029",
+            "score": 0.27999999999999997
           },
           {
-            "name": "berry",
-            "id": 44,
-            "score": 0.3230769230769231
+            "name": "coconut cream",
+            "id": "coconut_cream_023",
+            "score": 0.2666666666666666
           }
         ]
       },
       {
         "receipt_item_name": "Tomato",
         "matched_ingredient_name": "tomato",
-        "matched_ingredient_id": 20,
+        "matched_ingredient_id": "tomato_013",
         "match_status": "exact",
         "similarity_score": 1.0,
         "suggested_matches": [
           {
             "name": "tomato",
-            "id": 20,
+            "id": "tomato_013",
             "score": 1.0
           },
           {
-            "name": "tom yam paste",
-            "id": 72,
-            "score": 0.3684210526315789
-          },
-          {
-            "name": "romano baby",
-            "id": 39,
-            "score": 0.32941176470588235
+            "name": "tomato sauce",
+            "id": "tomato_sauce_025",
+            "score": 0.6166666666666666
           },
           {
             "name": "avocado",
-            "id": 36,
+            "id": "avocado_008",
             "score": 0.3230769230769231
           },
           {
-            "name": "weges potato",
-            "id": 57,
-            "score": 0.31111111111111106
+            "name": "potato wedges",
+            "id": "potato_wedges_001",
+            "score": 0.29473684210526313
+          },
+          {
+            "name": "tom yum sauce",
+            "id": "tom_yum_sauce_024",
+            "score": 0.29473684210526313
           }
         ]
       },
       {
         "receipt_item_name": "Salt",
         "matched_ingredient_name": "salt",
-        "matched_ingredient_id": 25,
+        "matched_ingredient_id": "salt_018",
         "match_status": "exact",
         "similarity_score": 1.0,
         "suggested_matches": [
           {
             "name": "salt",
-            "id": 25,
+            "id": "salt_018",
             "score": 1.0
           },
           {
             "name": "salmon",
-            "id": 77,
+            "id": "salmon_003",
             "score": 0.42
           },
           {
             "name": "salad oil",
-            "id": 24,
+            "id": "salad_oil_028",
             "score": 0.3230769230769231
           },
           {
             "name": "sugar",
-            "id": 45,
+            "id": "sugar_019",
             "score": 0.31111111111111106
           },
           {
             "name": "carrot",
-            "id": 28,
+            "id": "carrot_009",
             "score": 0.27999999999999997
           }
         ]
@@ -140,41 +140,41 @@
       {
         "receipt_item_name": "Avocado",
         "matched_ingredient_name": "avocado",
-        "matched_ingredient_id": 36,
+        "matched_ingredient_id": "avocado_008",
         "match_status": "exact",
         "similarity_score": 1.0,
         "suggested_matches": [
           {
             "name": "avocado",
-            "id": 36,
+            "id": "avocado_008",
             "score": 1.0
           },
           {
             "name": "salad oil",
-            "id": 24,
+            "id": "salad_oil_028",
             "score": 0.35
           },
           {
             "name": "carrot",
-            "id": 28,
+            "id": "carrot_009",
             "score": 0.3230769230769231
           },
           {
-            "name": "mayonase",
-            "id": 123,
-            "score": 0.27999999999999997
+            "name": "mayonnaise",
+            "id": "mayonnaise_030",
+            "score": 0.24705882352941178
           },
           {
-            "name": "aqua",
-            "id": 68,
-            "score": 0.2545454545454545
+            "name": "cabbage red",
+            "id": "cabbage_red_011",
+            "score": 0.2333333333333333
           }
         ]
       }
     ],
     "total_items": 5,
-    "exact_matches": 5,
-    "partial_matches": 0,
+    "exact_matches": 4,
+    "partial_matches": 1,
     "no_matches": 0
   },
   "changed_indices": []
