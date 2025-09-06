@@ -2273,10 +2273,10 @@ class CallbackHandlers:
             return "Нет данных для отображения"
         
         # Set fixed column widths (total max 58 characters)
-        date_width = 8        # Fixed width for date
+        date_width = 10       # Fixed width for date (dd.mm.yyyy = 10 chars)
         volume_width = 6      # Fixed width for volume
         price_width = 10      # Fixed width for price
-        product_width = 22    # Fixed width for product
+        product_width = 20    # Fixed width for product (reduced to fit total width)
         
         # Create header using the new format
         header = f"{'Date':<{date_width}} | {'Vol':<{volume_width}} | {'цена':<{price_width}} | {'Product':<{product_width}}"
