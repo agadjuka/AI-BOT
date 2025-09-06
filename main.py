@@ -104,12 +104,9 @@ def main() -> None:
     # Initialize empty poster ingredients - will be loaded on demand
     application.bot_data["poster_ingredients"] = {}
     
-    # Initialize Google Sheets ingredients
-    print("🔄 Загружаю ингредиенты Google Sheets...")
-    google_sheets_ingredients = get_google_sheets_ingredients()
-    application.bot_data["google_sheets_ingredients"] = google_sheets_ingredients
-    print(f"✅ Загружено {len(google_sheets_ingredients)} ингредиентов Google Sheets при запуске")
-    print(f"DEBUG: Первые 5 ингредиентов: {list(google_sheets_ingredients.keys())[:5]}")
+    # Initialize empty Google Sheets ingredients - will be loaded on demand
+    application.bot_data["google_sheets_ingredients"] = {}
+    print("✅ Google Sheets ингредиенты будут загружены по требованию")
 
     # Create conversation handler
     conv_handler = ConversationHandler(

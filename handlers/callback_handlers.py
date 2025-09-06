@@ -77,7 +77,8 @@ class CallbackHandlers:
             
             # Save Google Sheets ingredients to bot data for future use
             context.bot_data["google_sheets_ingredients"] = google_sheets_ingredients
-            print(f"DEBUG: Loaded {len(google_sheets_ingredients)} Google Sheets ingredients")
+            print(f"✅ Загружено {len(google_sheets_ingredients)} ингредиентов Google Sheets по требованию")
+            print(f"DEBUG: Первые 5 ингредиентов: {list(google_sheets_ingredients.keys())[:5]}")
         
         return True
     

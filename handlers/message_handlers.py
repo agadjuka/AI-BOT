@@ -1368,7 +1368,9 @@ class MessageHandlers:
             
             # Save to bot data
             context.bot_data['google_sheets_ingredients'] = google_sheets_ingredients
-            print(f"DEBUG: Loaded {len(google_sheets_ingredients)} Google Sheets ingredients for search")
+            print(f"✅ Загружено {len(google_sheets_ingredients)} ингредиентов Google Sheets для поиска")
+        else:
+            print(f"✅ Используем уже загруженные {len(google_sheets_ingredients)} ингредиентов Google Sheets")
         
         # Convert format from {id: {'name': name}} to {name: id} for search service
         google_sheets_ingredients_for_search = {}
