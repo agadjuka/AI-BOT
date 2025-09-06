@@ -83,13 +83,13 @@ class TextParser:
             # If there are only dots
             elif '.' in clean_text:
                 parts = clean_text.split('.')
-                if len(parts) == 2 and len(parts[1]) <= 2:
+                if len(parts) == 2 and len(parts[1]) <= 2 and len(parts[1]) > 0:
                     # Dot - decimal separator
                     # Example: 1240.75 -> 1240.75
                     pass
                 else:
                     # Dots - thousands separators
-                    # Example: 1.240.750 -> 1240750
+                    # Example: 1.240.750 -> 1240750 or 14.000 -> 14000
                     clean_text = clean_text.replace('.', '')
             
             return float(clean_text)
@@ -131,13 +131,13 @@ class TextParser:
             # If there are only dots
             elif '.' in clean_text:
                 parts = clean_text.split('.')
-                if len(parts) == 2 and len(parts[1]) <= 3 and len(parts[0]) <= 3:
+                if len(parts) == 2 and len(parts[1]) <= 3 and len(parts[0]) <= 3 and len(parts[1]) > 0:
                     # Dot - decimal separator
                     # Example: 0.150 -> 0.150
                     pass
                 else:
                     # Dots - thousands separators
-                    # Example: 1.240.750 -> 1240750
+                    # Example: 1.240.750 -> 1240750 or 14.000 -> 14000
                     clean_text = clean_text.replace('.', '')
             
             return float(clean_text)
@@ -233,10 +233,9 @@ class ReceiptFormatter:
             # Format price - if 0 or None, show dash
             if price is None or price == 0:
                 price_str = "-"
-            elif price is not None and price == int(price):
-                price_str = str(int(price))
             else:
-                price_str = str(price)
+                # Use the same formatting as other places to preserve decimal places
+                price_str = self.number_formatter.format_number_with_spaces(price)
             
             # Format total - if 0 or None, show dash
             if total is None or total == 0:

@@ -103,18 +103,13 @@ class GoogleSheetsService:
             # Format price with "Rp" suffix
             price_str = ""
             if item.price is not None and item.price > 0:
-                # DEBUG: Print original price value
-                print(f"DEBUG Google Sheets: Original price value: {item.price} (type: {type(item.price)})")
-                
                 # Format price with spaces for thousands separator, preserving decimal places
                 if item.price == int(item.price):
-                    # If it's a whole number, show it as is
+                    # If it's a whole number, show it as integer
                     price_formatted = f"{int(item.price):,}".replace(",", " ")
-                    print(f"DEBUG Google Sheets: Formatted as whole number: {price_formatted}")
                 else:
                     # If it has decimal places, show them
                     price_formatted = f"{item.price:,.3f}".replace(",", " ").rstrip('0').rstrip('.')
-                    print(f"DEBUG Google Sheets: Formatted with decimals: {price_formatted}")
                 price_str = f"{price_formatted}Rp"
             
             # Use matched ingredient name as product name

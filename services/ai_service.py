@@ -51,7 +51,23 @@ class AIService:
         Parse JSON response from AI analysis
         """
         try:
-            return json.loads(json_str)
+            data = json.loads(json_str)
+            
+            # Preserve original price values by converting them back to strings
+            # This prevents loss of decimal places during JSON parsing
+            if 'items' in data:
+                for item in data['items']:
+                    if 'price' in item and item['price'] is not None:
+                        # Convert price back to string to preserve decimal places
+                        item['price'] = str(item['price'])
+                    if 'quantity' in item and item['quantity'] is not None:
+                        # Convert quantity back to string to preserve decimal places
+                        item['quantity'] = str(item['quantity'])
+                    if 'total' in item and item['total'] is not None:
+                        # Convert total back to string to preserve decimal places
+                        item['total'] = str(item['total'])
+            
+            return data
         except json.JSONDecodeError as e:
             print(f"Ошибка парсинга JSON от Gemini: {e}")
             raise ValueError(f"Не удалось распарсить JSON ответ от AI: {e}")

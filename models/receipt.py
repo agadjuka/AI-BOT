@@ -32,12 +32,25 @@ class ReceiptItem:
     @classmethod
     def from_dict(cls, data: Dict[str, Any]) -> 'ReceiptItem':
         """Create from dictionary"""
+        # Helper function to convert string numbers to float
+        def parse_number(value):
+            if value is None:
+                return None
+            if isinstance(value, (int, float)):
+                return float(value)
+            if isinstance(value, str):
+                try:
+                    return float(value)
+                except ValueError:
+                    return None
+            return None
+        
         return cls(
             line_number=data.get('line_number', 0),
             name=data.get('name', ''),
-            quantity=data.get('quantity'),  # Может быть None
-            price=data.get('price'),        # Может быть None
-            total=data.get('total'),        # Может быть None
+            quantity=parse_number(data.get('quantity')),  # Может быть None
+            price=parse_number(data.get('price')),        # Может быть None
+            total=parse_number(data.get('total')),        # Может быть None
             status=data.get('status', 'needs_review'),
             auto_calculated=data.get('auto_calculated', False)
         )

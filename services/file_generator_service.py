@@ -246,7 +246,7 @@ class FileGeneratorService:
             if item.price is not None and item.price > 0:
                 # Format price with spaces for thousands separator, preserving decimal places
                 if item.price == int(item.price):
-                    # If it's a whole number, show it as is
+                    # If it's a whole number, show it as integer
                     price_formatted = f"{int(item.price):,}".replace(",", " ")
                 else:
                     # If it has decimal places, show them
