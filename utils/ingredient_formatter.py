@@ -62,9 +62,9 @@ class IngredientFormatter:
     
     def _create_table_row(self, row_number: int, match: IngredientMatch, is_changed: bool = False) -> str:
         """Create a table row for a match"""
-        # Truncate names if too long
-        receipt_name = self._truncate_name(match.receipt_item_name, self.max_name_length)
-        ingredient_name = self._truncate_name(
+        # Wrap names instead of truncating
+        receipt_name_lines = self._wrap_text(match.receipt_item_name, self.max_name_length)
+        ingredient_name_lines = self._wrap_text(
             match.matched_ingredient_name or "—", 
             self.max_name_length
         )
@@ -75,8 +75,57 @@ class IngredientFormatter:
         else:
             status_emoji = self._get_status_emoji(match.match_status)
         
-        return f"{row_number:<2} | {receipt_name:<{self.max_name_length}} | {ingredient_name:<{self.max_name_length}} | {status_emoji:<4}"
+        # Create multi-line row
+        max_lines = max(len(receipt_name_lines), len(ingredient_name_lines))
+        row_lines = []
+        
+        for i in range(max_lines):
+            receipt_name = receipt_name_lines[i] if i < len(receipt_name_lines) else ""
+            ingredient_name = ingredient_name_lines[i] if i < len(ingredient_name_lines) else ""
+            
+            # Only show row number and status on first line
+            if i == 0:
+                row_line = f"{row_number:<2} | {receipt_name:<{self.max_name_length}} | {ingredient_name:<{self.max_name_length}} | {status_emoji:<4}"
+            else:
+                row_line = f"{'  ':<2} | {receipt_name:<{self.max_name_length}} | {ingredient_name:<{self.max_name_length}} | {'  ':<4}"
+            
+            row_lines.append(row_line)
+        
+        return "\n".join(row_lines)
     
+    def _wrap_text(self, text: str, max_width: int) -> list[str]:
+        """Wrap text to fit within max_width, breaking on words when possible"""
+        if not text:
+            return [""]
+        
+        if len(text) <= max_width:
+            return [text]
+        
+        words = text.split()
+        lines = []
+        current_line = ""
+        
+        for word in words:
+            # If adding this word would exceed the width
+            if len(current_line) + len(word) + 1 > max_width:
+                if current_line:
+                    lines.append(current_line)
+                    current_line = word
+                else:
+                    # Single word is too long, split it with hyphen
+                    lines.append(word[:max_width-1] + "-")
+                    current_line = word[max_width-1:]
+            else:
+                if current_line:
+                    current_line += " " + word
+                else:
+                    current_line = word
+        
+        if current_line:
+            lines.append(current_line)
+        
+        return lines
+
     def _truncate_name(self, name: str, max_length: int) -> str:
         """Truncate name if too long"""
         if len(name) <= max_length:

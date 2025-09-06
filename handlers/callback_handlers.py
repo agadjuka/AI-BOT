@@ -2431,9 +2431,9 @@ class CallbackHandlers:
     
     def _create_google_sheets_table_row(self, row_number: int, match: IngredientMatch) -> str:
         """Create a Google Sheets table row for a match"""
-        # Truncate names if too long
-        receipt_name = self._truncate_name(match.receipt_item_name, 20)
-        ingredient_name = self._truncate_name(
+        # Wrap names instead of truncating
+        receipt_name_lines = self._wrap_text(match.receipt_item_name, 20)
+        ingredient_name_lines = self._wrap_text(
             match.matched_ingredient_name or "—", 
             20
         )
@@ -2441,7 +2441,23 @@ class CallbackHandlers:
         # Get status emoji
         status_emoji = self._get_google_sheets_status_emoji(match.match_status)
         
-        return f"{row_number:<2} | {receipt_name:<20} | {ingredient_name:<20} | {status_emoji:<4}"
+        # Create multi-line row
+        max_lines = max(len(receipt_name_lines), len(ingredient_name_lines))
+        row_lines = []
+        
+        for i in range(max_lines):
+            receipt_name = receipt_name_lines[i] if i < len(receipt_name_lines) else ""
+            ingredient_name = ingredient_name_lines[i] if i < len(ingredient_name_lines) else ""
+            
+            # Only show row number and status on first line
+            if i == 0:
+                row_line = f"{row_number:<2} | {receipt_name:<20} | {ingredient_name:<20} | {status_emoji:<4}"
+            else:
+                row_line = f"{'  ':<2} | {receipt_name:<20} | {ingredient_name:<20} | {'  ':<4}"
+            
+            row_lines.append(row_line)
+        
+        return "\n".join(row_lines)
     
     def _get_google_sheets_status_emoji(self, status) -> str:
         """Get emoji for Google Sheets match status"""
