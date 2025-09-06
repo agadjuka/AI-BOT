@@ -2294,6 +2294,38 @@ class CallbackHandlers:
         
         return lines
 
+    def _extract_volume_from_name(self, name: str) -> float:
+        """Extract volume/weight from product name (e.g., 'Potato Wedges plain 2,5kg' -> 2.5)"""
+        import re
+        
+        if not name:
+            return 0.0
+        
+        # Patterns to match various volume/weight indicators
+        patterns = [
+            r'(\d+[,.]?\d*)\s*kg',  # kg (with comma or dot as decimal separator)
+            r'(\d+[,.]?\d*)\s*кг',  # кг (Russian)
+            r'(\d+[,.]?\d*)\s*l',   # liters
+            r'(\d+[,.]?\d*)\s*л',   # литры (Russian)
+            r'(\d+[,.]?\d*)\s*ml',  # milliliters
+            r'(\d+[,.]?\d*)\s*мл',  # миллилитры (Russian)
+            r'(\d+[,.]?\d*)\s*g',   # grams
+            r'(\d+[,.]?\d*)\s*г',   # граммы (Russian)
+        ]
+        
+        for pattern in patterns:
+            match = re.search(pattern, name, re.IGNORECASE)
+            if match:
+                volume_str = match.group(1)
+                # Replace comma with dot for proper float conversion
+                volume_str = volume_str.replace(',', '.')
+                try:
+                    return float(volume_str)
+                except ValueError:
+                    continue
+        
+        return 0.0
+
     def _format_google_sheets_table_preview(self, receipt_data: ReceiptData, matching_result: IngredientMatchingResult) -> str:
         """Format table preview for Google Sheets upload"""
         if not receipt_data.items or not matching_result.matches:
@@ -2324,8 +2356,17 @@ class CallbackHandlers:
             price = item.price if item.price is not None else 0
             matched_product = match.matched_ingredient_name if match and match.matched_ingredient_name else ""
             
-            # Format volume - only show decimals if needed, no "kg"
-            if quantity > 0:
+            # Extract volume from product name and multiply by quantity
+            volume_from_name = self._extract_volume_from_name(item.name)
+            if volume_from_name > 0:
+                # Multiply extracted volume by quantity
+                total_volume = volume_from_name * quantity
+                if total_volume == int(total_volume):
+                    volume_str = str(int(total_volume))
+                else:
+                    volume_str = f"{total_volume:.1f}"
+            elif quantity > 0:
+                # Fallback to original behavior if no volume found in name
                 if quantity == int(quantity):
                     volume_str = str(int(quantity))
                 else:

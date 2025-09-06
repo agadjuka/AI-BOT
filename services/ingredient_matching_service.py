@@ -122,8 +122,9 @@ class IngredientMatchingService:
         # Convert to lowercase
         normalized = name.lower().strip()
         
-        # Remove common words that might interfere with matching (but keep important food words)
-        common_words = ['fresh', 'organic', 'premium', 'quality', 'grade', 'a', 'an', 'the', 'kg', 'g', 'ml', 'l']
+        # Remove common words that might interfere with matching (but keep important food words and units)
+        # IMPORTANT: Keep units of measurement (kg, g, l, ml, etc.) as they are essential for product identification
+        common_words = ['fresh', 'organic', 'premium', 'quality', 'grade', 'a', 'an', 'the']
         words = normalized.split()
         words = [word for word in words if word not in common_words]
         
