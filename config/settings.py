@@ -19,7 +19,7 @@ class BotConfig:
         # Google Sheets settings
         self.GOOGLE_SHEETS_CREDENTIALS: str = "google_sheets_credentials.json"  # Путь к файлу credentials.json
         self.GOOGLE_SHEETS_SPREADSHEET_ID: str = "1ah85v40ZqJzTz8PGHO6Ndoctw378NOYATH9X3OeeuUI"  # ID таблицы Google Sheets
-        self.GOOGLE_SHEETS_WORKSHEET_NAME: str = "Receipts"  # Название листа
+        self.GOOGLE_SHEETS_WORKSHEET_NAME: str = "Лист1"  # Название листа
         
         # Ingredient matching settings
         self.INGREDIENT_LIST: dict = {

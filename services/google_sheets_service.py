@@ -72,45 +72,50 @@ class GoogleSheetsService:
             # Upload data to Google Sheets
             result = self._upload_to_sheets(data_rows, worksheet_name)
             
-            return True, f"Successfully uploaded {len(data_rows)-1} items to Google Sheets (updated {result.get('updatedCells', 0)} cells)"
+            return True, f"Successfully uploaded {len(data_rows)} items to Google Sheets (updated {result.get('updatedCells', 0)} cells)"
             
         except Exception as e:
             return False, f"Error uploading to Google Sheets: {str(e)}"
     
     def _create_sheets_data(self, receipt_data: ReceiptData, matching_result: IngredientMatchingResult) -> List[List[Any]]:
-        """Create data rows for Google Sheets"""
+        """Create data rows for Google Sheets in the target format (Date, Volume, Harga, Product)"""
         data_rows = []
         
-        # Add header row
-        header_row = [
-            "Timestamp",
-            "Item Name", 
-            "Matched Ingredient",
-            "Quantity",
-            "Price per Unit",
-            "Total Amount",
-            "Match Status",
-            "Similarity Score"
-        ]
-        data_rows.append(header_row)
-        
-        # Add data rows
+        # Add data rows (no header, just data)
         for i, item in enumerate(receipt_data.items):
             # Get matching result for this item
             match = None
             if i < len(matching_result.matches):
                 match = matching_result.matches[i]
             
-            # Prepare row data
+            # Skip items without matched ingredients
+            if not match or not match.matched_ingredient_name:
+                continue
+            
+            # Format date as DD.MM.YYYY
+            current_date = datetime.now().strftime('%d.%m.%Y')
+            
+            # Format quantity with "kg" if it's a number
+            quantity_str = ""
+            if item.quantity is not None and item.quantity > 0:
+                quantity_str = f"{item.quantity:.2f} kg"
+            
+            # Format price with "Rp" suffix
+            price_str = ""
+            if item.price is not None and item.price > 0:
+                # Format price with spaces for thousands separator
+                price_formatted = f"{item.price:,.0f}".replace(",", " ")
+                price_str = f"{price_formatted}Rp"
+            
+            # Use matched ingredient name as product name
+            product_name = match.matched_ingredient_name
+            
+            # Prepare row data in target format: Date, Volume, Harga, Product
             row = [
-                datetime.now().strftime('%Y-%m-%d %H:%M:%S'),  # Timestamp
-                item.name,  # Original item name
-                match.matched_ingredient_name if match and match.matched_ingredient_name else "",  # Matched ingredient
-                item.quantity if item.quantity is not None else 0,  # Quantity
-                item.price if item.price is not None else 0,  # Price per unit
-                item.total if item.total is not None else 0,  # Total amount
-                match.match_status.value if match else "no_match",  # Match status
-                match.similarity_score if match else 0.0  # Similarity score
+                current_date,      # Date (B column)
+                quantity_str,      # Volume (C column) 
+                price_str,         # Harga (D column)
+                product_name       # Product (E column)
             ]
             
             data_rows.append(row)
@@ -118,12 +123,23 @@ class GoogleSheetsService:
         return data_rows
     
     def _upload_to_sheets(self, data_rows: List[List[Any]], worksheet_name: str):
-        """Upload data to Google Sheets"""
+        """Upload data to Google Sheets by appending to the next empty row with formatting"""
+        if not data_rows:
+            return {"updatedCells": 0}
+        
+        # Find the next empty row
+        next_row = self._find_next_empty_row(worksheet_name)
+        
+        # Calculate the range for appending data
+        start_col = 2  # Column B (Date)
+        end_col = start_col + len(data_rows[0]) - 1  # Column E (Product)
+        range_name = f"{worksheet_name}!B{next_row}:{chr(ord('A') + end_col - 1)}{next_row + len(data_rows) - 1}"
+        
+        # First, upload the data
         body = {
             'values': data_rows
         }
         
-        range_name = f"{worksheet_name}!A1"
         result = self.service.spreadsheets().values().update(
             spreadsheetId=self.spreadsheet_id,
             range=range_name,
@@ -131,8 +147,101 @@ class GoogleSheetsService:
             body=body
         ).execute()
         
-        print(f"Updated {result.get('updatedCells')} cells in Google Sheets")
+        # Then, apply formatting to the uploaded cells
+        self._apply_cell_formatting(worksheet_name, next_row, next_row + len(data_rows) - 1, start_col, end_col)
+        
+        print(f"Updated {result.get('updatedCells')} cells in Google Sheets at row {next_row} with formatting")
         return result
+    
+    def _find_next_empty_row(self, worksheet_name: str) -> int:
+        """Find the next empty row in the worksheet"""
+        try:
+            # Get all data in the worksheet starting from row 2 (skip header row)
+            result = self.service.spreadsheets().values().get(
+                spreadsheetId=self.spreadsheet_id,
+                range=f"{worksheet_name}!B2:B"  # Check column B starting from row 2
+            ).execute()
+            
+            values = result.get('values', [])
+            
+            # Find the first empty row
+            for i in range(len(values)):
+                if not values[i] or not values[i][0].strip():
+                    return i + 2  # +2 because we started from row 2 and Google Sheets is 1-indexed
+            
+            # If no empty rows found, return the next row after the last data
+            return len(values) + 2
+            
+        except Exception as e:
+            print(f"Warning: Could not find next empty row, using row 4: {e}")
+            return 4  # Default to row 4 if there's an error (after header row)
+    
+    def _apply_cell_formatting(self, worksheet_name: str, start_row: int, end_row: int, start_col: int, end_col: int):
+        """Apply formatting to cells (center alignment and borders)"""
+        try:
+            # Convert column numbers to letters
+            start_col_letter = chr(ord('A') + start_col - 1)
+            end_col_letter = chr(ord('A') + end_col - 1)
+            
+            # Define the range for formatting
+            range_name = f"{worksheet_name}!{start_col_letter}{start_row}:{end_col_letter}{end_row}"
+            
+            # Create formatting requests
+            requests = [
+                {
+                    "repeatCell": {
+                        "range": {
+                            "sheetId": self._get_sheet_id(worksheet_name),
+                            "startRowIndex": start_row - 1,  # Convert to 0-based index
+                            "endRowIndex": end_row,
+                            "startColumnIndex": start_col - 1,  # Convert to 0-based index
+                            "endColumnIndex": end_col
+                        },
+                        "cell": {
+                            "userEnteredFormat": {
+                                "horizontalAlignment": "CENTER",
+                                "verticalAlignment": "MIDDLE",
+                                "borders": {
+                                    "top": {"style": "SOLID", "width": 1},
+                                    "bottom": {"style": "SOLID", "width": 1},
+                                    "left": {"style": "SOLID", "width": 1},
+                                    "right": {"style": "SOLID", "width": 1}
+                                }
+                            }
+                        },
+                        "fields": "userEnteredFormat(horizontalAlignment,verticalAlignment,borders)"
+                    }
+                }
+            ]
+            
+            # Apply formatting
+            body = {"requests": requests}
+            self.service.spreadsheets().batchUpdate(
+                spreadsheetId=self.spreadsheet_id,
+                body=body
+            ).execute()
+            
+            print(f"Applied formatting to range {range_name}")
+            
+        except Exception as e:
+            print(f"Warning: Could not apply formatting: {e}")
+    
+    def _get_sheet_id(self, worksheet_name: str) -> int:
+        """Get the sheet ID for the given worksheet name"""
+        try:
+            spreadsheet = self.service.spreadsheets().get(spreadsheetId=self.spreadsheet_id).execute()
+            sheets = spreadsheet.get('sheets', [])
+            
+            for sheet in sheets:
+                if sheet.get('properties', {}).get('title') == worksheet_name:
+                    return sheet.get('properties', {}).get('sheetId', 0)
+            
+            # If not found, return 0 (first sheet)
+            return 0
+            
+        except Exception as e:
+            print(f"Warning: Could not get sheet ID, using 0: {e}")
+            return 0
     
     def get_upload_summary(self, receipt_data: ReceiptData, matching_result: IngredientMatchingResult) -> str:
         """Get summary of data to be uploaded"""
