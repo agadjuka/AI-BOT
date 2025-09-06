@@ -327,6 +327,24 @@ class CallbackHandlers:
             )
             return self.config.AWAITING_CORRECTION
         
+        if action == "undo_google_sheets_upload":
+            # Undo the last Google Sheets upload
+            await query.answer("↩️ Отменяю загрузку...")
+            await self._undo_google_sheets_upload(update, context)
+            return self.config.AWAITING_CORRECTION
+        
+        if action == "generate_excel_file":
+            # Generate Excel file with the same data
+            await query.answer("📄 Генерирую Excel файл...")
+            await self._generate_excel_file(update, context)
+            return self.config.AWAITING_CORRECTION
+        
+        if action == "start_new_receipt":
+            # Start new receipt analysis
+            await query.answer("📸 Начинаю анализ нового чека...")
+            await self._start_new_receipt(update, context)
+            return self.config.AWAITING_CORRECTION
+        
         if action == "next_ingredient_match":
             # Move to next ingredient match
             await query.answer("➡️ Переход к следующему ингредиенту...")
@@ -3243,6 +3261,9 @@ class CallbackHandlers:
             print(f"DEBUG: Performing matching with Google Sheets ingredients for {len(receipt_data.items)} items")
             google_sheets_matching_result = self.ingredient_matching_service.match_ingredients(receipt_data, google_sheets_ingredients_for_matching)
             
+            # Save Google Sheets matching result to context for Excel generation
+            context.user_data['google_sheets_matching_result'] = google_sheets_matching_result
+            
             # Show preview with Google Sheets matching result
             await self._show_google_sheets_preview(update, context, receipt_data, google_sheets_matching_result)
             
@@ -3264,6 +3285,9 @@ class CallbackHandlers:
                                           receipt_data: ReceiptData, matching_result: IngredientMatchingResult):
         """Execute actual Google Sheets upload"""
         try:
+            # Save Google Sheets matching result to context for Excel generation
+            context.user_data['google_sheets_matching_result'] = matching_result
+            
             # Show upload summary
             summary = self.google_sheets_service.get_upload_summary(receipt_data, matching_result)
             
@@ -3275,18 +3299,15 @@ class CallbackHandlers:
             )
             
             if success:
-                # Show success message
-                success_text = f"✅ **Данные успешно загружены в Google Sheets!**\n\n{summary}\n\n{message}"
-                await self.ui_manager.send_menu(
-                    update, context,
-                    success_text,
-                    InlineKeyboardMarkup([
-                        [InlineKeyboardButton("📊 Загрузить еще раз", callback_data="upload_to_google_sheets")],
-                        [InlineKeyboardButton("📄 Сгенерировать файл", callback_data="generate_file_from_table")],
-                        [InlineKeyboardButton("◀️ Назад", callback_data="back_to_receipt")]
-                    ]),
-                    'Markdown'
-                )
+                # Save upload data for potential undo
+                context.user_data['last_google_sheets_upload'] = {
+                    'worksheet_name': self.config.GOOGLE_SHEETS_WORKSHEET_NAME,
+                    'row_count': len(receipt_data.items),
+                    'timestamp': datetime.now().isoformat()
+                }
+                
+                # Show new success page interface
+                await self._show_upload_success_page(update, context, summary, message)
             else:
                 # Show error message
                 error_text = f"❌ **Ошибка загрузки в Google Sheets**\n\n{message}\n\n{summary}"
@@ -3310,4 +3331,178 @@ class CallbackHandlers:
                     [InlineKeyboardButton("◀️ Назад", callback_data="back_to_receipt")]
                 ]),
                 'Markdown'
+            )
+    
+    async def _show_upload_success_page(self, update: Update, context: ContextTypes.DEFAULT_TYPE, 
+                                      summary: str, message: str):
+        """Show the new upload success page interface"""
+        # Clear all messages first
+        await self.ui_manager.clear_all_messages(update, context)
+        
+        # Create success message with only the header
+        success_text = "✅ **Данные успешно загружены в Google Sheets!**"
+        
+        # Create new button layout
+        keyboard = [
+            [InlineKeyboardButton("↩️ Отменить загрузку", callback_data="undo_google_sheets_upload")],
+            [InlineKeyboardButton("📄 Сгенерировать файл", callback_data="generate_excel_file")],
+            [InlineKeyboardButton("📋 Вернуться к чеку", callback_data="back_to_receipt")],
+            [InlineKeyboardButton("📸 Загрузить новый чек", callback_data="start_new_receipt")]
+        ]
+        
+        reply_markup = InlineKeyboardMarkup(keyboard)
+        
+        await self.ui_manager.send_menu(
+            update, context,
+            success_text,
+            reply_markup,
+            'Markdown'
+        )
+    
+    async def _show_excel_success_page(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
+        """Show navigation buttons after Excel file generation"""
+        # Create button layout for navigation
+        keyboard = [
+            [InlineKeyboardButton("📋 Вернуться к чеку", callback_data="back_to_receipt")],
+            [InlineKeyboardButton("📸 Загрузить новый чек", callback_data="start_new_receipt")]
+        ]
+        
+        reply_markup = InlineKeyboardMarkup(keyboard)
+        
+        # Send navigation buttons as a separate message
+        buttons_message = await update.callback_query.message.reply_text(
+            "Выберите действие:",
+            reply_markup=reply_markup
+        )
+        
+        # Save buttons message ID for cleanup
+        if 'messages_to_cleanup' not in context.user_data:
+            context.user_data['messages_to_cleanup'] = []
+        context.user_data['messages_to_cleanup'].append(buttons_message.message_id)
+    
+    async def _undo_google_sheets_upload(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
+        """Undo the last Google Sheets upload by deleting the last added rows"""
+        try:
+            # Get the last upload data from context
+            last_upload_data = context.user_data.get('last_google_sheets_upload')
+            
+            if not last_upload_data:
+                await self.ui_manager.send_temp(
+                    update, context, "❌ Нет данных о последней загрузке для отмены.", duration=5
+                )
+                return
+            
+            # Delete the last uploaded rows from Google Sheets
+            success, message = self.google_sheets_service.delete_last_uploaded_rows(
+                last_upload_data['worksheet_name'],
+                last_upload_data['row_count']
+            )
+            
+            if success:
+                # Clear the last upload data
+                context.user_data.pop('last_google_sheets_upload', None)
+                
+                # Show success message and return to receipt
+                await self.ui_manager.send_temp(
+                    update, context, f"✅ {message}", duration=3
+                )
+                
+                # Return to receipt view
+                await self.ui_manager.cleanup_all_except_anchor(update, context)
+                self.ui_manager._clear_temporary_data(context)
+                await self._show_final_report_with_edit_button_callback(update, context)
+            else:
+                await self.ui_manager.send_temp(
+                    update, context, f"❌ Ошибка отмены загрузки: {message}", duration=5
+                )
+                
+        except Exception as e:
+            print(f"Error undoing Google Sheets upload: {e}")
+            await self.ui_manager.send_temp(
+                update, context, f"❌ Произошла ошибка при отмене загрузки: {str(e)}", duration=5
+            )
+    
+    async def _generate_excel_file(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
+        """Generate Excel file with the same data that was uploaded to Google Sheets"""
+        try:
+            # Get receipt data and Google Sheets matching result
+            receipt_data = context.user_data.get('receipt_data')
+            matching_result = context.user_data.get('google_sheets_matching_result')
+            
+            if not receipt_data:
+                await self.ui_manager.send_temp(
+                    update, context, "❌ Нет данных чека для генерации файла.", duration=5
+                )
+                return
+            
+            if not matching_result:
+                await self.ui_manager.send_temp(
+                    update, context, "❌ Нет данных сопоставления Google Sheets для генерации файла.", duration=5
+                )
+                return
+            
+            # Generate Excel file
+            file_path = self.file_generator.generate_excel_file(receipt_data, matching_result)
+            
+            if file_path:
+                # Send the file with updated caption
+                with open(file_path, 'rb') as file:
+                    file_message = await update.callback_query.message.reply_document(
+                        document=file,
+                        filename=f"receipt_data_{datetime.now().strftime('%Y%m%d_%H%M%S')}.xlsx",
+                        caption="📄 **Скачать Excel-файл с данными чека**\n\nФайл содержит те же данные, что были загружены в Google Sheets."
+                    )
+                    
+                    # Save file message ID for cleanup
+                    if 'messages_to_cleanup' not in context.user_data:
+                        context.user_data['messages_to_cleanup'] = []
+                    context.user_data['messages_to_cleanup'].append(file_message.message_id)
+                
+                # Clean up the file
+                import os
+                try:
+                    os.remove(file_path)
+                except:
+                    pass
+                
+                # Show success page interface with navigation buttons
+                await self._show_excel_success_page(update, context)
+            else:
+                await self.ui_manager.send_temp(
+                    update, context, "❌ Ошибка генерации Excel файла.", duration=5
+                )
+                
+        except Exception as e:
+            print(f"Error generating Excel file: {e}")
+            await self.ui_manager.send_temp(
+                update, context, f"❌ Произошла ошибка при генерации файла: {str(e)}", duration=5
+            )
+    
+    async def _start_new_receipt(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
+        """Start new receipt analysis by clearing all data and showing start menu"""
+        try:
+            # Clear all messages
+            await self.ui_manager.clear_all_messages(update, context)
+            
+            # Clear all data
+            context.user_data.clear()
+            
+            # Show start menu
+            keyboard = [
+                [InlineKeyboardButton("📸 Анализировать чек", callback_data="analyze_receipt")],
+                [InlineKeyboardButton("📄 Получить файл для загрузки в постер", callback_data="generate_supply_file")]
+            ]
+            reply_markup = InlineKeyboardMarkup(keyboard)
+            
+            await self.ui_manager.send_menu(
+                update, context,
+                "🏠 **Главное меню**\n\nВыберите действие:",
+                reply_markup,
+                'Markdown'
+            )
+            
+        except Exception as e:
+            print(f"Error starting new receipt: {e}")
+            await self.ui_manager.send_temp(
+                update, context, f"❌ Произошла ошибка при запуске нового анализа: {str(e)}", duration=5
             )

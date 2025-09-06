@@ -323,6 +323,66 @@ class UIManager:
         for key in keys_to_clear:
             context.user_data.pop(key, None)
     
+    async def clear_all_messages(self, update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+        """
+        Clear all messages including anchor (for new page transitions)
+        
+        Args:
+            update: Telegram update object
+            context: Bot context
+        """
+        # Get chat_id
+        chat_id = None
+        if hasattr(update, 'callback_query') and update.callback_query:
+            chat_id = update.callback_query.message.chat_id
+        elif hasattr(update, 'message') and update.message:
+            chat_id = update.message.chat_id
+        
+        if not chat_id:
+            return
+        
+        # Get all stored message IDs to delete
+        message_ids_to_delete = []
+        
+        # Add working menu message ID
+        working_menu_message_id = context.user_data.get('working_menu_message_id')
+        if working_menu_message_id:
+            message_ids_to_delete.append(working_menu_message_id)
+        
+        # Add anchor message ID
+        anchor_message_id = context.user_data.get('anchor_message_id')
+        if anchor_message_id:
+            message_ids_to_delete.append(anchor_message_id)
+        
+        # Add other specific message IDs
+        specific_message_ids = [
+            'table_message_id', 'edit_menu_message_id', 'total_edit_menu_message_id',
+            'instruction_message_id', 'line_number_instruction_message_id',
+            'delete_line_number_instruction_message_id', 'total_edit_instruction_message_id',
+            'processing_message_id'
+        ]
+        
+        for key in specific_message_ids:
+            message_id = context.user_data.get(key)
+            if message_id:
+                message_ids_to_delete.append(message_id)
+        
+        # Add messages from cleanup list (like file messages)
+        cleanup_messages = context.user_data.get('messages_to_cleanup', [])
+        for message_id in cleanup_messages:
+            message_ids_to_delete.append(message_id)
+        
+        # Delete messages
+        for message_id in message_ids_to_delete:
+            try:
+                await context.bot.delete_message(chat_id=chat_id, message_id=message_id)
+            except Exception as e:
+                print(f"Failed to delete message {message_id}: {e}")
+        
+        # Clear all stored message IDs
+        self._clear_stored_message_ids(context)
+        context.user_data.pop('anchor_message_id', None)
+    
     async def _delete_message_after_delay(self, context: ContextTypes.DEFAULT_TYPE, 
                                         chat_id: int, message_id: int, delay: int) -> None:
         """Delete a message after specified delay"""

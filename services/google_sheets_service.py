@@ -257,3 +257,50 @@ class GoogleSheetsService:
         summary += f"🕒 **Время загрузки:** {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}"
         
         return summary
+    
+    def delete_last_uploaded_rows(self, worksheet_name: str, row_count: int) -> tuple[bool, str]:
+        """
+        Delete the last uploaded rows from Google Sheets
+        
+        Args:
+            worksheet_name: Name of the worksheet
+            row_count: Number of rows to delete from the end
+            
+        Returns:
+            (success, message)
+        """
+        if not self.is_available():
+            return False, "Google Sheets service is not available."
+        
+        try:
+            # Get the current data range to find the last rows
+            range_name = f"{worksheet_name}!A:Z"
+            result = self.service.spreadsheets().values().get(
+                spreadsheetId=self.spreadsheet_id,
+                range=range_name
+            ).execute()
+            
+            values = result.get('values', [])
+            if not values:
+                return False, "No data found in the worksheet."
+            
+            # Find the last non-empty row
+            last_row = len(values)
+            
+            # Calculate the range to delete (last row_count rows)
+            start_row = max(1, last_row - row_count + 1)
+            end_row = last_row
+            
+            # Delete the rows
+            delete_range = f"{worksheet_name}!{start_row}:{end_row}"
+            
+            # Clear the range
+            self.service.spreadsheets().values().clear(
+                spreadsheetId=self.spreadsheet_id,
+                range=delete_range
+            ).execute()
+            
+            return True, f"Successfully deleted {row_count} rows from {worksheet_name} (rows {start_row}-{end_row})"
+            
+        except Exception as e:
+            return False, f"Error deleting rows: {str(e)}"
