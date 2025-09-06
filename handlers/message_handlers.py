@@ -105,6 +105,12 @@ class MessageHandlers:
         line_number = context.user_data.get('line_to_edit')
         field_to_edit = context.user_data.get('field_to_edit')
         
+        print(f"DEBUG: handle_user_input called with: '{user_input}'")
+        print(f"DEBUG: Current conversation state: {context.user_data.get('_conversation_state')}")
+        print(f"DEBUG: google_sheets_search_mode: {context.user_data.get('google_sheets_search_mode')}")
+        print(f"DEBUG: awaiting_google_sheets_ingredient_name: {context.user_data.get('awaiting_google_sheets_ingredient_name')}")
+        print(f"DEBUG: google_sheets_search_item_index: {context.user_data.get('google_sheets_search_item_index')}")
+        
         # Delete user message
         try:
             await context.bot.delete_message(
@@ -120,6 +126,7 @@ class MessageHandlers:
         
         # Check for Google Sheets search mode
         if context.user_data.get('google_sheets_search_mode'):
+            print(f"DEBUG: Google Sheets search mode detected for input: '{user_input}'")
             return await self._handle_google_sheets_search(update, context, user_input)
         
         if field_to_edit:
@@ -1307,17 +1314,20 @@ class MessageHandlers:
             )
             return self.config.AWAITING_CORRECTION
         
-        # Search for ingredients
-        search_results = []
-        query_lower = user_input.lower()
-        
+        # Convert format from {id: {'name': name}} to {name: id} for search service
+        google_sheets_ingredients_for_search = {}
         for ingredient_id, ingredient_data in google_sheets_ingredients.items():
-            if query_lower in ingredient_data.get('name', '').lower():
-                search_results.append({
-                    'id': ingredient_id,
-                    'name': ingredient_data.get('name', ''),
-                    'score': 1.0  # Exact match
-                })
+            ingredient_name = ingredient_data.get('name', '')
+            if ingredient_name:
+                google_sheets_ingredients_for_search[ingredient_name] = ingredient_id
+        
+        # Use the same smart search as in poster
+        search_results = self.ingredient_matching_service.get_similar_ingredients(
+            user_input, google_sheets_ingredients_for_search, limit=10
+        )
+        
+        print(f"DEBUG: Smart search for '{user_input}' in {len(google_sheets_ingredients_for_search)} Google Sheets ingredients (ingredient search)")
+        print(f"DEBUG: Found {len(search_results)} search results (ingredient search)")
         
         # Clear the search flag
         context.user_data.pop('awaiting_google_sheets_ingredient_name', None)
@@ -1334,6 +1344,7 @@ class MessageHandlers:
     
     async def _handle_google_sheets_search(self, update: Update, context: ContextTypes.DEFAULT_TYPE, user_input: str) -> int:
         """Handle Google Sheets search mode"""
+        print(f"DEBUG: _handle_google_sheets_search called with input: '{user_input}'")
         item_index = context.user_data.get('google_sheets_search_item_index')
         if item_index is None:
             await self.ui_manager.send_temp(
@@ -1345,22 +1356,39 @@ class MessageHandlers:
         google_sheets_ingredients = context.bot_data.get('google_sheets_ingredients', {})
         
         if not google_sheets_ingredients:
-            await self.ui_manager.send_temp(
-                update, context, "Ошибка: справочник Google Таблиц не загружен.", duration=5
-            )
-            return self.config.AWAITING_CORRECTION
+            # Try to load Google Sheets ingredients
+            from google_sheets_handler import get_google_sheets_ingredients
+            google_sheets_ingredients = get_google_sheets_ingredients()
+            
+            if not google_sheets_ingredients:
+                await self.ui_manager.send_temp(
+                    update, context, "Ошибка: справочник Google Таблиц не загружен.", duration=5
+                )
+                return self.config.AWAITING_CORRECTION
+            
+            # Save to bot data
+            context.bot_data['google_sheets_ingredients'] = google_sheets_ingredients
+            print(f"DEBUG: Loaded {len(google_sheets_ingredients)} Google Sheets ingredients for search")
         
-        # Search for ingredients
-        search_results = []
-        query_lower = user_input.lower()
-        
+        # Convert format from {id: {'name': name}} to {name: id} for search service
+        google_sheets_ingredients_for_search = {}
         for ingredient_id, ingredient_data in google_sheets_ingredients.items():
-            if query_lower in ingredient_data.get('name', '').lower():
-                search_results.append({
-                    'id': ingredient_id,
-                    'name': ingredient_data.get('name', ''),
-                    'score': 1.0  # Exact match
-                })
+            ingredient_name = ingredient_data.get('name', '')
+            if ingredient_name:
+                google_sheets_ingredients_for_search[ingredient_name] = ingredient_id
+        
+        # Use the same smart search as in poster
+        search_results = self.ingredient_matching_service.get_similar_ingredients(
+            user_input, google_sheets_ingredients_for_search, limit=10
+        )
+        
+        print(f"DEBUG: Smart search for '{user_input}' in {len(google_sheets_ingredients_for_search)} Google Sheets ingredients")
+        print(f"DEBUG: Found {len(search_results)} search results")
+        if search_results:
+            print(f"DEBUG: Top 3 results: {[r['name'] for r in search_results[:3]]}")
+        else:
+            print("DEBUG: No search results found - checking ingredient list:")
+            print(f"DEBUG: Available ingredients: {list(google_sheets_ingredients_for_search.keys())[:10]}")
         
         # Clear search mode
         context.user_data.pop('google_sheets_search_mode', None)
@@ -1403,16 +1431,22 @@ class MessageHandlers:
         """Show Google Sheets search results for specific item"""
         from telegram import InlineKeyboardButton, InlineKeyboardMarkup
         
+        print(f"DEBUG: _show_google_sheets_item_search_results called with {len(results)} results for query '{query}'")
         text = f"**Результаты поиска в Google Таблицах для '{query}':**\n\n"
         
         # Save search results for callback handling
         context.user_data['google_sheets_search_results'] = results
         
-        # Create buttons for results
+        # Create buttons for results in two columns
         keyboard = []
         for i, result in enumerate(results[:10], 1):  # Show max 10 results
-            button_text = f"{i}. {self._truncate_name(result['name'], 25)}"
-            keyboard.append([InlineKeyboardButton(button_text, callback_data=f"select_google_sheets_search_{item_index}_{i-1}")])
+            button_text = f"{i}. {self._truncate_name(result['name'], 20)}"
+            if i % 2 == 1:
+                # Start new row
+                keyboard.append([InlineKeyboardButton(button_text, callback_data=f"select_google_sheets_search_{item_index}_{i-1}")])
+            else:
+                # Add to existing row
+                keyboard[-1].append(InlineKeyboardButton(button_text, callback_data=f"select_google_sheets_search_{item_index}_{i-1}"))
         
         # Add back button
         keyboard.append([InlineKeyboardButton("◀️ Назад", callback_data="back_to_google_sheets_matching")])

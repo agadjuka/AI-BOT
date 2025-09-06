@@ -6,18 +6,22 @@ from config.settings import BotConfig
 def get_google_sheets_ingredients() -> dict:
     """
     Загружает список ингредиентов для сопоставления с Google Sheets.
-    Возвращает словарь: {'название ингредиента в нижнем регистре': id}
+    Возвращает словарь: {id: {'name': name}}
     """
     config = BotConfig()
     
-    # TODO: Загрузить готовый список ингредиентов из конфигурации
-    # Пока возвращаем пустой словарь, который будет заполнен позже
-    ingredient_dictionary = config.INGREDIENT_LIST or {}
+    # Получаем список ингредиентов из конфигурации
+    ingredient_list = config.INGREDIENT_LIST or {}
     
-    if not ingredient_dictionary:
+    if not ingredient_list:
         print("⚠️ Список ингредиентов для Google Sheets не настроен.")
         print("💡 Добавьте готовый список ингредиентов в конфигурацию.")
         return {}
+    
+    # Преобразуем формат из {name: id} в {id: {'name': name}}
+    ingredient_dictionary = {}
+    for name, ingredient_id in ingredient_list.items():
+        ingredient_dictionary[ingredient_id] = {'name': name}
     
     print(f"✅ Загружено {len(ingredient_dictionary)} ингредиентов для Google Sheets.")
     return ingredient_dictionary

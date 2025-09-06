@@ -104,8 +104,12 @@ def main() -> None:
     # Initialize empty poster ingredients - will be loaded on demand
     application.bot_data["poster_ingredients"] = {}
     
-    # Initialize empty Google Sheets ingredients - will be loaded on demand
-    application.bot_data["google_sheets_ingredients"] = {}
+    # Initialize Google Sheets ingredients
+    print("🔄 Загружаю ингредиенты Google Sheets...")
+    google_sheets_ingredients = get_google_sheets_ingredients()
+    application.bot_data["google_sheets_ingredients"] = google_sheets_ingredients
+    print(f"✅ Загружено {len(google_sheets_ingredients)} ингредиентов Google Sheets при запуске")
+    print(f"DEBUG: Первые 5 ингредиентов: {list(google_sheets_ingredients.keys())[:5]}")
 
     # Create conversation handler
     conv_handler = ConversationHandler(
@@ -113,6 +117,7 @@ def main() -> None:
         states={
             config.AWAITING_CORRECTION: [
                 CallbackQueryHandler(callback_handlers.handle_correction_choice),
+                MessageHandler(filters.TEXT & ~filters.COMMAND, message_handlers.handle_user_input),  # Add text handler for search
                 MessageHandler(filters.PHOTO, message_handlers.handle_photo)  # Add photo handler
             ],
             config.AWAITING_INPUT: [

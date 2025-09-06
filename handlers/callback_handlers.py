@@ -861,13 +861,19 @@ class CallbackHandlers:
             item_index = int(action.split("_")[4])  # Fixed: item_index is at position 4
             await query.answer("🔍 Введите поисковый запрос...")
             
-            # Set search mode
+            print(f"DEBUG: search_google_sheets_ingredient_{item_index} button pressed")
+            print(f"DEBUG: Setting google_sheets_search_mode = True for item_index = {item_index}")
+            
+            # Set search mode - use the correct flag for ingredient search
             context.user_data['google_sheets_search_mode'] = True
             context.user_data['google_sheets_search_item_index'] = item_index
             
+            print(f"DEBUG: Flags set - google_sheets_search_mode: {context.user_data.get('google_sheets_search_mode')}")
+            print(f"DEBUG: Flags set - google_sheets_search_item_index: {context.user_data.get('google_sheets_search_item_index')}")
+            
             await self.ui_manager.send_temp(
                 update, context, 
-                "Введите поисковый запрос для поиска ингредиента в Google Таблицах:", 
+                "Введите наименование ингредиента для поиска в Google Таблицах:", 
                 duration=30
             )
             return self.config.AWAITING_CORRECTION
@@ -881,16 +887,6 @@ class CallbackHandlers:
             await self._handle_google_sheets_search_selection(update, context, item_index, result_index)
             return self.config.AWAITING_CORRECTION
         
-        if action.startswith("skip_google_sheets_item_"):
-            # User wants to skip Google Sheets item
-            item_index = int(action.split("_")[3])
-            await query.answer("⏭️ Товар пропущен")
-            
-            # Return to matching table
-            await self._show_google_sheets_matching_table(update, context, 
-                context.user_data['pending_google_sheets_upload']['receipt_data'],
-                context.user_data['pending_google_sheets_upload']['matching_result'])
-            return self.config.AWAITING_CORRECTION
         
         if action == "back_to_google_sheets_matching":
             # Return to Google Sheets matching table
@@ -2587,16 +2583,20 @@ class CallbackHandlers:
         # Create buttons
         keyboard = []
         
-        # Add suggestion buttons
+        # Add suggestion buttons in two columns
         if current_match.suggested_matches:
-            for i, suggestion in enumerate(current_match.suggested_matches[:5], 1):  # Show max 5 suggestions
-                button_text = f"{i}. {self._truncate_name(suggestion['name'], 20)} ({int(suggestion['score'] * 100)}%)"
-                keyboard.append([InlineKeyboardButton(button_text, callback_data=f"select_google_sheets_suggestion_{item_index}_{i-1}")])
+            for i, suggestion in enumerate(current_match.suggested_matches[:6], 1):  # Show max 6 suggestions (3 rows x 2 columns)
+                button_text = f"{i}. {self._truncate_name(suggestion['name'], 15)} ({int(suggestion['score'] * 100)}%)"
+                if i % 2 == 1:
+                    # Start new row
+                    keyboard.append([InlineKeyboardButton(button_text, callback_data=f"select_google_sheets_suggestion_{item_index}_{i-1}")])
+                else:
+                    # Add to existing row
+                    keyboard[-1].append(InlineKeyboardButton(button_text, callback_data=f"select_google_sheets_suggestion_{item_index}_{i-1}"))
         
         # Add search and control buttons
         keyboard.extend([
             [InlineKeyboardButton("🔍 Поиск", callback_data=f"search_google_sheets_ingredient_{item_index}")],
-            [InlineKeyboardButton("⏭️ Пропустить", callback_data=f"skip_google_sheets_item_{item_index}")],
             [InlineKeyboardButton("◀️ Назад", callback_data="back_to_google_sheets_matching")]
         ])
         
@@ -2737,22 +2737,6 @@ class CallbackHandlers:
             await self._show_google_sheets_matching_table(update, context, 
                 pending_data['receipt_data'], pending_data['matching_result'])
 
-    async def _handle_google_sheets_search_selection(self, update: Update, context: ContextTypes.DEFAULT_TYPE, 
-                                                   item_index: int, result_index: int):
-        """Handle Google Sheets search result selection for specific item"""
-        # This would need to be implemented based on how search results are stored
-        # For now, we'll show a placeholder message
-        await self.ui_manager.send_temp(
-            update, context,
-            f"✅ Сопоставление для товара {item_index + 1} выполнено!",
-            duration=2
-        )
-        
-        # Return to matching table
-        pending_data = context.user_data.get('pending_google_sheets_upload')
-        if pending_data:
-            await self._show_google_sheets_matching_table(update, context, 
-                pending_data['receipt_data'], pending_data['matching_result'])
 
     async def _show_file_format_selection(self, update: Update, context: ContextTypes.DEFAULT_TYPE,
                                         receipt_data: ReceiptData, matching_result: IngredientMatchingResult):
@@ -3262,9 +3246,16 @@ class CallbackHandlers:
             # Get Google Sheets ingredients from bot data
             google_sheets_ingredients = context.bot_data.get('google_sheets_ingredients', {})
             
+            # Convert format from {id: {'name': name}} to {name: id} for matching service
+            google_sheets_ingredients_for_matching = {}
+            for ingredient_id, ingredient_data in google_sheets_ingredients.items():
+                ingredient_name = ingredient_data.get('name', '')
+                if ingredient_name:
+                    google_sheets_ingredients_for_matching[ingredient_name] = ingredient_id
+            
             # Perform matching with Google Sheets ingredients
             print(f"DEBUG: Performing matching with Google Sheets ingredients for {len(receipt_data.items)} items")
-            google_sheets_matching_result = self.ingredient_matching_service.match_ingredients(receipt_data, google_sheets_ingredients)
+            google_sheets_matching_result = self.ingredient_matching_service.match_ingredients(receipt_data, google_sheets_ingredients_for_matching)
             
             # Show preview with Google Sheets matching result
             await self._show_google_sheets_preview(update, context, receipt_data, google_sheets_matching_result)

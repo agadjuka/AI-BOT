@@ -168,7 +168,9 @@ class IngredientMatchingService:
         Returns:
             List of similar ingredients with scores
         """
+        print(f"DEBUG: get_similar_ingredients called with query '{query}' and {len(poster_ingredients)} ingredients")
         normalized_query = self._normalize_name(query)
+        print(f"DEBUG: Normalized query: '{normalized_query}'")
         results = []
         
         for poster_name, poster_id in poster_ingredients.items():
@@ -184,7 +186,11 @@ class IngredientMatchingService:
         
         # Sort by score and return top results
         results.sort(key=lambda x: x['score'], reverse=True)
-        return results[:limit]
+        final_results = results[:limit]
+        print(f"DEBUG: Found {len(final_results)} results (from {len(results)} total matches)")
+        if final_results:
+            print(f"DEBUG: Top result: {final_results[0]['name']} (score: {final_results[0]['score']:.3f})")
+        return final_results
     
     def manual_match_ingredient(self, receipt_item_name: str, poster_ingredient_id: str, 
                                poster_ingredients: Dict[str, str]) -> IngredientMatch:
