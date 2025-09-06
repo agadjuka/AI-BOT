@@ -13,9 +13,9 @@ class IngredientMatchingService:
     """Service for matching ingredients from receipts with Poster ingredients"""
     
     def __init__(self):
-        self.exact_match_threshold = 0.95  # 95% similarity for exact match
+        self.exact_match_threshold = 0.85  # 85% similarity for exact match (adjusted for word matching)
         self.partial_match_threshold = 0.6  # 60% similarity for partial match
-        self.min_match_threshold = 0.4  # 40% minimum similarity to consider any match
+        self.min_match_threshold = 0.3  # 30% minimum similarity to consider any match
         self.max_suggestions = 5  # Maximum number of suggestions
     
     def match_ingredients(self, receipt_data: ReceiptData, poster_ingredients: Dict[str, str]) -> IngredientMatchingResult:
@@ -69,25 +69,98 @@ class IngredientMatchingService:
                 'id': poster_id,
                 'score': score
             })
+        
+        # Sort all scores using smart sorting logic to find the best match
+        def sort_key(result):
+            score = result['score']
+            name = result['name']
+            query_words = set(normalized_receipt_name.split())
+            name_words = set(name.lower().split())
             
-            if score > best_score:
-                best_score = score
-                best_match = {
-                    'name': poster_name,
-                    'id': poster_id,
-                    'score': score
-                }
+            # Primary: exact word matches (highest priority)
+            exact_word_matches = len(query_words.intersection(name_words))
+            exact_word_bonus = exact_word_matches / 5.0  # Strong bonus for exact word matches
+            
+            # Secondary: prefer exact subset matches (query words are subset of name words)
+            # This helps "carrot" beat "carrot sticks" when query is "carrot"
+            subset_bonus = 0
+            if exact_word_matches > 0:
+                if query_words.issubset(name_words) and not name_words.issubset(query_words):
+                    # Query is subset of name - prefer shorter name (exact match)
+                    subset_bonus = 0.2
+                elif name_words.issubset(query_words):
+                    # Name is subset of query - prefer longer name (more specific)
+                    subset_bonus = 0.1
+            
+            # Tertiary: prefer shorter names for exact word matches
+            # This helps "carrot" beat "carrot sticks" when both contain "carrot"
+            if exact_word_matches > 0:
+                length_penalty = len(name) / 200.0  # Small penalty for longer names
+            else:
+                length_bonus = len(name) / 100.0  # Small bonus for longer names when no exact matches
+                length_penalty = -length_bonus
+            
+            return score + exact_word_bonus + subset_bonus - length_penalty
+        
+        # Sort and get the best match
+        sorted_scores = sorted(all_scores, key=sort_key, reverse=True)
+        if sorted_scores:
+            best_match = sorted_scores[0]
+            best_score = best_match['score']
         
         # Determine match status
-        if best_score >= self.exact_match_threshold:
-            status = MatchStatus.EXACT_MATCH
-        elif best_score >= self.partial_match_threshold:
-            status = MatchStatus.PARTIAL_MATCH
+        # Check for exact word matches first
+        if best_match:
+            normalized_best_name = self._normalize_name(best_match['name'])
+            words1 = set(normalized_receipt_name.split())
+            words2 = set(normalized_best_name.split())
+            
+            # If all words from receipt are found in the ingredient name, it's an exact match
+            if words1 and words2 and words1.issubset(words2):
+                status = MatchStatus.EXACT_MATCH
+            elif best_score >= self.exact_match_threshold:
+                status = MatchStatus.EXACT_MATCH
+            elif best_score >= self.partial_match_threshold:
+                status = MatchStatus.PARTIAL_MATCH
+            else:
+                status = MatchStatus.NO_MATCH
         else:
             status = MatchStatus.NO_MATCH
         
         # Get suggested matches (top matches for manual selection)
-        suggested_matches = sorted(all_scores, key=lambda x: x['score'], reverse=True)[:self.max_suggestions]
+        # Use the same smart sorting logic as in get_similar_ingredients
+        def sort_key(result):
+            score = result['score']
+            name = result['name']
+            query_words = set(normalized_receipt_name.split())
+            name_words = set(name.lower().split())
+            
+            # Primary: exact word matches (highest priority)
+            exact_word_matches = len(query_words.intersection(name_words))
+            exact_word_bonus = exact_word_matches / 5.0  # Strong bonus for exact word matches
+            
+            # Secondary: prefer exact subset matches (query words are subset of name words)
+            # This helps "carrot" beat "carrot sticks" when query is "carrot"
+            subset_bonus = 0
+            if exact_word_matches > 0:
+                if query_words.issubset(name_words) and not name_words.issubset(query_words):
+                    # Query is subset of name - prefer shorter name (exact match)
+                    subset_bonus = 0.2
+                elif name_words.issubset(query_words):
+                    # Name is subset of query - prefer longer name (more specific)
+                    subset_bonus = 0.1
+            
+            # Tertiary: prefer shorter names for exact word matches
+            # This helps "carrot" beat "carrot sticks" when both contain "carrot"
+            if exact_word_matches > 0:
+                length_penalty = len(name) / 200.0  # Small penalty for longer names
+            else:
+                length_bonus = len(name) / 100.0  # Small bonus for longer names when no exact matches
+                length_penalty = -length_bonus
+            
+            return score + exact_word_bonus + subset_bonus - length_penalty
+        
+        suggested_matches = sorted(all_scores, key=sort_key, reverse=True)[:self.max_suggestions]
         
         # Only set matched ingredient if similarity is above minimum threshold
         if best_score >= self.min_match_threshold:
@@ -122,13 +195,17 @@ class IngredientMatchingService:
         # Convert to lowercase
         normalized = name.lower().strip()
         
+        # Replace hyphens and other separators with spaces to better handle compound words
+        # This helps with matching "томата-соус" with "томата"
+        normalized = re.sub(r'[-_/]', ' ', normalized)
+        
         # Remove common words that might interfere with matching (but keep important food words and units)
         # IMPORTANT: Keep units of measurement (kg, g, l, ml, etc.) as they are essential for product identification
         common_words = ['fresh', 'organic', 'premium', 'quality', 'grade', 'a', 'an', 'the']
         words = normalized.split()
         words = [word for word in words if word not in common_words]
         
-        # Remove special characters and extra spaces
+        # Remove special characters and extra spaces, but keep letters and numbers
         normalized = ' '.join(words)
         normalized = re.sub(r'[^\w\s]', '', normalized)
         normalized = re.sub(r'\s+', ' ', normalized).strip()
@@ -161,18 +238,41 @@ class IngredientMatchingService:
             # Calculate exact word overlap
             exact_word_overlap = len(words1.intersection(words2)) / len(words1.union(words2))
             
-            # Calculate partial word matches (substring matches)
+            # Calculate partial word matches (substring matches) with better scoring
             partial_matches = 0
             total_words = len(words1.union(words2))
+            word_match_scores = []
             
             for word1 in words1:
+                best_word_match = 0.0
                 for word2 in words2:
                     # Check if one word contains the other (partial match)
                     if word1 in word2 or word2 in word1:
-                        partial_matches += 1
-                        break
+                        # Calculate how much of the word matches
+                        if word1 == word2:
+                            # Exact word match - highest score
+                            match_score = 1.0
+                        elif word1 in word2:
+                            # word1 is contained in word2 (e.g., "томата" in "томата-соус")
+                            # Give higher score for longer matches and when the shorter word is significant
+                            if len(word1) >= 4:  # Only for words with 4+ characters
+                                match_score = min(0.95, len(word1) / len(word2) + 0.4)  # Boost for significant words
+                            else:
+                                match_score = len(word1) / len(word2)
+                        else:  # word2 in word1
+                            # word2 is contained in word1
+                            if len(word2) >= 4:  # Only for words with 4+ characters
+                                match_score = min(0.95, len(word2) / len(word1) + 0.4)  # Boost for significant words
+                            else:
+                                match_score = len(word2) / len(word1)
+                        
+                        best_word_match = max(best_word_match, match_score)
+                
+                if best_word_match > 0:
+                    word_match_scores.append(best_word_match)
             
-            partial_word_overlap = partial_matches / total_words if total_words > 0 else 0
+            # Calculate weighted partial word overlap
+            partial_word_overlap = sum(word_match_scores) / total_words if total_words > 0 else 0
             
             # Use the better of exact or partial word overlap
             word_overlap = max(exact_word_overlap, partial_word_overlap)
@@ -181,10 +281,14 @@ class IngredientMatchingService:
             if word_overlap > 0:
                 # If there's exact word match, it should be at least partial match
                 if exact_word_overlap > 0:
-                    final_score = max(0.6, (base_similarity * 0.4) + (word_overlap * 0.6))
+                    # Exact word match gets highest priority - should be very high score
+                    final_score = max(0.9, (base_similarity * 0.1) + (word_overlap * 0.9))
                 else:
-                    # Partial word match should also be considered
-                    final_score = max(0.4, (base_similarity * 0.5) + (word_overlap * 0.5))
+                    # Partial word match should also be considered, especially for compound words
+                    if partial_word_overlap >= 0.5:  # If at least 50% of words match
+                        final_score = max(0.7, (base_similarity * 0.2) + (word_overlap * 0.8))
+                    else:
+                        final_score = max(0.4, (base_similarity * 0.5) + (word_overlap * 0.5))
             else:
                 # No word overlap, use base similarity
                 final_score = base_similarity
@@ -222,7 +326,39 @@ class IngredientMatchingService:
                 })
         
         # Sort by score and return top results
-        results.sort(key=lambda x: x['score'], reverse=True)
+        # For ties, prefer exact word matches, then more specific matches
+        def sort_key(result):
+            score = result['score']
+            name = result['name']
+            query_words = set(normalized_query.split())
+            name_words = set(name.lower().split())
+            
+            # Primary: exact word matches (highest priority)
+            exact_word_matches = len(query_words.intersection(name_words))
+            exact_word_bonus = exact_word_matches / 5.0  # Strong bonus for exact word matches
+            
+            # Secondary: prefer exact subset matches (query words are subset of name words)
+            # This helps "carrot" beat "carrot sticks" when query is "carrot"
+            subset_bonus = 0
+            if exact_word_matches > 0:
+                if query_words.issubset(name_words) and not name_words.issubset(query_words):
+                    # Query is subset of name - prefer shorter name (exact match)
+                    subset_bonus = 0.2
+                elif name_words.issubset(query_words):
+                    # Name is subset of query - prefer longer name (more specific)
+                    subset_bonus = 0.1
+            
+            # Tertiary: prefer shorter names for exact word matches
+            # This helps "carrot" beat "carrot sticks" when both contain "carrot"
+            if exact_word_matches > 0:
+                length_penalty = len(name) / 200.0  # Small penalty for longer names
+            else:
+                length_bonus = len(name) / 100.0  # Small bonus for longer names when no exact matches
+                length_penalty = -length_bonus
+            
+            return score + exact_word_bonus + subset_bonus - length_penalty
+        
+        results.sort(key=sort_key, reverse=True)
         final_results = results[:limit]
         print(f"DEBUG: Found {len(final_results)} results (from {len(results)} total matches)")
         if final_results:
