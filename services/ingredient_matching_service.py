@@ -15,6 +15,7 @@ class IngredientMatchingService:
     def __init__(self):
         self.exact_match_threshold = 0.95  # 95% similarity for exact match
         self.partial_match_threshold = 0.6  # 60% similarity for partial match
+        self.min_match_threshold = 0.4  # 40% minimum similarity to consider any match
         self.max_suggestions = 5  # Maximum number of suggestions
     
     def match_ingredients(self, receipt_data: ReceiptData, poster_ingredients: Dict[str, str]) -> IngredientMatchingResult:
@@ -88,10 +89,18 @@ class IngredientMatchingService:
         # Get suggested matches (top matches for manual selection)
         suggested_matches = sorted(all_scores, key=lambda x: x['score'], reverse=True)[:self.max_suggestions]
         
+        # Only set matched ingredient if similarity is above minimum threshold
+        if best_score >= self.min_match_threshold:
+            matched_name = best_match['name'] if best_match else None
+            matched_id = best_match['id'] if best_match else None
+        else:
+            matched_name = None
+            matched_id = None
+        
         return IngredientMatch(
             receipt_item_name=receipt_item_name,
-            matched_ingredient_name=best_match['name'] if best_match else None,
-            matched_ingredient_id=best_match['id'] if best_match else None,
+            matched_ingredient_name=matched_name,
+            matched_ingredient_id=matched_id,
             match_status=status,
             similarity_score=best_score,
             suggested_matches=suggested_matches
@@ -113,8 +122,8 @@ class IngredientMatchingService:
         # Convert to lowercase
         normalized = name.lower().strip()
         
-        # Remove common words that might interfere with matching
-        common_words = ['fresh', 'organic', 'premium', 'quality', 'grade', 'a', 'an', 'the']
+        # Remove common words that might interfere with matching (but keep important food words)
+        common_words = ['fresh', 'organic', 'premium', 'quality', 'grade', 'a', 'an', 'the', 'kg', 'g', 'ml', 'l']
         words = normalized.split()
         words = [word for word in words if word not in common_words]
         
@@ -143,14 +152,41 @@ class IngredientMatchingService:
         matcher = SequenceMatcher(None, name1, name2)
         base_similarity = matcher.ratio()
         
-        # Boost score for exact word matches
+        # Get words from both names
         words1 = set(name1.split())
         words2 = set(name2.split())
         
         if words1 and words2:
-            word_overlap = len(words1.intersection(words2)) / len(words1.union(words2))
-            # Combine base similarity with word overlap
-            final_score = (base_similarity * 0.7) + (word_overlap * 0.3)
+            # Calculate exact word overlap
+            exact_word_overlap = len(words1.intersection(words2)) / len(words1.union(words2))
+            
+            # Calculate partial word matches (substring matches)
+            partial_matches = 0
+            total_words = len(words1.union(words2))
+            
+            for word1 in words1:
+                for word2 in words2:
+                    # Check if one word contains the other (partial match)
+                    if word1 in word2 or word2 in word1:
+                        partial_matches += 1
+                        break
+            
+            partial_word_overlap = partial_matches / total_words if total_words > 0 else 0
+            
+            # Use the better of exact or partial word overlap
+            word_overlap = max(exact_word_overlap, partial_word_overlap)
+            
+            # If there's any word overlap, boost the score significantly
+            if word_overlap > 0:
+                # If there's exact word match, it should be at least partial match
+                if exact_word_overlap > 0:
+                    final_score = max(0.6, (base_similarity * 0.4) + (word_overlap * 0.6))
+                else:
+                    # Partial word match should also be considered
+                    final_score = max(0.4, (base_similarity * 0.5) + (word_overlap * 0.5))
+            else:
+                # No word overlap, use base similarity
+                final_score = base_similarity
         else:
             final_score = base_similarity
         
