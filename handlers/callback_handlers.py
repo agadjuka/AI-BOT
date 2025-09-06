@@ -2295,32 +2295,35 @@ class CallbackHandlers:
         return lines
 
     def _extract_volume_from_name(self, name: str) -> float:
-        """Extract volume/weight from product name (e.g., 'Potato Wedges plain 2,5kg' -> 2.5)"""
+        """Extract volume/weight from product name and convert to base units (kg/l)"""
         import re
         
         if not name:
             return 0.0
         
-        # Patterns to match various volume/weight indicators
+        # Patterns to match various volume/weight indicators with conversion factors
         patterns = [
-            r'(\d+[,.]?\d*)\s*kg',  # kg (with comma or dot as decimal separator)
-            r'(\d+[,.]?\d*)\s*кг',  # кг (Russian)
-            r'(\d+[,.]?\d*)\s*l',   # liters
-            r'(\d+[,.]?\d*)\s*л',   # литры (Russian)
-            r'(\d+[,.]?\d*)\s*ml',  # milliliters
-            r'(\d+[,.]?\d*)\s*мл',  # миллилитры (Russian)
-            r'(\d+[,.]?\d*)\s*g',   # grams
-            r'(\d+[,.]?\d*)\s*г',   # граммы (Russian)
+            # Base units (kg, l) - no conversion needed
+            (r'(\d+[,.]?\d*)\s*kg', 1.0),  # kg (with comma or dot as decimal separator)
+            (r'(\d+[,.]?\d*)\s*кг', 1.0),  # кг (Russian)
+            (r'(\d+[,.]?\d*)\s*l', 1.0),   # liters
+            (r'(\d+[,.]?\d*)\s*л', 1.0),   # литры (Russian)
+            # Small units (g, ml) - convert to base units (multiply by 0.001)
+            (r'(\d+[,.]?\d*)\s*ml', 0.001),  # milliliters -> liters
+            (r'(\d+[,.]?\d*)\s*мл', 0.001),  # миллилитры -> литры (Russian)
+            (r'(\d+[,.]?\d*)\s*g', 0.001),   # grams -> kg
+            (r'(\d+[,.]?\d*)\s*г', 0.001),   # граммы -> кг (Russian)
         ]
         
-        for pattern in patterns:
+        for pattern, conversion_factor in patterns:
             match = re.search(pattern, name, re.IGNORECASE)
             if match:
                 volume_str = match.group(1)
                 # Replace comma with dot for proper float conversion
                 volume_str = volume_str.replace(',', '.')
                 try:
-                    return float(volume_str)
+                    volume = float(volume_str)
+                    return volume * conversion_factor
                 except ValueError:
                     continue
         
