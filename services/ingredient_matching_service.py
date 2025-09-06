@@ -14,8 +14,8 @@ class IngredientMatchingService:
     
     def __init__(self):
         self.exact_match_threshold = 0.85  # 85% similarity for exact match (adjusted for word matching)
-        self.partial_match_threshold = 0.6  # 60% similarity for partial match
-        self.min_match_threshold = 0.3  # 30% minimum similarity to consider any match
+        self.partial_match_threshold = 0.3  # 30% similarity for partial match (lowered for more yellow markers)
+        self.min_match_threshold = 0.15  # 15% minimum similarity to consider any match (lowered for more matches)
         self.max_suggestions = 5  # Maximum number of suggestions
     
     def match_ingredients(self, receipt_data: ReceiptData, poster_ingredients: Dict[str, str]) -> IngredientMatchingResult:
@@ -115,15 +115,51 @@ class IngredientMatchingService:
             words1 = set(normalized_receipt_name.split())
             words2 = set(normalized_best_name.split())
             
-            # If all words from receipt are found in the ingredient name, it's an exact match
-            if words1 and words2 and words1.issubset(words2):
-                status = MatchStatus.EXACT_MATCH
-            elif best_score >= self.exact_match_threshold:
-                status = MatchStatus.EXACT_MATCH
-            elif best_score >= self.partial_match_threshold:
-                status = MatchStatus.PARTIAL_MATCH
+            # For EXACT_MATCH (green marker), we need strict word matching
+            if words1 and words2:
+                # Check if all Google Sheets words are found in receipt name (exact match)
+                if words2.issubset(words1):
+                    status = MatchStatus.EXACT_MATCH
+                # Check if all receipt words are found in Google Sheets name (exact match)
+                elif words1.issubset(words2):
+                    status = MatchStatus.EXACT_MATCH
+                # Check if most words match (at least 80% of Google Sheets words)
+                elif len(words2) > 0 and len(words1.intersection(words2)) / len(words2) >= 0.8:
+                    status = MatchStatus.EXACT_MATCH
+                # Check if there's significant word overlap for partial match
+                elif best_score >= self.exact_match_threshold:
+                    word_overlap = len(words1.intersection(words2)) / len(words1.union(words2)) if words1.union(words2) else 0
+                    if word_overlap >= 0.1:  # Very low threshold for partial matches
+                        status = MatchStatus.PARTIAL_MATCH
+                    else:
+                        status = MatchStatus.NO_MATCH
+                elif best_score >= self.partial_match_threshold:
+                    # For partial match threshold, be very lenient
+                    # Check for partial word matches (substring matches)
+                    partial_word_matches = 0
+                    for word1 in words1:
+                        for word2 in words2:
+                            if word1 in word2 or word2 in word1:
+                                partial_word_matches += 1
+                                break
+                    
+                    word_overlap = len(words1.intersection(words2)) / len(words1.union(words2)) if words1.union(words2) else 0
+                    partial_word_ratio = partial_word_matches / len(words2) if len(words2) > 0 else 0
+                    
+                    if word_overlap >= 0.05 or partial_word_ratio >= 0.3:  # Consider partial word matches
+                        status = MatchStatus.PARTIAL_MATCH
+                    else:
+                        status = MatchStatus.NO_MATCH
+                else:
+                    status = MatchStatus.NO_MATCH
             else:
-                status = MatchStatus.NO_MATCH
+                # If no words to compare, use score-based logic
+                if best_score >= self.exact_match_threshold:
+                    status = MatchStatus.EXACT_MATCH
+                elif best_score >= self.partial_match_threshold:
+                    status = MatchStatus.PARTIAL_MATCH
+                else:
+                    status = MatchStatus.NO_MATCH
         else:
             status = MatchStatus.NO_MATCH
         
@@ -255,14 +291,14 @@ class IngredientMatchingService:
                         elif word1 in word2:
                             # word1 is contained in word2 (e.g., "томата" in "томата-соус")
                             # Give higher score for longer matches and when the shorter word is significant
-                            if len(word1) >= 4:  # Only for words with 4+ characters
-                                match_score = min(0.95, len(word1) / len(word2) + 0.4)  # Boost for significant words
+                            if len(word1) >= 3:  # Lowered to 3+ characters for better matching
+                                match_score = min(0.95, len(word1) / len(word2) + 0.5)  # Increased boost
                             else:
                                 match_score = len(word1) / len(word2)
                         else:  # word2 in word1
                             # word2 is contained in word1
-                            if len(word2) >= 4:  # Only for words with 4+ characters
-                                match_score = min(0.95, len(word2) / len(word1) + 0.4)  # Boost for significant words
+                            if len(word2) >= 3:  # Lowered to 3+ characters for better matching
+                                match_score = min(0.95, len(word2) / len(word1) + 0.5)  # Increased boost
                             else:
                                 match_score = len(word2) / len(word1)
                         
