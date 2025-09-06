@@ -95,10 +95,26 @@ class GoogleSheetsService:
             # Format date as DD.MM.YYYY
             current_date = datetime.now().strftime('%d.%m.%Y')
             
-            # Format quantity with "kg" if it's a number
-            quantity_str = ""
-            if item.quantity is not None and item.quantity > 0:
-                quantity_str = f"{item.quantity:.2f} kg"
+            # Calculate volume using the same logic as in preview
+            quantity = item.quantity if item.quantity is not None else 0
+            
+            # Extract volume from product name and multiply by quantity
+            volume_from_name = self._extract_volume_from_name(item.name)
+            if volume_from_name > 0:
+                # Multiply extracted volume by quantity
+                total_volume = volume_from_name * quantity
+                if total_volume == int(total_volume):
+                    quantity_str = f"{int(total_volume)} kg"
+                else:
+                    quantity_str = f"{total_volume:.1f} kg"
+            elif quantity > 0:
+                # Fallback to original behavior if no volume found in name
+                if quantity == int(quantity):
+                    quantity_str = f"{int(quantity)} kg"
+                else:
+                    quantity_str = f"{quantity:.1f} kg"
+            else:
+                quantity_str = ""
             
             # Format price with "Rp" suffix
             price_str = ""
@@ -309,3 +325,35 @@ class GoogleSheetsService:
             
         except Exception as e:
             return False, f"Error deleting rows: {str(e)}"
+    
+    def _extract_volume_from_name(self, name: str) -> float:
+        """Extract volume/weight from product name (e.g., 'Potato Wedges plain 2,5kg' -> 2.5)"""
+        import re
+        
+        if not name:
+            return 0.0
+        
+        # Patterns to match various volume/weight indicators
+        patterns = [
+            r'(\d+[,.]?\d*)\s*kg',  # kg (with comma or dot as decimal separator)
+            r'(\d+[,.]?\d*)\s*кг',  # кг (Russian)
+            r'(\d+[,.]?\d*)\s*l',   # liters
+            r'(\d+[,.]?\d*)\s*л',   # литры (Russian)
+            r'(\d+[,.]?\d*)\s*ml',  # milliliters
+            r'(\d+[,.]?\d*)\s*мл',  # миллилитры (Russian)
+            r'(\d+[,.]?\d*)\s*g',   # grams
+            r'(\d+[,.]?\d*)\s*г',   # граммы (Russian)
+        ]
+        
+        for pattern in patterns:
+            match = re.search(pattern, name, re.IGNORECASE)
+            if match:
+                volume_str = match.group(1)
+                # Replace comma with dot for proper float conversion
+                volume_str = volume_str.replace(',', '.')
+                try:
+                    return float(volume_str)
+                except ValueError:
+                    continue
+        
+        return 0.0
