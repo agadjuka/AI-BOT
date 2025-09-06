@@ -2522,7 +2522,7 @@ class CallbackHandlers:
         keyboard = [
             [InlineKeyboardButton("✅ Загрузить в Google Таблицы", callback_data="confirm_google_sheets_upload")],
             [InlineKeyboardButton("✏️ Редактировать сопоставление", callback_data="edit_google_sheets_matching")],
-            [InlineKeyboardButton("◀️ Вернуться к чеку", callback_data="back_to_receipt")]
+            [InlineKeyboardButton("◀️ Назад", callback_data="upload_to_google_sheets")]
         ]
         
         reply_markup = InlineKeyboardMarkup(keyboard)
@@ -2581,7 +2581,7 @@ class CallbackHandlers:
         keyboard.extend([
             [InlineKeyboardButton("🔍 Выбрать позицию для сопоставления", callback_data="select_google_sheets_position")],
             [InlineKeyboardButton("✅ Применить изменения", callback_data="apply_google_sheets_matching")],
-            [InlineKeyboardButton("◀️ Назад к предпросмотру", callback_data="back_to_google_sheets_preview")]
+            [InlineKeyboardButton("◀️ Назад", callback_data="upload_to_google_sheets")]
         ])
         
         reply_markup = InlineKeyboardMarkup(keyboard)
