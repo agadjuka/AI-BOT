@@ -2399,7 +2399,7 @@ class CallbackHandlers:
         
         # Create table header
         table_lines = []
-        table_lines.append("**Редактор сопоставления для Google Таблиц:**\n")
+        table_lines.append("**Сопоставление с ингредиентами Google Таблиц:**\n")
         
         # Add summary
         summary = f"📊 **Статистика:** Всего: {matching_result.total_items} | "
@@ -2461,21 +2461,14 @@ class CallbackHandlers:
 
     async def _show_google_sheets_matching_page(self, update: Update, context: ContextTypes.DEFAULT_TYPE,
                                                receipt_data: ReceiptData, matching_result: IngredientMatchingResult):
-        """Show Google Sheets matching page with empty schema and action buttons"""
+        """Show Google Sheets matching page with the same table as editor"""
         from telegram import InlineKeyboardButton, InlineKeyboardMarkup
         
-        # Create empty schema placeholder
-        schema_text = "📊 **Сопоставление с ингредиентами в Google Таблицы**\n\n"
-        schema_text += "```\n"
-        schema_text += "┌─────────────────────────────────────────────────────────┐\n"
-        schema_text += "│                    СХЕМА СОПОСТАВЛЕНИЯ                   │\n"
-        schema_text += "├─────────────────────────────────────────────────────────┤\n"
-        schema_text += "│  Товар из чека    │  Ингредиент Google Sheets  │ Статус │\n"
-        schema_text += "├─────────────────────────────────────────────────────────┤\n"
-        schema_text += "│  [Пустая схема]   │     [Будет заполнено]       │   -   │\n"
-        schema_text += "└─────────────────────────────────────────────────────────┘\n"
-        schema_text += "```\n\n"
-        schema_text += "Выберите действие для работы с сопоставлением:"
+        # Use the same table formatting as the editor
+        table_text = self._format_google_sheets_matching_table(matching_result)
+        
+        # Add additional text after the table
+        schema_text = table_text + "\n\nВыберите действие для работы с сопоставлением:"
         
         # Create action buttons
         keyboard = [
