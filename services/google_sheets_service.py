@@ -106,13 +106,15 @@ class GoogleSheetsService:
                 if total_volume == int(total_volume):
                     quantity_str = f"{int(total_volume)} kg"
                 else:
-                    quantity_str = f"{total_volume:.1f} kg"
+                    # Round to 2 decimal places
+                    quantity_str = f"{total_volume:.2f} kg"
             elif quantity > 0:
                 # Fallback to original behavior if no volume found in name
                 if quantity == int(quantity):
                     quantity_str = f"{int(quantity)} kg"
                 else:
-                    quantity_str = f"{quantity:.1f} kg"
+                    # Round to 2 decimal places
+                    quantity_str = f"{quantity:.2f} kg"
             else:
                 quantity_str = ""
             

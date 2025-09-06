@@ -10,7 +10,7 @@ class NumberFormatter:
     
     @staticmethod
     def format_number_with_spaces(number: Optional[float]) -> str:
-        """Format number with spaces between thousands, preserving all zeros"""
+        """Format number in Russian style: spaces for thousands, comma for decimal"""
         # Handle None values
         if number is None:
             return "0"
@@ -19,8 +19,19 @@ class NumberFormatter:
         if number == int(number):
             return f"{int(number):,}".replace(",", " ")
         else:
-            # If there are decimal places, show them fully
-            return f"{number:,.2f}".replace(",", " ")
+            # If there are decimal places, use comma as decimal separator
+            formatted = f"{number:,.2f}".replace(",", " ")
+            # Replace the last dot with comma for Russian decimal format
+            if '.' in formatted:
+                parts = formatted.split('.')
+                if len(parts) == 2:
+                    # Remove trailing zeros from decimal part
+                    decimal_part = parts[1].rstrip('0')
+                    if decimal_part:
+                        return f"{parts[0]},{decimal_part}"
+                    else:
+                        return parts[0]
+            return formatted
     
     @staticmethod
     def get_display_width(text: str) -> int:
@@ -47,7 +58,7 @@ class TextParser:
     
     @staticmethod
     def parse_number_from_text(text: str) -> float:
-        """Parse number from text, considering different separator formats"""
+        """Parse number from text, considering Russian format (spaces for thousands, comma for decimal)"""
         if not text:
             return 0.0
         
@@ -55,13 +66,16 @@ class TextParser:
         if text.isalpha() or text.replace(' ', '').isalpha():
             return 0.0
         
-        # Remove everything except digits, dots and commas
-        clean_text = ''.join(c for c in text if c.isdigit() or c in '.,')
+        # Remove everything except digits, dots, commas and spaces
+        clean_text = ''.join(c for c in text if c.isdigit() or c in '., ')
         
         if not clean_text:
             return 0.0
         
         try:
+            # Remove spaces (they are thousands separators in Russian format)
+            clean_text = clean_text.replace(' ', '')
+            
             # If there are both comma and dot
             if ',' in clean_text and '.' in clean_text:
                 # Comma - thousands separator, dot - decimal separator
@@ -72,7 +86,7 @@ class TextParser:
             elif ',' in clean_text:
                 parts = clean_text.split(',')
                 if len(parts) == 2 and len(parts[1]) <= 2 and len(parts[1]) > 0:
-                    # Comma - decimal separator
+                    # Comma - decimal separator (Russian format)
                     # Example: 1240,75 -> 1240.75
                     clean_text = clean_text.replace(',', '.')
                 else:
@@ -98,17 +112,20 @@ class TextParser:
     
     @staticmethod
     def parse_user_input_number(text: str) -> float:
-        """Parse number entered by user (considers decimal fractions)"""
+        """Parse number entered by user (considers Russian format: spaces for thousands, comma for decimal)"""
         if not text:
             return 0.0
         
-        # Remove everything except digits, dots and commas
-        clean_text = ''.join(c for c in text if c.isdigit() or c in '.,')
+        # Remove everything except digits, dots, commas and spaces
+        clean_text = ''.join(c for c in text if c.isdigit() or c in '., ')
         
         if not clean_text:
             return 0.0
         
         try:
+            # Remove spaces (they are thousands separators in Russian format)
+            clean_text = clean_text.replace(' ', '')
+            
             # If there are both comma and dot
             if ',' in clean_text and '.' in clean_text:
                 # Comma - decimal separator, dot - thousands separator
@@ -120,7 +137,7 @@ class TextParser:
             elif ',' in clean_text:
                 parts = clean_text.split(',')
                 if len(parts) == 2 and len(parts[1]) <= 3 and len(parts[1]) > 0:
-                    # Comma - decimal separator
+                    # Comma - decimal separator (Russian format)
                     # Example: 0,150 -> 0.150
                     clean_text = clean_text.replace(',', '.')
                 else:

@@ -2364,13 +2364,15 @@ class CallbackHandlers:
                 if total_volume == int(total_volume):
                     volume_str = str(int(total_volume))
                 else:
-                    volume_str = f"{total_volume:.1f}"
+                    # Round to 2 decimal places
+                    volume_str = f"{total_volume:.2f}"
             elif quantity > 0:
                 # Fallback to original behavior if no volume found in name
                 if quantity == int(quantity):
                     volume_str = str(int(quantity))
                 else:
-                    volume_str = f"{quantity:.1f}"
+                    # Round to 2 decimal places
+                    volume_str = f"{quantity:.2f}"
             else:
                 volume_str = "-"
             
