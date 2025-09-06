@@ -96,10 +96,7 @@ class CallbackHandlers:
             return self.config.AWAITING_CORRECTION
         
         if action == "add_row":
-            # Clean up all messages except anchor before showing new menu
-            await self.ui_manager.cleanup_all_except_anchor(update, context)
-            
-            # Add new row
+            # Add new row - this will become the single working menu
             await self._add_new_row(update, context)
             return self.config.AWAITING_FIELD_EDIT
         
@@ -109,15 +106,12 @@ class CallbackHandlers:
                 update, context,
                 "Введите номер строки для удаления:\n\n"
                 "Например: `3` (для удаления строки 3)",
-                duration=30
+                duration=10
             )
             return self.config.AWAITING_DELETE_LINE_NUMBER
         
         if action == "edit_total":
-            # Clean up all messages except anchor before showing new menu
-            await self.ui_manager.cleanup_all_except_anchor(update, context)
-            
-            # Show total edit menu
+            # Show total edit menu - this will become the single working menu
             await self._show_total_edit_menu(update, context)
             return self.config.AWAITING_CORRECTION
         
@@ -135,7 +129,7 @@ class CallbackHandlers:
                 update, context,
                 f"Текущая итоговая сумма: **{formatted_total}**\n\n"
                 "Введите новую итоговую сумму:",
-                duration=30
+                duration=10
             )
             return self.config.AWAITING_TOTAL_EDIT
         
@@ -145,7 +139,7 @@ class CallbackHandlers:
                 update, context,
                 "Введите номер строки для редактирования:\n\n"
                 "Например: `3` (для редактирования строки 3)",
-                duration=30
+                duration=10
             )
             return self.config.AWAITING_LINE_NUMBER
         
@@ -296,41 +290,18 @@ class CallbackHandlers:
             return self.config.AWAITING_INGREDIENT_MATCHING
         
         if action == "back_to_receipt":
-            # Check if there are any changes made
-            changed_indices = context.user_data.get('changed_ingredient_indices', set())
-            has_changes = len(changed_indices) > 0
+            # New architecture: Clean up everything except anchor and show fresh root menu
+            await query.answer("📄 Возвращаюсь к чеку...")
             
-            if has_changes:
-                # Show confirmation dialog
-                await self._show_back_confirmation_dialog(update, context)
-                return self.config.AWAITING_INGREDIENT_MATCHING
-            else:
-                # No changes, but still save current state before returning
-                matching_result = context.user_data.get('ingredient_matching_result')
-                receipt_data = context.user_data.get('receipt_data')
-                
-                if matching_result and receipt_data:
-                    # Save current state to persistent storage
-                    user_id = update.effective_user.id
-                    receipt_hash = receipt_data.get_receipt_hash()
-                    success = self.ingredient_storage.save_matching_result(user_id, matching_result, changed_indices, receipt_hash)
-                    print(f"DEBUG: Saved state before returning - success: {success}")
-                
-                # Always clear matching data from context so it will be loaded from storage next time
-                context.user_data.pop('ingredient_matching_result', None)
-                context.user_data.pop('changed_ingredient_indices', None)
-                context.user_data.pop('current_match_index', None)
-                
-                # Clear any pending data
-                context.user_data.pop('pending_google_sheets_upload', None)
-                context.user_data.pop('pending_file_generation', None)
-                
-                await query.answer("📄 Возвращаюсь к стартовой странице чека...")
-                await self.ui_manager.cleanup_all_except_anchor(update, context)
-                
-                # Always return to receipt report (start page)
-                await self._show_final_report_with_edit_button_callback(update, context)
-                return self.config.AWAITING_CORRECTION
+            # Clean up all messages except anchor
+            await self.ui_manager.cleanup_all_except_anchor(update, context)
+            
+            # Clear only temporary/UI data, keep core receipt data
+            self.ui_manager._clear_temporary_data(context)
+            
+            # Show fresh root menu (final report)
+            await self._show_final_report_with_edit_button_callback(update, context)
+            return self.config.AWAITING_CORRECTION
         
         if action == "back_to_main_menu":
             # Return to main menu
@@ -875,7 +846,7 @@ class CallbackHandlers:
             await self.ui_manager.send_temp(
                 update, context, 
                 "Введите наименование ингредиента для поиска в Google Таблицах:", 
-                duration=30
+                duration=10
             )
             return self.config.AWAITING_CORRECTION
         
@@ -977,7 +948,7 @@ class CallbackHandlers:
                 f"Редактируете строку {line_number}\n"
                 f"Текущее {field_labels[field_name]}: **{current_value}**\n\n"
                 f"Введите новое {field_labels[field_name]}:",
-                duration=30
+                duration=10
             )
             return self.config.AWAITING_FIELD_EDIT
         
@@ -1019,7 +990,7 @@ class CallbackHandlers:
             "Введите правильные данные в формате:\n"
             "`Название, Количество, Цена за единицу, Сумма`\n\n"
             "Пример: `Udang Kupas, 4, 150000, 600000`",
-            duration=30
+            duration=10
         )
         
         return self.config.AWAITING_INPUT
@@ -1234,7 +1205,12 @@ class CallbackHandlers:
         
         if not final_data:
             if hasattr(update, 'callback_query') and update.callback_query:
-                await update.callback_query.message.reply_text("Произошла ошибка, данные не найдены.")
+                await self.ui_manager.send_temp(
+                    update, context,
+                    "❌ **Данные чека не найдены**\n\n"
+                    "Попробуйте загрузить чек заново.",
+                    duration=5
+                )
             return
 
         try:
@@ -1342,27 +1318,25 @@ class CallbackHandlers:
             # Add file generation button
             keyboard.append([InlineKeyboardButton("📄 Получить файл для загрузки в постер", callback_data="generate_supply_file")])
             
-            # Add cancel button
-            keyboard.append([InlineKeyboardButton("❌ Отмена", callback_data="cancel")])
+            # Add back button (required in every menu)
+            keyboard.append([InlineKeyboardButton("◀️ Вернуться к чеку", callback_data="back_to_receipt")])
             
             reply_markup = InlineKeyboardMarkup(keyboard)
             
-            # Check if there's saved table message
-            table_message_id = context.user_data.get('table_message_id')
+            # Use UI manager to send/update the single working menu
+            working_menu_id = self.ui_manager.get_working_menu_id(context)
             
-            if table_message_id:
-                # Try to edit existing table message
+            if working_menu_id:
+                # Try to edit existing working menu message
                 success = await self.ui_manager.edit_menu(
-                    update, context, table_message_id, final_report, reply_markup
+                    update, context, working_menu_id, final_report, reply_markup
                 )
                 if not success:
-                    # If couldn't edit, send new message
+                    # If couldn't edit, send new message (replaces working menu)
                     message = await self.ui_manager.send_menu(update, context, final_report, reply_markup)
-                    context.user_data['table_message_id'] = message.message_id
             else:
-                # If no saved ID, send new message
+                # If no working menu, send new message (becomes working menu)
                 message = await self.ui_manager.send_menu(update, context, final_report, reply_markup)
-                context.user_data['table_message_id'] = message.message_id
         
         except Exception as e:
             print(f"Ошибка при формировании отчета: {e}")
@@ -2442,7 +2416,7 @@ class CallbackHandlers:
 
     async def _show_google_sheets_preview(self, update: Update, context: ContextTypes.DEFAULT_TYPE,
                                         receipt_data: ReceiptData, matching_result: IngredientMatchingResult):
-        """Show Google Sheets upload preview with confirmation buttons"""
+        """Show Google Sheets upload preview with confirmation buttons - this becomes the single working menu"""
         from telegram import InlineKeyboardButton, InlineKeyboardMarkup
         
         # Create table preview with Google Sheets data
@@ -2455,7 +2429,7 @@ class CallbackHandlers:
         keyboard = [
             [InlineKeyboardButton("✅ Загрузить в Google Таблицы", callback_data="confirm_google_sheets_upload")],
             [InlineKeyboardButton("✏️ Изменить сопоставление", callback_data="edit_google_sheets_matching")],
-            [InlineKeyboardButton("◀️ Назад", callback_data="back_to_receipt")]
+            [InlineKeyboardButton("◀️ Вернуться к чеку", callback_data="back_to_receipt")]
         ]
         
         reply_markup = InlineKeyboardMarkup(keyboard)
@@ -2466,9 +2440,20 @@ class CallbackHandlers:
             'matching_result': matching_result
         }
         
-        await self.ui_manager.send_menu(
-            update, context, text, reply_markup, 'Markdown'
-        )
+        # Use UI manager to send/update the single working menu
+        working_menu_id = self.ui_manager.get_working_menu_id(context)
+        
+        if working_menu_id:
+            # Try to edit existing working menu message
+            success = await self.ui_manager.edit_menu(
+                update, context, working_menu_id, text, reply_markup, 'Markdown'
+            )
+            if not success:
+                # If couldn't edit, send new message (replaces working menu)
+                await self.ui_manager.send_menu(update, context, text, reply_markup, 'Markdown')
+        else:
+            # If no working menu, send new message (becomes working menu)
+            await self.ui_manager.send_menu(update, context, text, reply_markup, 'Markdown')
 
     async def _show_google_sheets_matching_table(self, update: Update, context: ContextTypes.DEFAULT_TYPE,
                                                receipt_data: ReceiptData, matching_result: IngredientMatchingResult):

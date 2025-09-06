@@ -1044,10 +1044,7 @@ class MessageHandlers:
             context.user_data.pop(key, None)
     
     async def show_final_report_with_edit_button(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
-        """Show final report with edit buttons"""
-        # Clean up all messages except anchor
-        await self.ui_manager.cleanup_all_except_anchor(update, context)
-        
+        """Show final report with edit buttons - this is the root menu"""
         final_data: ReceiptData = context.user_data.get('receipt_data')
         
         if not final_data:
@@ -1161,12 +1158,12 @@ class MessageHandlers:
             # Add file generation button
             keyboard.append([InlineKeyboardButton("📄 Получить файл для загрузки в постер", callback_data="generate_supply_file")])
             
-            # Add back button
+            # Add back button (required in every menu)
             keyboard.append([InlineKeyboardButton("◀️ Вернуться к чеку", callback_data="back_to_receipt")])
             
             reply_markup = InlineKeyboardMarkup(keyboard)
             
-            # Send report with buttons using UI manager
+            # Send report with buttons using UI manager (this becomes the single working menu)
             message = await self.ui_manager.send_menu(update, context, final_report, reply_markup)
             # Save table message ID for subsequent editing
             context.user_data['table_message_id'] = message.message_id
@@ -1178,7 +1175,7 @@ class MessageHandlers:
             )
     
     async def _send_edit_menu(self, update: Update, context: ContextTypes.DEFAULT_TYPE, message_id_to_edit: int = None):
-        """Send edit menu for specific line"""
+        """Send edit menu for specific line - this becomes the single working menu"""
         line_number = context.user_data.get('line_to_edit')
         data: ReceiptData = context.user_data['receipt_data']
         item_to_edit = data.get_item(line_number)
@@ -1233,30 +1230,27 @@ class MessageHandlers:
             [
                 InlineKeyboardButton("💵 Сумма", callback_data=f"field_{line_number}_total"),
                 InlineKeyboardButton("✅ Применить", callback_data=f"apply_{line_number}"),
-                InlineKeyboardButton("◀️ Назад", callback_data="back_to_receipt")
+                InlineKeyboardButton("◀️ Вернуться к чеку", callback_data="back_to_receipt")
             ]
         ]
         
         reply_markup = InlineKeyboardMarkup(keyboard)
         
         if message_id_to_edit:
-            # Edit existing message
+            # Edit existing working menu message
             success = await self.ui_manager.edit_menu(
                 update, context, message_id_to_edit, text, reply_markup, 'Markdown'
             )
             if not success:
-                # If couldn't edit, send new message
+                # If couldn't edit, send new message (replaces working menu)
                 message = await self.ui_manager.send_menu(
                     update, context, text, reply_markup, 'Markdown'
                 )
-                context.user_data['edit_menu_message_id'] = message.message_id
         else:
-            # Create new message
+            # Create new working menu message
             message = await self.ui_manager.send_menu(
                 update, context, text, reply_markup, 'Markdown'
             )
-            # Save message ID for subsequent editing
-            context.user_data['edit_menu_message_id'] = message.message_id
     
     async def _send_long_message_with_keyboard(self, message, text: str, reply_markup):
         """Send long message with keyboard"""

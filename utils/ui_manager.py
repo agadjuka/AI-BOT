@@ -1,5 +1,6 @@
 """
 UI Manager for Telegram bot - manages menu messages and cleanup
+Implements single anchor + single menu screen architecture
 """
 import asyncio
 from typing import Optional, List, Dict, Any
@@ -10,7 +11,16 @@ from config.settings import BotConfig
 
 
 class UIManager:
-    """Manages UI messages and cleanup for the bot"""
+    """
+    Manages UI messages and cleanup for the bot.
+    
+    Architecture rules:
+    - Anchor: First user message with receipt (never touched)
+    - Single menu: One working bot message under anchor
+    - All transitions via editMessageText/editMessageReplyMarkup
+    - Temporary hints/errors as ephemeral messages with auto-delete
+    - Every menu must have "◀️ Вернуться к чеку" button
+    """
     
     def __init__(self, config: BotConfig):
         self.config = config
@@ -21,7 +31,9 @@ class UIManager:
                        text: str, reply_markup: InlineKeyboardMarkup, 
                        parse_mode: str = 'Markdown') -> Message:
         """
-        Send a new menu message and store its ID for cleanup
+        Send a new menu message (single working message under anchor)
+        
+        Architecture: This replaces any existing menu message and becomes the single working message
         
         Args:
             update: Telegram update object
@@ -33,6 +45,9 @@ class UIManager:
         Returns:
             Sent message object
         """
+        # Clean up any existing menu messages first
+        await self.cleanup_all_except_anchor(update, context)
+        
         # Determine chat_id and message sending method
         if hasattr(update, 'callback_query') and update.callback_query:
             chat_id = update.callback_query.message.chat_id
@@ -58,8 +73,8 @@ class UIManager:
             # Send last part with keyboard
             sent_message = await reply_method(parts[-1], reply_markup=reply_markup, parse_mode=parse_mode)
         
-        # Store message ID for cleanup
-        self._store_menu_message_id(context, sent_message.message_id)
+        # Store as the single working menu message
+        context.user_data['working_menu_message_id'] = sent_message.message_id
         
         return sent_message
     
@@ -67,12 +82,14 @@ class UIManager:
                        message_id: int, text: str, reply_markup: InlineKeyboardMarkup,
                        parse_mode: str = 'Markdown') -> bool:
         """
-        Edit an existing menu message
+        Edit the working menu message (single working message under anchor)
+        
+        Architecture: This edits the single working menu message
         
         Args:
             update: Telegram update object
             context: Bot context
-            message_id: ID of message to edit
+            message_id: ID of message to edit (should be working_menu_message_id)
             text: New message text
             reply_markup: New inline keyboard markup
             parse_mode: Text parsing mode
@@ -107,7 +124,9 @@ class UIManager:
     async def send_temp(self, update: Update, context: ContextTypes.DEFAULT_TYPE,
                        text: str, duration: int = 3, parse_mode: str = 'Markdown') -> Message:
         """
-        Send a temporary message that auto-deletes after specified duration
+        Send a temporary ephemeral message that auto-deletes after specified duration
+        
+        Architecture: These are temporary hints/errors that don't interfere with the single menu
         
         Args:
             update: Telegram update object
@@ -141,6 +160,8 @@ class UIManager:
         """
         Clean up all messages except the anchor (first receipt message)
         
+        Architecture: This is called when "Вернуться к чеку" is pressed to clean up everything except anchor
+        
         Args:
             update: Telegram update object
             context: Bot context
@@ -161,9 +182,10 @@ class UIManager:
         # Get all stored message IDs to delete
         message_ids_to_delete = []
         
-        # Add menu message IDs
-        menu_message_ids = context.user_data.get('menu_message_ids', [])
-        message_ids_to_delete.extend(menu_message_ids)
+        # Add working menu message ID
+        working_menu_message_id = context.user_data.get('working_menu_message_id')
+        if working_menu_message_id and working_menu_message_id != anchor_message_id:
+            message_ids_to_delete.append(working_menu_message_id)
         
         # Add other specific message IDs
         specific_message_ids = [
@@ -225,12 +247,79 @@ class UIManager:
     def _clear_stored_message_ids(self, context: ContextTypes.DEFAULT_TYPE) -> None:
         """Clear all stored message IDs except anchor"""
         keys_to_clear = [
-            'menu_message_ids', 'table_message_id', 'edit_menu_message_id', 
+            'working_menu_message_id', 'menu_message_ids', 'table_message_id', 'edit_menu_message_id', 
             'total_edit_menu_message_id', 'instruction_message_id', 
             'line_number_instruction_message_id', 'delete_line_number_instruction_message_id',
             'total_edit_instruction_message_id', 'processing_message_id', 'messages_to_cleanup'
         ]
         
+        for key in keys_to_clear:
+            context.user_data.pop(key, None)
+    
+    def get_working_menu_id(self, context: ContextTypes.DEFAULT_TYPE) -> Optional[int]:
+        """
+        Get the working menu message ID
+        
+        Args:
+            context: Bot context
+            
+        Returns:
+            Working menu message ID or None
+        """
+        return context.user_data.get('working_menu_message_id')
+    
+    async def back_to_receipt(self, update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+        """
+        Handle "Вернуться к чеку" button - clean up everything and show fresh root menu
+        
+        Architecture: This is the core method that implements the "back to receipt" functionality
+        
+        Args:
+            update: Telegram update object
+            context: Bot context
+        """
+        # Clean up all messages except anchor
+        await self.cleanup_all_except_anchor(update, context)
+        
+        # Clear only temporary/UI data, keep core receipt data
+        self._clear_temporary_data(context)
+        
+        # Show fresh root menu (this will be implemented by the caller)
+        # The caller should call show_final_report_with_edit_button or similar
+    
+    def _clear_temporary_data(self, context: ContextTypes.DEFAULT_TYPE) -> None:
+        """Clear only temporary/UI data, keep core receipt data"""
+        keys_to_clear = [
+            'line_to_edit', 'field_to_edit', 'cached_final_report', 'table_message_id', 
+            'edit_menu_message_id', 'instruction_message_id', 'line_number_instruction_message_id',
+            'delete_line_number_instruction_message_id', 'total_edit_instruction_message_id',
+            'total_edit_menu_message_id', 'ingredient_matching_result', 'current_match_index',
+            'processing_message_id', 'changed_ingredient_indices', 'search_results',
+            'position_search_results', 'awaiting_search', 'awaiting_position_search',
+            'in_position_selection_mode', 'selected_line_number', 'position_match_search_results',
+            'awaiting_ingredient_name_for_position', 'google_sheets_search_mode',
+            'google_sheets_search_item_index', 'google_sheets_search_results',
+            'selected_google_sheets_line', 'awaiting_google_sheets_ingredient_name',
+            'pending_google_sheets_upload', 'pending_file_generation'
+        ]
+        for key in keys_to_clear:
+            context.user_data.pop(key, None)
+    
+    def _clear_receipt_data(self, context: ContextTypes.DEFAULT_TYPE) -> None:
+        """Clear all receipt-related data from context"""
+        keys_to_clear = [
+            'receipt_data', 'original_data', 'line_to_edit', 'field_to_edit',
+            'cached_final_report', 'table_message_id', 'edit_menu_message_id',
+            'instruction_message_id', 'line_number_instruction_message_id',
+            'delete_line_number_instruction_message_id', 'total_edit_instruction_message_id',
+            'total_edit_menu_message_id', 'ingredient_matching_result', 'current_match_index',
+            'processing_message_id', 'changed_ingredient_indices', 'search_results',
+            'position_search_results', 'awaiting_search', 'awaiting_position_search',
+            'in_position_selection_mode', 'selected_line_number', 'position_match_search_results',
+            'awaiting_ingredient_name_for_position', 'google_sheets_search_mode',
+            'google_sheets_search_item_index', 'google_sheets_search_results',
+            'selected_google_sheets_line', 'awaiting_google_sheets_ingredient_name'
+        ]
         for key in keys_to_clear:
             context.user_data.pop(key, None)
     
