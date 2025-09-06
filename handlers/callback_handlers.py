@@ -3336,8 +3336,8 @@ class CallbackHandlers:
     async def _show_upload_success_page(self, update: Update, context: ContextTypes.DEFAULT_TYPE, 
                                       summary: str, message: str):
         """Show the new upload success page interface"""
-        # Clear all messages first
-        await self.ui_manager.clear_all_messages(update, context)
+        # Clean up all messages except anchor first
+        await self.ui_manager.cleanup_all_except_anchor(update, context)
         
         # Create success message with only the header
         success_text = "✅ **Данные успешно загружены в Google Sheets!**"
@@ -3359,26 +3359,6 @@ class CallbackHandlers:
             'Markdown'
         )
     
-    async def _show_excel_success_page(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
-        """Show navigation buttons after Excel file generation"""
-        # Create button layout for navigation
-        keyboard = [
-            [InlineKeyboardButton("📋 Вернуться к чеку", callback_data="back_to_receipt")],
-            [InlineKeyboardButton("📸 Загрузить новый чек", callback_data="start_new_receipt")]
-        ]
-        
-        reply_markup = InlineKeyboardMarkup(keyboard)
-        
-        # Send navigation buttons as a separate message
-        buttons_message = await update.callback_query.message.reply_text(
-            "Выберите действие:",
-            reply_markup=reply_markup
-        )
-        
-        # Save buttons message ID for cleanup
-        if 'messages_to_cleanup' not in context.user_data:
-            context.user_data['messages_to_cleanup'] = []
-        context.user_data['messages_to_cleanup'].append(buttons_message.message_id)
     
     async def _undo_google_sheets_upload(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         """Undo the last Google Sheets upload by deleting the last added rows"""
@@ -3425,6 +3405,9 @@ class CallbackHandlers:
     async def _generate_excel_file(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         """Generate Excel file with the same data that was uploaded to Google Sheets"""
         try:
+            # Clean up all messages except anchor before generating file
+            await self.ui_manager.cleanup_all_except_anchor(update, context)
+            
             # Get receipt data and Google Sheets matching result
             receipt_data = context.user_data.get('receipt_data')
             matching_result = context.user_data.get('google_sheets_matching_result')
@@ -3445,12 +3428,20 @@ class CallbackHandlers:
             file_path = self.file_generator.generate_excel_file(receipt_data, matching_result)
             
             if file_path:
-                # Send the file with updated caption
+                # Create button layout for navigation
+                keyboard = [
+                    [InlineKeyboardButton("📋 Вернуться к чеку", callback_data="back_to_receipt")],
+                    [InlineKeyboardButton("📸 Загрузить новый чек", callback_data="start_new_receipt")]
+                ]
+                reply_markup = InlineKeyboardMarkup(keyboard)
+                
+                # Send the file with caption and buttons in one message
                 with open(file_path, 'rb') as file:
                     file_message = await update.callback_query.message.reply_document(
                         document=file,
                         filename=f"receipt_data_{datetime.now().strftime('%Y%m%d_%H%M%S')}.xlsx",
-                        caption="📄 **Скачать Excel-файл с данными чека**\n\nФайл содержит те же данные, что были загружены в Google Sheets."
+                        caption="📄 **Скачать Excel-файл с данными чека**",
+                        reply_markup=reply_markup
                     )
                     
                     # Save file message ID for cleanup
@@ -3464,9 +3455,6 @@ class CallbackHandlers:
                     os.remove(file_path)
                 except:
                     pass
-                
-                # Show success page interface with navigation buttons
-                await self._show_excel_success_page(update, context)
             else:
                 await self.ui_manager.send_temp(
                     update, context, "❌ Ошибка генерации Excel файла.", duration=5

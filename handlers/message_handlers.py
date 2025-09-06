@@ -1045,6 +1045,9 @@ class MessageHandlers:
     
     async def show_final_report_with_edit_button(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         """Show final report with edit buttons - this is the root menu"""
+        # Clean up all messages except anchor before showing final report
+        await self.ui_manager.cleanup_all_except_anchor(update, context)
+        
         final_data: ReceiptData = context.user_data.get('receipt_data')
         
         if not final_data:
