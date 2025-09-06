@@ -2734,8 +2734,8 @@ class CallbackHandlers:
             duration=2
         )
         
-        # Return to Google Sheets preview with updated data
-        await self._show_google_sheets_preview(update, context, 
+        # Return to Google Sheets matching table (editor) with updated data
+        await self._show_google_sheets_matching_table(update, context, 
             pending_data['receipt_data'], matching_result)
 
     async def _handle_google_sheets_search_selection(self, update: Update, context: ContextTypes.DEFAULT_TYPE, 
@@ -2788,8 +2788,8 @@ class CallbackHandlers:
             duration=2
         )
         
-        # Return to Google Sheets preview with updated data
-        await self._show_google_sheets_preview(update, context, 
+        # Return to Google Sheets matching table (editor) with updated data
+        await self._show_google_sheets_matching_table(update, context, 
             pending_data['receipt_data'], matching_result)
 
     async def _handle_google_sheets_position_match_selection(self, update: Update, context: ContextTypes.DEFAULT_TYPE, 
