@@ -787,6 +787,33 @@ class CallbackHandlers:
             await self._show_google_sheets_matching_table(update, context, receipt_data, matching_result)
             return self.config.AWAITING_CORRECTION
         
+        if action == "preview_google_sheets_upload":
+            # User wants to preview Google Sheets upload
+            await query.answer("👁️ Показываю предпросмотр...")
+            
+            # Get pending data
+            pending_data = context.user_data.get('pending_google_sheets_upload')
+            if not pending_data:
+                await self.ui_manager.send_menu(
+                    update, context,
+                    "❌ **Ошибка предпросмотра**\n\n"
+                    "Данные для предпросмотра не найдены.\n"
+                    "Попробуйте начать процесс заново.",
+                    InlineKeyboardMarkup([
+                        [InlineKeyboardButton("📊 Загрузить в Google Sheets", callback_data="upload_to_google_sheets")],
+                        [InlineKeyboardButton("◀️ Назад", callback_data="back_to_receipt")]
+                    ]),
+                    'Markdown'
+                )
+                return self.config.AWAITING_CORRECTION
+            
+            receipt_data = pending_data['receipt_data']
+            matching_result = pending_data['matching_result']
+            
+            # Show Google Sheets preview
+            await self._show_google_sheets_preview(update, context, receipt_data, matching_result)
+            return self.config.AWAITING_CORRECTION
+        
         if action == "apply_google_sheets_matching":
             # Apply Google Sheets matching changes
             await query.answer("✅ Изменения применены!")
@@ -2273,10 +2300,10 @@ class CallbackHandlers:
             return "Нет данных для отображения"
         
         # Set fixed column widths (total max 58 characters)
-        date_width = 10       # Fixed width for date (dd.mm.yyyy = 10 chars)
+        date_width = 8        # Fixed width for date
         volume_width = 6      # Fixed width for volume
         price_width = 10      # Fixed width for price
-        product_width = 20    # Fixed width for product (reduced to fit total width)
+        product_width = 22    # Fixed width for product
         
         # Create header using the new format
         header = f"{'Date':<{date_width}} | {'Vol':<{volume_width}} | {'цена':<{price_width}} | {'Product':<{product_width}}"
@@ -2372,7 +2399,7 @@ class CallbackHandlers:
         
         # Create table header
         table_lines = []
-        table_lines.append("**Сопоставление ингредиентов для Google Таблиц:**\n")
+        table_lines.append("**Редактор сопоставления для Google Таблиц:**\n")
         
         # Add summary
         summary = f"📊 **Статистика:** Всего: {matching_result.total_items} | "
@@ -2432,6 +2459,54 @@ class CallbackHandlers:
             return name
         return name[:max_length-3] + "..."
 
+    async def _show_google_sheets_matching_page(self, update: Update, context: ContextTypes.DEFAULT_TYPE,
+                                               receipt_data: ReceiptData, matching_result: IngredientMatchingResult):
+        """Show Google Sheets matching page with empty schema and action buttons"""
+        from telegram import InlineKeyboardButton, InlineKeyboardMarkup
+        
+        # Create empty schema placeholder
+        schema_text = "📊 **Сопоставление с ингредиентами в Google Таблицы**\n\n"
+        schema_text += "```\n"
+        schema_text += "┌─────────────────────────────────────────────────────────┐\n"
+        schema_text += "│                    СХЕМА СОПОСТАВЛЕНИЯ                   │\n"
+        schema_text += "├─────────────────────────────────────────────────────────┤\n"
+        schema_text += "│  Товар из чека    │  Ингредиент Google Sheets  │ Статус │\n"
+        schema_text += "├─────────────────────────────────────────────────────────┤\n"
+        schema_text += "│  [Пустая схема]   │     [Будет заполнено]       │   -   │\n"
+        schema_text += "└─────────────────────────────────────────────────────────┘\n"
+        schema_text += "```\n\n"
+        schema_text += "Выберите действие для работы с сопоставлением:"
+        
+        # Create action buttons
+        keyboard = [
+            [InlineKeyboardButton("✏️ Редактировать сопоставление", callback_data="edit_google_sheets_matching")],
+            [InlineKeyboardButton("👁️ Предпросмотр", callback_data="preview_google_sheets_upload")],
+            [InlineKeyboardButton("◀️ Вернуться к чеку", callback_data="back_to_receipt")]
+        ]
+        
+        reply_markup = InlineKeyboardMarkup(keyboard)
+        
+        # Save data for future use
+        context.user_data['pending_google_sheets_upload'] = {
+            'receipt_data': receipt_data,
+            'matching_result': matching_result
+        }
+        
+        # Use UI manager to send/update the single working menu
+        working_menu_id = self.ui_manager.get_working_menu_id(context)
+        
+        if working_menu_id:
+            # Try to edit existing working menu message
+            success = await self.ui_manager.edit_menu(
+                update, context, working_menu_id, schema_text, reply_markup, 'Markdown'
+            )
+            if not success:
+                # If couldn't edit, send new message (replaces working menu)
+                await self.ui_manager.send_menu(update, context, schema_text, reply_markup, 'Markdown')
+        else:
+            # If no working menu, send new message (becomes working menu)
+            await self.ui_manager.send_menu(update, context, schema_text, reply_markup, 'Markdown')
+
     async def _show_google_sheets_preview(self, update: Update, context: ContextTypes.DEFAULT_TYPE,
                                         receipt_data: ReceiptData, matching_result: IngredientMatchingResult):
         """Show Google Sheets upload preview with confirmation buttons - this becomes the single working menu"""
@@ -2446,7 +2521,7 @@ class CallbackHandlers:
         
         keyboard = [
             [InlineKeyboardButton("✅ Загрузить в Google Таблицы", callback_data="confirm_google_sheets_upload")],
-            [InlineKeyboardButton("✏️ Изменить сопоставление", callback_data="edit_google_sheets_matching")],
+            [InlineKeyboardButton("✏️ Редактировать сопоставление", callback_data="edit_google_sheets_matching")],
             [InlineKeyboardButton("◀️ Вернуться к чеку", callback_data="back_to_receipt")]
         ]
         
@@ -2570,7 +2645,7 @@ class CallbackHandlers:
         current_match = matching_result.matches[item_index]
         
         # Show current match info
-        progress_text = f"**Сопоставление ингредиентов для Google Таблиц**\n\n"
+        progress_text = f"**Редактор сопоставления для Google Таблиц**\n\n"
         progress_text += f"**Товар:** {current_match.receipt_item_name}\n\n"
         progress_text += "**Выберите подходящий ингредиент:**\n\n"
         
@@ -3264,8 +3339,8 @@ class CallbackHandlers:
             # Save Google Sheets matching result to context for Excel generation
             context.user_data['google_sheets_matching_result'] = google_sheets_matching_result
             
-            # Show preview with Google Sheets matching result
-            await self._show_google_sheets_preview(update, context, receipt_data, google_sheets_matching_result)
+            # Show Google Sheets matching page
+            await self._show_google_sheets_matching_page(update, context, receipt_data, google_sheets_matching_result)
             
         except Exception as e:
             print(f"Ошибка при подготовке загрузки в Google Sheets: {e}")
