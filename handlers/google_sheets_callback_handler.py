@@ -171,9 +171,14 @@ class GoogleSheetsCallbackHandler(BaseCallbackHandler):
         
         matching_result = pending_data['matching_result']
         
-        # Show instruction
-        text = "**Выберите позицию для сопоставления**\n\n"
-        text += "Введите номер строки, которую хотите сопоставить с ингредиентом из Google Таблиц:"
+        # Format the matching table for Google Sheets (same as in editor)
+        table_text = self._format_google_sheets_matching_table(matching_result)
+        
+        # Add instruction after the table
+        instruction_text = "\n\n**Выберите позицию для сопоставления**\n\n"
+        
+        # Combine table and instruction
+        full_text = table_text + instruction_text
         
         # Create buttons for each item
         keyboard = []
@@ -187,9 +192,7 @@ class GoogleSheetsCallbackHandler(BaseCallbackHandler):
         
         reply_markup = InlineKeyboardMarkup(keyboard)
         
-        await self.ui_manager.send_menu(
-            update, context, text, reply_markup, 'Markdown'
-        )
+        await self._send_long_message_with_keyboard_callback(query.message, full_text, reply_markup)
     
     async def _show_google_sheets_manual_matching_for_item(self, update: Update, context: ContextTypes.DEFAULT_TYPE, item_index: int):
         """Show manual matching interface for specific Google Sheets item"""
@@ -221,11 +224,7 @@ class GoogleSheetsCallbackHandler(BaseCallbackHandler):
         # Get Google Sheets ingredients
         google_sheets_ingredients = context.bot_data.get('google_sheets_ingredients', {})
         
-        if current_match.suggested_matches:
-            # Show suggested matches
-            suggestions_text = self._format_google_sheets_suggestions(current_match)
-            progress_text += suggestions_text + "\n\n"
-        else:
+        if not current_match.suggested_matches:
             progress_text += "❌ **Подходящих вариантов не найдено**\n\n"
         
         # Create buttons
@@ -570,12 +569,6 @@ class GoogleSheetsCallbackHandler(BaseCallbackHandler):
         table_lines = []
         table_lines.append("**Сопоставление с ингредиентами Google Таблиц:**\n")
         
-        # Add summary
-        summary = f"📊 **Статистика:** Всего: {matching_result.total_items} | "
-        summary += f"🟢 Точных: {matching_result.exact_matches} | "
-        summary += f"🟡 Частичных: {matching_result.partial_matches} | "
-        summary += f"🔴 Не найдено: {matching_result.no_matches}\n"
-        table_lines.append(summary)
         
         # Create table
         table_lines.append("```")

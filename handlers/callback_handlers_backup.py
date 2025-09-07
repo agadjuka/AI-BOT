@@ -2707,11 +2707,7 @@ class CallbackHandlers:
         # Get Google Sheets ingredients
         google_sheets_ingredients = context.bot_data.get('google_sheets_ingredients', {})
         
-        if current_match.suggested_matches:
-            # Show suggested matches
-            suggestions_text = self._format_google_sheets_suggestions(current_match)
-            progress_text += suggestions_text + "\n\n"
-        else:
+        if not current_match.suggested_matches:
             progress_text += "❌ **Подходящих вариантов не найдено**\n\n"
         
         # Create buttons

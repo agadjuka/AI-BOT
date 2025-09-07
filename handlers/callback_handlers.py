@@ -503,6 +503,13 @@ class CallbackHandlers(BaseCallbackHandler):
             line_number = int(action.split("_")[4])
             item_index = line_number - 1  # Convert to 0-based index
             await query.answer(f"Выбрана строка {line_number}")
+            
+            # Delete the current message (position selection interface) to make it disappear
+            try:
+                await query.delete_message()
+            except Exception as e:
+                print(f"DEBUG: Error deleting message: {e}")
+            
             await self.google_sheets_handler._show_google_sheets_manual_matching_for_item(update, context, item_index)
         elif action.startswith("select_google_sheets_suggestion_"):
             # User selected a suggestion for Google Sheets matching
