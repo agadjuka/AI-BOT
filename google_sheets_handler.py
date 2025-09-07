@@ -11,7 +11,7 @@ def get_google_sheets_ingredients() -> dict:
     config = BotConfig()
     
     # Получаем список ингредиентов из конфигурации
-    ingredient_list = config.INGREDIENT_LIST or {}
+    ingredient_list = config.ingredient_config.get_ingredient_list() or {}
     
     if not ingredient_list:
         print("⚠️ Список ингредиентов для Google Sheets не настроен.")
@@ -41,7 +41,7 @@ def validate_google_sheets_config() -> tuple[bool, str]:
     if not config.GOOGLE_SHEETS_SPREADSHEET_ID:
         return False, "Не настроен ID таблицы Google Sheets"
     
-    if not config.INGREDIENT_LIST:
+    if not config.ingredient_config.get_ingredient_list():
         return False, "Не настроен список ингредиентов для сопоставления"
     
     return True, "Конфигурация Google Sheets корректна"

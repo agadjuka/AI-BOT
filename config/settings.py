@@ -3,6 +3,7 @@ Configuration settings for the AI Bot
 """
 import os
 from typing import Optional
+from .ingredients import IngredientConfig
 
 
 class BotConfig:
@@ -21,41 +22,8 @@ class BotConfig:
         self.GOOGLE_SHEETS_SPREADSHEET_ID: str = "1ah85v40ZqJzTz8PGHO6Ndoctw378NOYATH9X3OeeuUI"  # ID таблицы Google Sheets
         self.GOOGLE_SHEETS_WORKSHEET_NAME: str = "Лист1"  # Название листа
         
-        # Ingredient matching settings
-        self.INGREDIENT_LIST: dict = {
-            "potato wedges": "potato_wedges_001",
-            "chicken": "chicken_002",
-            "salmon": "salmon_003",
-            "shrimps": "shrimps_004",
-            "yogurt": "yogurt_005",
-            "mozza cheese": "mozza_cheese_006",
-            "feta cheese": "feta_cheese_007",
-            "avocado": "avocado_008",
-            "carrot": "carrot_009",
-            "cucumber": "cucumber_010",
-            "cabbage red": "cabbage_red_011",
-            "cabbage white": "cabbage_white_012",
-            "tomato": "tomato_013",
-            "parsley": "parsley_014",
-            "dill": "dill_015",
-            "garlic": "garlic_016",
-            "french fries": "french_fries_017",
-            "salt": "salt_018",
-            "sugar": "sugar_019",
-            "dumplings": "dumplings_020",
-            "flour": "flour_021",
-            "sour cream": "sour_cream_022",
-            "coconut cream": "coconut_cream_023",
-            "tom yum sauce": "tom_yum_sauce_024",
-            "tomato sauce": "tomato_sauce_025",
-            "tea black": "tea_black_026",
-            "bimoil frying": "bimoil_frying_027",
-            "salad oil": "salad_oil_028",
-            "lettuce": "lettuce_029",
-            "mayonnaise": "mayonnaise_030",
-            "lemon": "lemon_031",
-            "pickles": "pickles_032"
-        }
+        # Ingredient matching settings - moved to config/ingredients.py
+        self.ingredient_config = IngredientConfig()
         
         # Google Cloud settings
         self.PROJECT_ID: str = "just-advice-470905-a3"
