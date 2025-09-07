@@ -1,11 +1,13 @@
 """
 Refactored callback handlers for Telegram bot
 """
+from datetime import datetime
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import ContextTypes
 
 from config.settings import BotConfig
 from services.ai_service import ReceiptAnalysisService
+from services.google_sheets_service import GoogleSheetsService
 from handlers.base_callback_handler import BaseCallbackHandler
 from handlers.receipt_edit_callback_handler import ReceiptEditCallbackHandler
 from handlers.ingredient_matching_callback_handler import IngredientMatchingCallbackHandler
@@ -18,6 +20,12 @@ class CallbackHandlers(BaseCallbackHandler):
     
     def __init__(self, config: BotConfig, analysis_service: ReceiptAnalysisService):
         super().__init__(config, analysis_service)
+        
+        # Initialize services
+        self.google_sheets_service = GoogleSheetsService(
+            credentials_path=config.GOOGLE_SHEETS_CREDENTIALS,
+            spreadsheet_id=config.GOOGLE_SHEETS_SPREADSHEET_ID
+        )
         
         # Initialize specialized handlers
         self.receipt_edit_handler = ReceiptEditCallbackHandler(config, analysis_service)
@@ -412,20 +420,24 @@ class CallbackHandlers(BaseCallbackHandler):
             await self.google_sheets_handler._show_google_sheets_preview(update, context, receipt_data, matching_result)
         elif action == "confirm_google_sheets_upload":
             # User confirmed Google Sheets upload
-            await query.answer("✅ Загружаю в Google Sheets...")
+            await query.answer("📊 Загружаю данные в Google Sheets...")
             
-            # Get pending data
+            # Clean up all messages except anchor before showing new menu
+            await self.ui_manager.cleanup_all_except_anchor(update, context)
+            
+            # Get saved data
             pending_data = context.user_data.get('pending_google_sheets_upload')
             if not pending_data:
-                await query.edit_message_text(
-                    "❌ **Ошибка загрузки**\n\n"
+                await self.ui_manager.send_menu(
+                    update, context,
+                    "❌ **Ошибка загрузки в Google Sheets**\n\n"
                     "Данные для загрузки не найдены.\n"
                     "Попробуйте начать процесс заново.",
-                    reply_markup=InlineKeyboardMarkup([
+                    InlineKeyboardMarkup([
                         [InlineKeyboardButton("📊 Загрузить в Google Sheets", callback_data="upload_to_google_sheets")],
                         [InlineKeyboardButton("◀️ Назад", callback_data="back_to_receipt")]
                     ]),
-                    parse_mode='Markdown'
+                    'Markdown'
                 )
                 return self.config.AWAITING_CORRECTION
             
@@ -433,15 +445,22 @@ class CallbackHandlers(BaseCallbackHandler):
             matching_result = pending_data['matching_result']
             
             # Execute actual upload
-            await self.google_sheets_handler._upload_to_google_sheets(update, context, matching_result)
+            await self._execute_google_sheets_upload(update, context, receipt_data, matching_result)
             
             # Clear pending data
             context.user_data.pop('pending_google_sheets_upload', None)
+            return self.config.AWAITING_CORRECTION
         elif action == "select_google_sheets_position":
             await self.google_sheets_handler._show_google_sheets_position_selection(update, context)
         elif action == "back_to_google_sheets_matching":
             # Return to Google Sheets matching table
             await query.answer("◀️ Возвращаюсь к таблице сопоставления...")
+            
+            # Delete the current message (position selection interface) to make it disappear
+            try:
+                await query.delete_message()
+            except Exception as e:
+                print(f"DEBUG: Error deleting message: {e}")
             
             pending_data = context.user_data.get('pending_google_sheets_upload')
             if pending_data:
@@ -482,7 +501,7 @@ class CallbackHandlers(BaseCallbackHandler):
         elif action == "undo_google_sheets_upload":
             # Handle undo upload
             await query.answer("↩️ Отменяю загрузку...")
-            await update.callback_query.edit_message_text("❌ Функция отмены загрузки не реализована")
+            await self._handle_undo_google_sheets_upload(update, context)
         elif action == "start_new_receipt":
             # Handle start new receipt
             await update.callback_query.edit_message_text("📸 Загрузите фото нового чека для анализа")
@@ -628,5 +647,161 @@ class CallbackHandlers(BaseCallbackHandler):
             "❌ Операция отменена\n\n"
             "Используйте /start для начала новой работы."
         )
+        
+        return self.config.AWAITING_CORRECTION
+    
+    async def _execute_google_sheets_upload(self, update: Update, context: ContextTypes.DEFAULT_TYPE,
+                                          receipt_data, matching_result):
+        """Execute actual Google Sheets upload"""
+        try:
+            # Save Google Sheets matching result to context for Excel generation
+            context.user_data['google_sheets_matching_result'] = matching_result
+            
+            # Show upload summary
+            summary = self.google_sheets_service.get_upload_summary(receipt_data, matching_result)
+            
+            # Upload data
+            success, message = self.google_sheets_service.upload_receipt_data(
+                receipt_data, 
+                matching_result,
+                self.config.GOOGLE_SHEETS_WORKSHEET_NAME
+            )
+            
+            if success:
+                # Save upload data for potential undo
+                context.user_data['last_google_sheets_upload'] = {
+                    'worksheet_name': self.config.GOOGLE_SHEETS_WORKSHEET_NAME,
+                    'row_count': len(receipt_data.items),
+                    'timestamp': datetime.now().isoformat()
+                }
+                
+                # Show new success page interface
+                await self._show_upload_success_page(update, context, summary, message)
+            else:
+                # Show error message
+                error_text = f"❌ **Ошибка загрузки в Google Sheets**\n\n{message}\n\n{summary}"
+                await self.ui_manager.send_menu(
+                    update, context,
+                    error_text,
+                    InlineKeyboardMarkup([
+                        [InlineKeyboardButton("🔄 Попробовать снова", callback_data="upload_to_google_sheets")],
+                        [InlineKeyboardButton("📄 Сгенерировать файл", callback_data="generate_file_from_table")],
+                        [InlineKeyboardButton("◀️ Назад", callback_data="back_to_receipt")]
+                    ]),
+                    'Markdown'
+                )
+                
+        except Exception as e:
+            print(f"DEBUG: Error uploading to Google Sheets: {e}")
+            await self.ui_manager.send_menu(
+                update, context,
+                f"❌ **Критическая ошибка**\n\nПроизошла неожиданная ошибка при загрузке в Google Sheets:\n`{str(e)}`",
+                InlineKeyboardMarkup([
+                    [InlineKeyboardButton("◀️ Назад", callback_data="back_to_receipt")]
+                ]),
+                'Markdown'
+            )
+    
+    async def _show_upload_success_page(self, update: Update, context: ContextTypes.DEFAULT_TYPE, 
+                                      summary: str, message: str):
+        """Show the new upload success page interface"""
+        # Clean up all messages except anchor first
+        await self.ui_manager.cleanup_all_except_anchor(update, context)
+        
+        # Create success message with only the header
+        success_text = "✅ **Данные успешно загружены в Google Sheets!**"
+        
+        # Create new button layout
+        keyboard = [
+            [InlineKeyboardButton("↩️ Отменить загрузку", callback_data="undo_google_sheets_upload")],
+            [InlineKeyboardButton("📄 Сгенерировать файл", callback_data="generate_excel_file")],
+            [InlineKeyboardButton("📋 Вернуться к чеку", callback_data="back_to_receipt")],
+            [InlineKeyboardButton("📸 Загрузить новый чек", callback_data="start_new_receipt")]
+        ]
+        
+        reply_markup = InlineKeyboardMarkup(keyboard)
+        
+        await self.ui_manager.send_menu(
+            update, context,
+            success_text,
+            reply_markup,
+            'Markdown'
+        )
+    
+    async def _handle_undo_google_sheets_upload(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
+        """Handle undo Google Sheets upload"""
+        try:
+            # Get last upload data
+            last_upload = context.user_data.get('last_google_sheets_upload')
+            if not last_upload:
+                await update.callback_query.edit_message_text(
+                    "❌ **Нет данных о последней загрузке для отмены**\n\n"
+                    "Информация о последней загрузке не найдена.",
+                    reply_markup=InlineKeyboardMarkup([
+                        [InlineKeyboardButton("📋 Вернуться к чеку", callback_data="back_to_receipt")]
+                    ]),
+                    parse_mode='Markdown'
+                )
+                return self.config.AWAITING_CORRECTION
+            
+            # Get upload details
+            worksheet_name = last_upload.get('worksheet_name', 'Receipts')
+            row_count = last_upload.get('row_count', 0)
+            
+            if row_count <= 0:
+                await update.callback_query.edit_message_text(
+                    "❌ **Нет данных для отмены**\n\n"
+                    "Количество строк для отмены равно нулю.",
+                    reply_markup=InlineKeyboardMarkup([
+                        [InlineKeyboardButton("📋 Вернуться к чеку", callback_data="back_to_receipt")]
+                    ]),
+                    parse_mode='Markdown'
+                )
+                return self.config.AWAITING_CORRECTION
+            
+            # Attempt to delete the uploaded rows
+            success, message = self.google_sheets_service.delete_last_uploaded_rows(worksheet_name, row_count)
+            
+            if success:
+                # Clear the last upload data
+                context.user_data.pop('last_google_sheets_upload', None)
+                
+                # Show success message
+                await update.callback_query.edit_message_text(
+                    f"✅ **Загрузка успешно отменена!**\n\n"
+                    f"📊 **Отменено строк:** {row_count}\n"
+                    f"📋 **Лист:** {worksheet_name}\n"
+                    f"🕒 **Время отмены:** {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\n\n"
+                    f"Данные были удалены из Google Sheets.",
+                    reply_markup=InlineKeyboardMarkup([
+                        [InlineKeyboardButton("📋 Вернуться к чеку", callback_data="back_to_receipt")],
+                        [InlineKeyboardButton("📸 Загрузить новый чек", callback_data="start_new_receipt")]
+                    ]),
+                    parse_mode='Markdown'
+                )
+            else:
+                # Show error message
+                await update.callback_query.edit_message_text(
+                    f"❌ **Ошибка отмены загрузки**\n\n"
+                    f"Не удалось отменить загрузку: {message}\n\n"
+                    f"Попробуйте удалить данные вручную в Google Sheets.",
+                    reply_markup=InlineKeyboardMarkup([
+                        [InlineKeyboardButton("📋 Вернуться к чеку", callback_data="back_to_receipt")],
+                        [InlineKeyboardButton("🔄 Попробовать снова", callback_data="undo_google_sheets_upload")]
+                    ]),
+                    parse_mode='Markdown'
+                )
+                
+        except Exception as e:
+            print(f"DEBUG: Error in undo Google Sheets upload: {e}")
+            await update.callback_query.edit_message_text(
+                f"❌ **Произошла ошибка при отмене загрузки**\n\n"
+                f"Неожиданная ошибка: {str(e)}\n\n"
+                f"Попробуйте удалить данные вручную в Google Sheets.",
+                reply_markup=InlineKeyboardMarkup([
+                    [InlineKeyboardButton("📋 Вернуться к чеку", callback_data="back_to_receipt")]
+                ]),
+                parse_mode='Markdown'
+            )
         
         return self.config.AWAITING_CORRECTION
