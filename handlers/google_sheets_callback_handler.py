@@ -910,8 +910,7 @@ class GoogleSheetsCallbackHandler(BaseCallbackHandler):
     async def _generate_excel_file(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         """Generate Excel file with the same data that was uploaded to Google Sheets"""
         try:
-            # Clean up all messages except anchor before generating file
-            await self.ui_manager.cleanup_all_except_anchor(update, context)
+            # Don't clean up messages before generating file to avoid deleting the file message
             
             # Get receipt data and Google Sheets matching result
             receipt_data = context.user_data.get('receipt_data')
@@ -962,16 +961,15 @@ class GoogleSheetsCallbackHandler(BaseCallbackHandler):
                 asyncio.create_task(cleanup_file())
                 
                 # Show success message with option to go back to preview
-                await self.ui_manager.send_menu(
-                    update, context,
+                await update.callback_query.edit_message_text(
                     "✅ **Excel-файл успешно создан!**\n\n"
                     "Файл содержит те же данные, что были загружены в Google Sheets.\n\n"
                     "⏰ **Файл будет доступен для скачивания в течение 5 минут**",
-                    InlineKeyboardMarkup([
+                    reply_markup=InlineKeyboardMarkup([
                         [InlineKeyboardButton("👁️ Предпросмотр Google Sheets", callback_data="preview_google_sheets_upload")],
                         [InlineKeyboardButton("📋 Вернуться к чеку", callback_data="back_to_receipt")]
                     ]),
-                    'Markdown'
+                    parse_mode='Markdown'
                 )
                 
             else:

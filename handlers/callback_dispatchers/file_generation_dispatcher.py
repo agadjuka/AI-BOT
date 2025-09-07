@@ -1,5 +1,5 @@
 """
-File generation callback handler for Telegram bot
+File generation dispatcher for Telegram bot
 """
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import ContextTypes
@@ -10,13 +10,45 @@ from services.file_generator_service import FileGeneratorService
 from utils.common_handlers import CommonHandlers
 
 
-class FileGenerationCallbackHandler(BaseCallbackHandler):
-    """Handler for file generation callbacks"""
+class FileGenerationDispatcher(BaseCallbackHandler):
+    """Dispatcher for file generation related callbacks"""
     
-    def __init__(self, config, analysis_service):
+    def __init__(self, config, analysis_service, google_sheets_handler=None, ingredient_matching_handler=None):
         super().__init__(config, analysis_service)
         self.file_generator = FileGeneratorService()
         self.common_handlers = CommonHandlers(config, analysis_service)
+        self.google_sheets_handler = google_sheets_handler
+        self.ingredient_matching_handler = ingredient_matching_handler
+    
+    async def _handle_file_generation_actions(self, update: Update, context: ContextTypes.DEFAULT_TYPE, action: str) -> int:
+        """Handle file generation related actions"""
+        if action == "generate_supply_file":
+            await self._generate_and_send_supply_file(update, context, "poster")
+        elif action == "generate_poster_file":
+            await self._generate_and_send_supply_file(update, context, "poster")
+        elif action == "generate_google_sheets_file":
+            await self._generate_and_send_supply_file(update, context, "google_sheets")
+        elif action == "generate_file_xlsx":
+            # Generate Excel file from matching result
+            matching_result = context.user_data.get('ingredient_matching_result')
+            if matching_result:
+                if self.google_sheets_handler:
+                    await self.google_sheets_handler._generate_excel_file(update, context)
+                else:
+                    await update.callback_query.edit_message_text("❌ Google Sheets handler not available for Excel generation")
+            else:
+                await update.callback_query.edit_message_text("❌ Результаты сопоставления не найдены")
+        elif action == "generate_file_from_table":
+            matching_result = context.user_data.get('ingredient_matching_result')
+            if matching_result:
+                await self._show_matching_table_with_edit_button(update, context, matching_result)
+        elif action == "match_ingredients":
+            if self.ingredient_matching_handler:
+                await self.ingredient_matching_handler._show_ingredient_matching_results(update, context)
+            else:
+                await update.callback_query.edit_message_text("❌ Ingredient matching handler not available")
+        
+        return self.config.AWAITING_CORRECTION
     
     async def _generate_and_send_supply_file(self, update: Update, context: ContextTypes.DEFAULT_TYPE, 
                                            file_type: str = "poster"):
@@ -52,16 +84,11 @@ class FileGenerationCallbackHandler(BaseCallbackHandler):
             from io import StringIO
             file_obj = StringIO(file_content)
             
-            file_message = await query.message.reply_document(
+            await query.message.reply_document(
                 document=file_obj,
                 filename=filename,
                 caption=f"📄 Файл для загрузки в {file_type} готов!"
             )
-            
-            # Save file message ID for cleanup
-            if 'messages_to_cleanup' not in context.user_data:
-                context.user_data['messages_to_cleanup'] = []
-            context.user_data['messages_to_cleanup'].append(file_message.message_id)
             
             # Show success message
             success_text = f"✅ **Файл {file_type} успешно сгенерирован!**\n\n"

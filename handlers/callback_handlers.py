@@ -15,6 +15,7 @@ from handlers.receipt_edit_callback_handler import ReceiptEditCallbackHandler
 from handlers.callback_dispatchers.receipt_edit_dispatcher import ReceiptEditDispatcher
 from handlers.callback_dispatchers.ingredient_matching_dispatcher import IngredientMatchingDispatcher
 from handlers.callback_dispatchers.google_sheets_dispatcher import GoogleSheetsDispatcher
+from handlers.callback_dispatchers.file_generation_dispatcher import FileGenerationDispatcher
 from handlers.ingredient_matching_callback_handler import IngredientMatchingCallbackHandler
 from handlers.google_sheets_callback_handler import GoogleSheetsCallbackHandler
 from handlers.file_generation_callback_handler import FileGenerationCallbackHandler
@@ -40,6 +41,7 @@ class CallbackHandlers(BaseCallbackHandler):
         self.google_sheets_handler = GoogleSheetsCallbackHandler(config, analysis_service)
         self.google_sheets_dispatcher = GoogleSheetsDispatcher(config, analysis_service, self.google_sheets_handler)
         self.file_generation_handler = FileGenerationCallbackHandler(config, analysis_service)
+        self.file_generation_dispatcher = FileGenerationDispatcher(config, analysis_service, self.google_sheets_handler, self.ingredient_matching_handler)
         
         # Update dispatcher with file generation handler reference
         self.ingredient_matching_dispatcher.file_generation_handler = self.file_generation_handler
@@ -74,7 +76,7 @@ class CallbackHandlers(BaseCallbackHandler):
         
         elif action in ["generate_supply_file", "generate_poster_file", "generate_google_sheets_file",
                        "generate_file_xlsx", "generate_file_from_table", "match_ingredients"]:
-            return await self._handle_file_generation_actions(update, context, action)
+            return await self.file_generation_dispatcher._handle_file_generation_actions(update, context, action)
         
         elif action == "finish":
             await query.answer("Отчет уже готов!")
@@ -104,29 +106,6 @@ class CallbackHandlers(BaseCallbackHandler):
         return await self.ingredient_matching_dispatcher._handle_ingredient_matching_actions(update, context, action)
     
     
-    async def _handle_file_generation_actions(self, update: Update, context: ContextTypes.DEFAULT_TYPE, action: str) -> int:
-        """Handle file generation related actions"""
-        if action == "generate_supply_file":
-            await self.file_generation_handler._generate_and_send_supply_file(update, context, "poster")
-        elif action == "generate_poster_file":
-            await self.file_generation_handler._generate_and_send_supply_file(update, context, "poster")
-        elif action == "generate_google_sheets_file":
-            await self.file_generation_handler._generate_and_send_supply_file(update, context, "google_sheets")
-        elif action == "generate_file_xlsx":
-            # Generate Excel file from matching result
-            matching_result = context.user_data.get('ingredient_matching_result')
-            if matching_result:
-                await self.google_sheets_handler._generate_excel_file(update, context)
-            else:
-                await update.callback_query.edit_message_text("❌ Результаты сопоставления не найдены")
-        elif action == "generate_file_from_table":
-            matching_result = context.user_data.get('ingredient_matching_result')
-            if matching_result:
-                await self.file_generation_handler._show_matching_table_with_edit_button(update, context, matching_result)
-        elif action == "match_ingredients":
-            await self.ingredient_matching_handler._show_ingredient_matching_results(update, context)
-        
-        return self.config.AWAITING_CORRECTION
     
     
     async def _cancel(self, update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
