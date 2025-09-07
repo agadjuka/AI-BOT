@@ -7,6 +7,7 @@ from telegram.ext import ContextTypes
 from models.receipt import ReceiptData
 from handlers.base_message_handler import BaseMessageHandler
 from handlers.google_sheets_input_handler import GoogleSheetsInputHandler
+from utils.common_handlers import CommonHandlers
 
 
 class InputHandler(BaseMessageHandler):
@@ -15,6 +16,7 @@ class InputHandler(BaseMessageHandler):
     def __init__(self, config, analysis_service):
         super().__init__(config, analysis_service)
         self.google_sheets_input_handler = GoogleSheetsInputHandler(config, analysis_service)
+        self.common_handlers = CommonHandlers(config, analysis_service)
     
     async def handle_user_input(self, update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
         """Handle user text input"""
@@ -420,6 +422,4 @@ class InputHandler(BaseMessageHandler):
     
     def _truncate_name(self, name: str, max_length: int) -> str:
         """Truncate name if too long"""
-        if len(name) <= max_length:
-            return name
-        return name[:max_length-3] + "..."
+        return self.common_handlers.truncate_name(name, max_length)

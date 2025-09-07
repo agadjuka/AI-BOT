@@ -12,6 +12,7 @@ from handlers.photo_handler import PhotoHandler
 from handlers.input_handler import InputHandler
 from handlers.ingredient_matching_input_handler import IngredientMatchingInputHandler
 from handlers.google_sheets_input_handler import GoogleSheetsInputHandler
+from utils.common_handlers import CommonHandlers
 
 
 class MessageHandlers(BaseMessageHandler):
@@ -25,6 +26,7 @@ class MessageHandlers(BaseMessageHandler):
         self.input_handler = InputHandler(config, analysis_service)
         self.ingredient_matching_handler = IngredientMatchingInputHandler(config, analysis_service)
         self.google_sheets_handler = GoogleSheetsInputHandler(config, analysis_service)
+        self.common_handlers = CommonHandlers(config, analysis_service)
     
     async def start(self, update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         """Handle /start command"""
@@ -242,35 +244,8 @@ class MessageHandlers(BaseMessageHandler):
     # Additional utility methods that were in the original file
     async def _send_long_message_with_keyboard(self, message, text: str, reply_markup):
         """Send long message with keyboard"""
-        if len(text) <= self.config.MAX_MESSAGE_LENGTH:
-            sent_message = await message.reply_text(text, reply_markup=reply_markup, parse_mode='Markdown')
-            return sent_message
-        
-        # Split into parts
-        parts = [text[i:i + self.config.MAX_MESSAGE_LENGTH] for i in range(0, len(text), self.config.MAX_MESSAGE_LENGTH)]
-        
-        # Send all parts except last
-        for part in parts[:-1]:
-            await message.reply_text(part, parse_mode='Markdown')
-            await asyncio.sleep(self.config.MESSAGE_DELAY)
-        
-        # Send last part with keyboard
-        sent_message = await message.reply_text(parts[-1], reply_markup=reply_markup, parse_mode='Markdown')
-        return sent_message
+        await self.common_handlers.send_long_message_with_keyboard(message, text, reply_markup)
     
     async def _send_long_message_with_keyboard_callback(self, message, text: str, reply_markup):
         """Send long message with keyboard (for callback query)"""
-        if len(text) <= self.config.MAX_MESSAGE_LENGTH:
-            await message.reply_text(text, reply_markup=reply_markup, parse_mode='Markdown')
-            return
-        
-        # Split into parts
-        parts = [text[i:i + self.config.MAX_MESSAGE_LENGTH] for i in range(0, len(text), self.config.MAX_MESSAGE_LENGTH)]
-        
-        # Send all parts except last
-        for part in parts[:-1]:
-            await message.reply_text(part, parse_mode='Markdown')
-            await asyncio.sleep(self.config.MESSAGE_DELAY)
-        
-        # Send last part with keyboard
-        await message.reply_text(parts[-1], reply_markup=reply_markup, parse_mode='Markdown')
+        await self.common_handlers.send_long_message_with_keyboard(message, text, reply_markup)

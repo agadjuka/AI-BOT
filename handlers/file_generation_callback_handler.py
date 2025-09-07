@@ -7,6 +7,7 @@ from telegram.ext import ContextTypes
 from handlers.base_callback_handler import BaseCallbackHandler
 from models.ingredient_matching import IngredientMatchingResult
 from services.file_generator_service import FileGeneratorService
+from utils.common_handlers import CommonHandlers
 
 
 class FileGenerationCallbackHandler(BaseCallbackHandler):
@@ -15,6 +16,7 @@ class FileGenerationCallbackHandler(BaseCallbackHandler):
     def __init__(self, config, analysis_service):
         super().__init__(config, analysis_service)
         self.file_generator = FileGeneratorService()
+        self.common_handlers = CommonHandlers(config, analysis_service)
     
     async def _generate_and_send_supply_file(self, update: Update, context: ContextTypes.DEFAULT_TYPE, 
                                            file_type: str = "poster"):
@@ -90,7 +92,7 @@ class FileGenerationCallbackHandler(BaseCallbackHandler):
         ]
         reply_markup = InlineKeyboardMarkup(keyboard)
         
-        await self._send_long_message_with_keyboard_callback(query.message, table_text, reply_markup)
+        await self.common_handlers.send_long_message_with_keyboard(query.message, table_text, reply_markup)
     
     def _format_matching_table(self, matching_result: IngredientMatchingResult) -> str:
         """Format matching table for display"""
@@ -103,8 +105,8 @@ class FileGenerationCallbackHandler(BaseCallbackHandler):
         # Add table rows
         for i, match in enumerate(matching_result.matches):
             status_emoji = self._get_status_emoji(match.match_status)
-            ingredient_name = self._truncate_name(match.matched_ingredient_name or 'Не сопоставлено', 20)
-            item_name = self._truncate_name(match.receipt_item_name, 25)
+            ingredient_name = self.common_handlers.truncate_name(match.matched_ingredient_name or 'Не сопоставлено', 20)
+            item_name = self.common_handlers.truncate_name(match.receipt_item_name, 25)
             
             table_text += f"| {i+1} | {item_name} | {ingredient_name} | {status_emoji} | {match.similarity_score:.2f} |\n"
         
@@ -117,11 +119,4 @@ class FileGenerationCallbackHandler(BaseCallbackHandler):
     
     def _get_status_emoji(self, status) -> str:
         """Get emoji for status"""
-        from models.ingredient_matching import MatchStatus
-        
-        if status == MatchStatus.MATCHED:
-            return "✅"
-        elif status == MatchStatus.PARTIAL_MATCH:
-            return "⚠️"
-        else:
-            return "❌"
+        return self.common_handlers.get_status_emoji(str(status))

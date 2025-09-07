@@ -12,6 +12,7 @@ from utils.formatters import ReceiptFormatter, NumberFormatter, TextParser
 from utils.ingredient_storage import IngredientStorage
 from utils.receipt_processor import ReceiptProcessor
 from utils.ui_manager import UIManager
+from utils.common_handlers import CommonHandlers
 from validators.receipt_validator import ReceiptValidator
 
 
@@ -28,60 +29,19 @@ class BaseCallbackHandler:
         self.validator = ReceiptValidator()
         self.ingredient_storage = IngredientStorage()
         self.ui_manager = UIManager(config)
+        self.common_handlers = CommonHandlers(config, analysis_service)
     
     async def _ensure_poster_ingredients_loaded(self, context: ContextTypes.DEFAULT_TYPE) -> bool:
         """Ensure poster ingredients are loaded, load them if necessary"""
-        poster_ingredients = context.bot_data.get('poster_ingredients', {})
-        
-        if not poster_ingredients:
-            # Load poster ingredients
-            from poster_handler import get_all_poster_ingredients
-            poster_ingredients = get_all_poster_ingredients()
-            
-            if not poster_ingredients:
-                return False
-            
-            # Save poster ingredients to bot data for future use
-            context.bot_data["poster_ingredients"] = poster_ingredients
-            print(f"DEBUG: Loaded {len(poster_ingredients)} poster ingredients")
-        
-        return True
+        return await self.common_handlers.ensure_ingredients_loaded(context, "poster")
     
     async def _ensure_google_sheets_ingredients_loaded(self, context: ContextTypes.DEFAULT_TYPE) -> bool:
         """Ensure Google Sheets ingredients are loaded, load them if necessary"""
-        google_sheets_ingredients = context.bot_data.get('google_sheets_ingredients', {})
-        
-        if not google_sheets_ingredients:
-            # Load Google Sheets ingredients
-            from google_sheets_handler import get_google_sheets_ingredients
-            google_sheets_ingredients = get_google_sheets_ingredients()
-            
-            if not google_sheets_ingredients:
-                return False
-            
-            # Save Google Sheets ingredients to bot data for future use
-            context.bot_data["google_sheets_ingredients"] = google_sheets_ingredients
-            print(f"✅ Загружено {len(google_sheets_ingredients)} ингредиентов Google Sheets по требованию")
-            print(f"DEBUG: Первые 5 ингредиентов: {list(google_sheets_ingredients.keys())[:5]}")
-        
-        return True
+        return await self.common_handlers.ensure_ingredients_loaded(context, "google_sheets")
     
     async def _send_long_message_with_keyboard_callback(self, message, text: str, reply_markup):
         """Send long message with keyboard (for callback query)"""
-        if len(text) <= self.config.MAX_MESSAGE_LENGTH:
-            await message.reply_text(text, reply_markup=reply_markup, parse_mode='Markdown')
-            return
-        
-        # Split into parts
-        parts = [text[i:i + self.config.MAX_MESSAGE_LENGTH] for i in range(0, len(text), self.config.MAX_MESSAGE_LENGTH)]
-        
-        # Send all parts except last
-        for part in parts[:-1]:
-            await message.reply_text(part, parse_mode='Markdown')
-            await asyncio.sleep(self.config.MESSAGE_DELAY)
-        
-        # Send last part with keyboard
-        await message.reply_text(parts[-1], reply_markup=reply_markup, parse_mode='Markdown')
+        await self.common_handlers.send_long_message_with_keyboard(message, text, reply_markup)
     
     def _save_ingredient_matching_data(self, user_id: int, context: ContextTypes.DEFAULT_TYPE) -> None:
         """Save ingredient matching data to storage"""
@@ -104,9 +64,7 @@ class BaseCallbackHandler:
     
     def _truncate_name(self, name: str, max_length: int) -> str:
         """Truncate name if too long"""
-        if len(name) <= max_length:
-            return name
-        return name[:max_length-3] + "..."
+        return self.common_handlers.truncate_name(name, max_length)
     
     async def _update_ingredient_matching_after_data_change(self, update: Update, context: ContextTypes.DEFAULT_TYPE, 
                                                            receipt_data, change_type: str = "general") -> None:

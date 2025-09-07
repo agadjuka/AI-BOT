@@ -10,6 +10,7 @@ from handlers.base_callback_handler import BaseCallbackHandler
 from models.ingredient_matching import IngredientMatchingResult, IngredientMatch, MatchStatus
 from services.google_sheets_service import GoogleSheetsService
 from services.file_generator_service import FileGeneratorService
+from utils.common_handlers import CommonHandlers
 
 
 class GoogleSheetsCallbackHandler(BaseCallbackHandler):
@@ -22,6 +23,7 @@ class GoogleSheetsCallbackHandler(BaseCallbackHandler):
             spreadsheet_id=config.GOOGLE_SHEETS_SPREADSHEET_ID
         )
         self.file_generator = FileGeneratorService()
+        self.common_handlers = CommonHandlers(config, analysis_service)
     
     async def _show_google_sheets_matching_page(self, update: Update, context: ContextTypes.DEFAULT_TYPE,
                                                receipt_data=None, matching_result=None):
@@ -653,28 +655,11 @@ class GoogleSheetsCallbackHandler(BaseCallbackHandler):
 
     async def _ensure_google_sheets_ingredients_loaded(self, context: ContextTypes.DEFAULT_TYPE) -> bool:
         """Ensure Google Sheets ingredients are loaded, load them if necessary"""
-        google_sheets_ingredients = context.bot_data.get('google_sheets_ingredients', {})
-        
-        if not google_sheets_ingredients:
-            # Load Google Sheets ingredients from config (same as original backup)
-            from google_sheets_handler import get_google_sheets_ingredients
-            google_sheets_ingredients = get_google_sheets_ingredients()
-            
-            if not google_sheets_ingredients:
-                return False
-            
-            # Save Google Sheets ingredients to bot data for future use
-            context.bot_data["google_sheets_ingredients"] = google_sheets_ingredients
-            print(f"✅ Загружено {len(google_sheets_ingredients)} ингредиентов Google Sheets по требованию")
-            print(f"DEBUG: Первые 5 ингредиентов: {list(google_sheets_ingredients.keys())[:5]}")
-        
-        return True
+        return await self.common_handlers.ensure_ingredients_loaded(context, "google_sheets")
     
     def _truncate_name(self, name: str, max_length: int) -> str:
         """Truncate name to max length"""
-        if len(name) <= max_length:
-            return name
-        return name[:max_length-3] + "..."
+        return self.common_handlers.truncate_name(name, max_length)
     
     def _extract_volume_from_name(self, name: str) -> float:
         """Extract volume/weight from product name and convert to base units (kg/l)"""
@@ -713,36 +698,7 @@ class GoogleSheetsCallbackHandler(BaseCallbackHandler):
     
     def _wrap_text(self, text: str, max_width: int) -> list[str]:
         """Wrap text to fit within max_width, breaking on words when possible"""
-        if not text:
-            return [""]
-        
-        if len(text) <= max_width:
-            return [text]
-        
-        words = text.split()
-        lines = []
-        current_line = ""
-        
-        for word in words:
-            # If adding this word would exceed the width
-            if len(current_line) + len(word) + 1 > max_width:
-                if current_line:
-                    lines.append(current_line)
-                    current_line = word
-                else:
-                    # Single word is too long, split it with hyphen
-                    lines.append(word[:max_width-1] + "-")
-                    current_line = word[max_width-1:]
-            else:
-                if current_line:
-                    current_line += " " + word
-                else:
-                    current_line = word
-        
-        if current_line:
-            lines.append(current_line)
-        
-        return lines
+        return self.common_handlers.wrap_text(text, max_width)
     
     def _save_ingredient_matching_data(self, user_id: int, context: ContextTypes.DEFAULT_TYPE):
         """Save ingredient matching data to storage"""
@@ -842,17 +798,4 @@ class GoogleSheetsCallbackHandler(BaseCallbackHandler):
     
     async def _send_long_message_with_keyboard_callback(self, message, text: str, reply_markup):
         """Send long message with keyboard (for callback query)"""
-        if len(text) <= self.config.MAX_MESSAGE_LENGTH:
-            await message.reply_text(text, reply_markup=reply_markup, parse_mode='Markdown')
-            return
-        
-        # Split into parts
-        parts = [text[i:i + self.config.MAX_MESSAGE_LENGTH] for i in range(0, len(text), self.config.MAX_MESSAGE_LENGTH)]
-        
-        # Send all parts except last
-        for part in parts[:-1]:
-            await message.reply_text(part, parse_mode='Markdown')
-            await asyncio.sleep(self.config.MESSAGE_DELAY)
-        
-        # Send last part with keyboard
-        await message.reply_text(parts[-1], reply_markup=reply_markup, parse_mode='Markdown')
+        await self.common_handlers.send_long_message_with_keyboard(message, text, reply_markup)
