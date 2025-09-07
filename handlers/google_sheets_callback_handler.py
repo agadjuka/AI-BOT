@@ -108,6 +108,206 @@ class GoogleSheetsCallbackHandler(BaseCallbackHandler):
             # If editing fails, try to send a new message
             await query.message.reply_text(text, reply_markup=reply_markup, parse_mode='Markdown')
     
+    async def _upload_to_google_sheets(self, update: Update, context: ContextTypes.DEFAULT_TYPE,
+                                     matching_result: IngredientMatchingResult):
+        """Upload matching result to Google Sheets"""
+        query = update.callback_query
+        await query.answer()
+        
+        print(f"DEBUG: _upload_to_google_sheets called with matching_result: {matching_result}")
+        
+        try:
+            # Show uploading message
+            await query.edit_message_text("📤 Загружаем данные в Google Sheets...")
+            
+            # Upload to Google Sheets
+            receipt_data = context.user_data.get('receipt_data')
+            if receipt_data:
+                success, message = self.google_sheets_service.upload_receipt_data(receipt_data, matching_result)
+            else:
+                success = False
+                message = "Receipt data not found"
+            
+            if success:
+                # Show success page with full functionality
+                await self._show_upload_success_page(update, context, "Upload successful", message)
+            else:
+                await query.edit_message_text(f"❌ Ошибка при загрузке: {message}")
+                
+        except Exception as e:
+            print(f"DEBUG: Error uploading to Google Sheets: {e}")
+            await query.edit_message_text(f"❌ Ошибка при загрузке: {str(e)}")
+    
+    async def _show_upload_success_page(self, update: Update, context: ContextTypes.DEFAULT_TYPE, 
+                                      summary: str, message: str):
+        """Show upload success page"""
+        # Clean up all messages except anchor first
+        await self.ui_manager.cleanup_all_except_anchor(update, context)
+        
+        # Create success message with only the header
+        success_text = "✅ **Данные успешно загружены в Google Sheets!**"
+        
+        # Create new button layout
+        keyboard = [
+            [InlineKeyboardButton("↩️ Отменить загрузку", callback_data="undo_google_sheets_upload")],
+            [InlineKeyboardButton("📄 Сгенерировать файл", callback_data="generate_excel_file")],
+            [InlineKeyboardButton("📋 Вернуться к чеку", callback_data="back_to_receipt")],
+            [InlineKeyboardButton("📸 Загрузить новый чек", callback_data="start_new_receipt")]
+        ]
+        
+        reply_markup = InlineKeyboardMarkup(keyboard)
+        
+        await self.ui_manager.send_menu(
+            update, context,
+            success_text,
+            reply_markup,
+            'Markdown'
+        )
+    
+    async def _handle_undo_google_sheets_upload(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
+        """Handle undo Google Sheets upload"""
+        try:
+            # Get last upload data
+            last_upload = context.user_data.get('last_google_sheets_upload')
+            if not last_upload:
+                await update.callback_query.edit_message_text(
+                    "❌ **Нет данных о последней загрузке для отмены**\n\n"
+                    "Информация о последней загрузке не найдена.",
+                    reply_markup=InlineKeyboardMarkup([
+                        [InlineKeyboardButton("📋 Вернуться к чеку", callback_data="back_to_receipt")]
+                    ]),
+                    parse_mode='Markdown'
+                )
+                return self.config.AWAITING_CORRECTION
+            
+            # Get upload details
+            worksheet_name = last_upload.get('worksheet_name', 'Receipts')
+            row_count = last_upload.get('row_count', 0)
+            
+            if row_count <= 0:
+                await update.callback_query.edit_message_text(
+                    "❌ **Нет данных для отмены**\n\n"
+                    "Количество строк для отмены равно нулю.",
+                    reply_markup=InlineKeyboardMarkup([
+                        [InlineKeyboardButton("📋 Вернуться к чеку", callback_data="back_to_receipt")]
+                    ]),
+                    parse_mode='Markdown'
+                )
+                return self.config.AWAITING_CORRECTION
+            
+            # Attempt to delete the uploaded rows
+            success, message = self.google_sheets_service.delete_last_uploaded_rows(worksheet_name, row_count)
+            
+            if success:
+                # Clear the last upload data
+                context.user_data.pop('last_google_sheets_upload', None)
+                
+                # Get the data for preview
+                pending_data = context.user_data.get('pending_google_sheets_upload')
+                if pending_data:
+                    receipt_data = pending_data['receipt_data']
+                    matching_result = pending_data['matching_result']
+                    
+                    # Show regular preview (same as before upload)
+                    await self._show_google_sheets_preview(update, context, receipt_data, matching_result)
+                else:
+                    # Fallback if no pending data
+                    await update.callback_query.edit_message_text(
+                        f"✍️ **Загрузка успешно отменена!**\n\n"
+                        f"📊 **Отменено строк:** {row_count}\n"
+                        f"📋 **Лист:** {worksheet_name}\n"
+                        f"🕒 **Время отмены:** {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\n\n"
+                        f"Данные были удалены из Google Sheets.",
+                        reply_markup=InlineKeyboardMarkup([
+                            [InlineKeyboardButton("📋 Вернуться к чеку", callback_data="back_to_receipt")],
+                            [InlineKeyboardButton("📸 Загрузить новый чек", callback_data="start_new_receipt")]
+                        ]),
+                        parse_mode='Markdown'
+                    )
+            else:
+                # Show error message
+                await update.callback_query.edit_message_text(
+                    f"❌ **Ошибка отмены загрузки**\n\n"
+                    f"Не удалось отменить загрузку: {message}\n\n"
+                    f"Попробуйте удалить данные вручную в Google Sheets.",
+                    reply_markup=InlineKeyboardMarkup([
+                        [InlineKeyboardButton("📋 Вернуться к чеку", callback_data="back_to_receipt")],
+                        [InlineKeyboardButton("🔄 Попробовать снова", callback_data="undo_google_sheets_upload")]
+                    ]),
+                    parse_mode='Markdown'
+                )
+                
+        except Exception as e:
+            print(f"DEBUG: Error undoing Google Sheets upload: {e}")
+            await update.callback_query.edit_message_text(
+                f"❌ **Критическая ошибка**\n\n"
+                f"Произошла неожиданная ошибка при отмене загрузки:\n`{str(e)}`",
+                reply_markup=InlineKeyboardMarkup([
+                    [InlineKeyboardButton("📋 Вернуться к чеку", callback_data="back_to_receipt")]
+                ]),
+                parse_mode='Markdown'
+            )
+    
+    async def _handle_skip_item(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
+        """Handle skip item action"""
+        # Find the next item that needs matching
+        pending_data = context.user_data.get('pending_google_sheets_upload')
+        if not pending_data:
+            await self.ui_manager.send_temp(update, context, "Ошибка: данные для сопоставления не найдены.", duration=5)
+            return
+        
+        matching_result = pending_data['matching_result']
+        current_item = context.user_data.get('current_gs_matching_item', 0)
+        
+        # Find next item that needs matching
+        next_item = None
+        for i in range(current_item + 1, len(matching_result.matches)):
+            if matching_result.matches[i].match_status.value in ['partial', 'no_match']:
+                next_item = i
+                break
+        
+        if next_item is None:
+            # No more items to match, show completion message
+            await self.ui_manager.send_temp(update, context, "✅ Все позиции обработаны!", duration=5)
+            await self._show_google_sheets_matching_table(update, context)
+            return
+        
+        # Update current item index
+        context.user_data['current_gs_matching_item'] = next_item
+        
+        # Show next item
+        await self._show_google_sheets_manual_matching_for_item(update, context, next_item)
+    
+    async def _handle_next_item(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
+        """Handle next item action"""
+        # Find the next item that needs matching
+        pending_data = context.user_data.get('pending_google_sheets_upload')
+        if not pending_data:
+            await self.ui_manager.send_temp(update, context, "Ошибка: данные для сопоставления не найдены.", duration=5)
+            return
+        
+        matching_result = pending_data['matching_result']
+        current_item = context.user_data.get('current_gs_matching_item', 0)
+        
+        # Find next item that needs matching
+        next_item = None
+        for i in range(current_item + 1, len(matching_result.matches)):
+            if matching_result.matches[i].match_status.value in ['partial', 'no_match']:
+                next_item = i
+                break
+        
+        if next_item is None:
+            # No more items to match, show completion message
+            await self.ui_manager.send_temp(update, context, "✅ Все позиции обработаны!", duration=5)
+            await self._show_google_sheets_matching_table(update, context)
+            return
+        
+        # Update current item index
+        context.user_data['current_gs_matching_item'] = next_item
+        
+        # Show next item
+        await self._show_google_sheets_manual_matching_for_item(update, context, next_item)
+    
     async def _show_google_sheets_matching_table(self, update: Update, context: ContextTypes.DEFAULT_TYPE,
                                                receipt_data=None, matching_result=None):
         """Show Google Sheets matching table for editing"""
@@ -456,35 +656,6 @@ class GoogleSheetsCallbackHandler(BaseCallbackHandler):
         # Show next item
         await self._show_google_sheets_manual_matching_for_item(update, context, next_item)
     
-    async def _upload_to_google_sheets(self, update: Update, context: ContextTypes.DEFAULT_TYPE,
-                                     matching_result: IngredientMatchingResult):
-        """Upload matching result to Google Sheets"""
-        query = update.callback_query
-        await query.answer()
-        
-        print(f"DEBUG: _upload_to_google_sheets called with matching_result: {matching_result}")
-        
-        try:
-            # Show uploading message
-            await query.edit_message_text("📤 Загружаем данные в Google Sheets...")
-            
-            # Upload to Google Sheets
-            receipt_data = context.user_data.get('receipt_data')
-            if receipt_data:
-                success, message = self.google_sheets_service.upload_receipt_data(receipt_data, matching_result)
-            else:
-                success = False
-                message = "Receipt data not found"
-            
-            if success:
-                # Show success page with full functionality
-                await self._show_upload_success_page(update, context, "Upload successful", message)
-            else:
-                await query.edit_message_text(f"❌ Ошибка при загрузке: {message}")
-                
-        except Exception as e:
-            print(f"DEBUG: Error uploading to Google Sheets: {e}")
-            await query.edit_message_text(f"❌ Ошибка при загрузке: {str(e)}")
     
     def _format_google_sheets_table_preview(self, receipt_data, matching_result) -> str:
         """Format table preview for Google Sheets upload"""
@@ -775,15 +946,33 @@ class GoogleSheetsCallbackHandler(BaseCallbackHandler):
                         context.user_data['messages_to_cleanup'] = []
                     context.user_data['messages_to_cleanup'].append(file_message.message_id)
                 
-                # Clean up the file
+                # Clean up the file after a delay to allow user to download it
+                import asyncio
                 import os
-                try:
-                    os.remove(file_path)
-                except Exception as e:
-                    print(f"Warning: Could not remove temporary file {file_path}: {e}")
                 
-                # Now show the Google Sheets preview again with the same data
-                await self._show_google_sheets_preview(update, context, receipt_data, matching_result)
+                async def cleanup_file():
+                    await asyncio.sleep(300)  # Wait 5 minutes before cleanup
+                    try:
+                        os.remove(file_path)
+                        print(f"Temporary file {file_path} cleaned up")
+                    except Exception as e:
+                        print(f"Warning: Could not remove temporary file {file_path}: {e}")
+                
+                # Schedule file cleanup in background
+                asyncio.create_task(cleanup_file())
+                
+                # Show success message with option to go back to preview
+                await self.ui_manager.send_menu(
+                    update, context,
+                    "✅ **Excel-файл успешно создан!**\n\n"
+                    "Файл содержит те же данные, что были загружены в Google Sheets.\n\n"
+                    "⏰ **Файл будет доступен для скачивания в течение 5 минут**",
+                    InlineKeyboardMarkup([
+                        [InlineKeyboardButton("👁️ Предпросмотр Google Sheets", callback_data="preview_google_sheets_upload")],
+                        [InlineKeyboardButton("📋 Вернуться к чеку", callback_data="back_to_receipt")]
+                    ]),
+                    'Markdown'
+                )
                 
             else:
                 await self.ui_manager.send_temp(
