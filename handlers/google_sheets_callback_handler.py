@@ -23,86 +23,129 @@ class GoogleSheetsCallbackHandler(BaseCallbackHandler):
         self.file_generator = FileGeneratorService()
     
     async def _show_google_sheets_matching_page(self, update: Update, context: ContextTypes.DEFAULT_TYPE,
-                                               page: int = 0, items_per_page: int = 10):
-        """Show Google Sheets matching page"""
+                                               receipt_data=None, matching_result=None):
+        """Show Google Sheets matching page with the same table as editor"""
         query = update.callback_query
         await query.answer()
         
-        matching_result = context.user_data.get('ingredient_matching_result')
+        # Get data from parameters or context
+        if not matching_result:
+            matching_result = context.user_data.get('ingredient_matching_result')
+        if not receipt_data:
+            receipt_data = context.user_data.get('receipt_data')
+        
         if not matching_result:
             await query.edit_message_text("❌ Результаты сопоставления не найдены")
             return
         
-        # Calculate pagination
-        total_items = len(matching_result.matches)
-        start_idx = page * items_per_page
-        end_idx = min(start_idx + items_per_page, total_items)
-        
-        # Format page content
-        page_text = f"📊 **Google Sheets сопоставление (стр. {page + 1})**\n\n"
-        
-        for i in range(start_idx, end_idx):
-            match = matching_result.matches[i]
-            status_emoji = self._get_google_sheets_status_emoji(match.match_status)
-            item_text = f"{i+1}. {status_emoji} {match.receipt_item_name[:30]}{'...' if len(match.receipt_item_name) > 30 else ''}"
-            if match.matched_ingredient_name:
-                item_text += f"\n   → {match.matched_ingredient_name[:25]}{'...' if len(match.matched_ingredient_name) > 25 else ''}"
-            page_text += item_text + "\n\n"
-        
-        # Create pagination buttons
-        keyboard = []
-        
-        # Navigation buttons
-        nav_buttons = []
-        if page > 0:
-            nav_buttons.append(InlineKeyboardButton("◀️", callback_data=f"gs_page_{page-1}"))
-        nav_buttons.append(InlineKeyboardButton(f"{page + 1}", callback_data="gs_current_page"))
-        if end_idx < total_items:
-            nav_buttons.append(InlineKeyboardButton("▶️", callback_data=f"gs_page_{page+1}"))
-        
-        if nav_buttons:
-            keyboard.append(nav_buttons)
-        
-        # Action buttons
-        keyboard.extend([
-            [InlineKeyboardButton("🔍 Ручное сопоставление", callback_data="gs_manual_matching")],
-            [InlineKeyboardButton("📤 Загрузить в Google Sheets", callback_data="gs_upload")],
-            [InlineKeyboardButton("◀️ Назад", callback_data="back_to_edit")]
-        ])
-        
-        reply_markup = InlineKeyboardMarkup(keyboard)
-        await query.edit_message_text(page_text, reply_markup=reply_markup, parse_mode='Markdown')
-    
-    async def _show_google_sheets_preview(self, update: Update, context: ContextTypes.DEFAULT_TYPE,
-                                        matching_result: IngredientMatchingResult):
-        """Show Google Sheets preview"""
-        query = update.callback_query
-        await query.answer()
-        
-        # Format preview table
-        preview_text = self._format_google_sheets_table_preview(matching_result)
-        
-        keyboard = [
-            [InlineKeyboardButton("📤 Загрузить в Google Sheets", callback_data="gs_upload")],
-            [InlineKeyboardButton("◀️ Назад", callback_data="gs_matching_page")]
-        ]
-        reply_markup = InlineKeyboardMarkup(keyboard)
-        
-        await self._send_long_message_with_keyboard_callback(query.message, preview_text, reply_markup)
-    
-    async def _show_google_sheets_matching_table(self, update: Update, context: ContextTypes.DEFAULT_TYPE,
-                                               matching_result: IngredientMatchingResult):
-        """Show Google Sheets matching table"""
-        query = update.callback_query
-        await query.answer()
-        
-        # Format matching table
+        # Use the same table formatting as the editor
         table_text = self._format_google_sheets_matching_table(matching_result)
         
+        # Add additional text after the table
+        schema_text = table_text + "\n\nВыберите действие для работы с сопоставлением:"
+        
+        # Create action buttons
         keyboard = [
-            [InlineKeyboardButton("📤 Загрузить в Google Sheets", callback_data="gs_upload")],
-            [InlineKeyboardButton("◀️ Назад", callback_data="gs_matching_page")]
+            [InlineKeyboardButton("✏️ Редактировать сопоставление", callback_data="edit_google_sheets_matching")],
+            [InlineKeyboardButton("👁️ Предпросмотр", callback_data="preview_google_sheets_upload")],
+            [InlineKeyboardButton("◀️ Вернуться к чеку", callback_data="back_to_receipt")]
         ]
+        
+        reply_markup = InlineKeyboardMarkup(keyboard)
+        
+        # Save data for future use
+        context.user_data['pending_google_sheets_upload'] = {
+            'receipt_data': receipt_data,
+            'matching_result': matching_result
+        }
+        
+        await query.edit_message_text(schema_text, reply_markup=reply_markup, parse_mode='Markdown')
+    
+    async def _show_google_sheets_preview(self, update: Update, context: ContextTypes.DEFAULT_TYPE,
+                                        receipt_data=None, matching_result=None):
+        """Show Google Sheets upload preview with confirmation buttons"""
+        query = update.callback_query
+        await query.answer()
+        
+        # Get data from parameters or context
+        if not matching_result:
+            matching_result = context.user_data.get('ingredient_matching_result')
+        if not receipt_data:
+            receipt_data = context.user_data.get('receipt_data')
+        
+        if not matching_result or not receipt_data:
+            await query.edit_message_text("❌ Данные для предпросмотра не найдены")
+            return
+        
+        # Create table preview with Google Sheets data
+        table_preview = self._format_google_sheets_table_preview(receipt_data, matching_result)
+        
+        # Text with table preview only
+        text = "📊 **Предварительный просмотр загрузки в Google Таблицы**\n\n"
+        text += f"```\n{table_preview}\n```"
+        
+        keyboard = [
+            [InlineKeyboardButton("✅ Загрузить в Google Таблицы", callback_data="confirm_google_sheets_upload")],
+            [InlineKeyboardButton("✏️ Редактировать сопоставление", callback_data="edit_google_sheets_matching")],
+            [InlineKeyboardButton("◀️ Назад", callback_data="upload_to_google_sheets")]
+        ]
+        
+        reply_markup = InlineKeyboardMarkup(keyboard)
+        
+        # Save data for upload
+        context.user_data['pending_google_sheets_upload'] = {
+            'receipt_data': receipt_data,
+            'matching_result': matching_result
+        }
+        
+        await query.edit_message_text(text, reply_markup=reply_markup, parse_mode='Markdown')
+    
+    async def _show_google_sheets_matching_table(self, update: Update, context: ContextTypes.DEFAULT_TYPE,
+                                               receipt_data=None, matching_result=None):
+        """Show Google Sheets matching table for editing"""
+        query = update.callback_query
+        await query.answer()
+        
+        # Get data from parameters or context
+        if not matching_result:
+            matching_result = context.user_data.get('ingredient_matching_result')
+        if not receipt_data:
+            receipt_data = context.user_data.get('receipt_data')
+        
+        if not matching_result:
+            await query.edit_message_text("❌ Результаты сопоставления не найдены")
+            return
+        
+        # Format the matching table for Google Sheets
+        table_text = self._format_google_sheets_matching_table(matching_result)
+        
+        # Create buttons
+        keyboard = []
+        
+        # Add buttons for items that need matching (max 2 per row)
+        items_needing_matching = []
+        for i, match in enumerate(matching_result.matches):
+            if match.match_status.value in ['partial', 'no_match']:
+                items_needing_matching.append((i, match))
+        
+        for i, (index, match) in enumerate(items_needing_matching):
+            # Get status emoji instead of pencil
+            status_emoji = self._get_google_sheets_status_emoji(match.match_status)
+            item_text = f"{index+1}. {match.receipt_item_name[:20]}{'...' if len(match.receipt_item_name) > 20 else ''}"
+            
+            if i % 2 == 0:
+                # Start new row
+                keyboard.append([InlineKeyboardButton(f"{status_emoji} {item_text}", callback_data=f"gs_select_item_{index}")])
+            else:
+                # Add to existing row
+                keyboard[-1].append(InlineKeyboardButton(f"{status_emoji} {item_text}", callback_data=f"gs_select_item_{index}"))
+        
+        # Add control buttons
+        keyboard.extend([
+            [InlineKeyboardButton("👁️ Предпросмотр", callback_data="preview_google_sheets_upload")],
+            [InlineKeyboardButton("◀️ Назад", callback_data="upload_to_google_sheets")]
+        ])
+        
         reply_markup = InlineKeyboardMarkup(keyboard)
         
         await self._send_long_message_with_keyboard_callback(query.message, table_text, reply_markup)
@@ -289,19 +332,6 @@ class GoogleSheetsCallbackHandler(BaseCallbackHandler):
             # Show uploading message
             await query.edit_message_text("📤 Загружаем данные в Google Sheets...")
             
-            # Prepare data for upload
-            upload_data = []
-            for i, match in enumerate(matching_result.matches):
-                row_data = {
-                    'line_number': i + 1,
-                    'receipt_item': match.receipt_item_name,
-                    'matched_ingredient': match.matched_ingredient_name or '',
-                    'ingredient_id': match.matched_ingredient_id or '',
-                    'status': match.match_status.value,
-                    'similarity': match.similarity_score
-                }
-                upload_data.append(row_data)
-            
             # Upload to Google Sheets
             receipt_data = context.user_data.get('receipt_data')
             if receipt_data:
@@ -312,7 +342,7 @@ class GoogleSheetsCallbackHandler(BaseCallbackHandler):
             
             if success:
                 # Show success page with full functionality
-                await self._show_upload_success_page(update, context, upload_data, message)
+                await self._show_upload_success_page(update, context, "Upload successful", message)
             else:
                 await query.edit_message_text(f"❌ Ошибка при загрузке: {message}")
                 
@@ -320,63 +350,158 @@ class GoogleSheetsCallbackHandler(BaseCallbackHandler):
             print(f"DEBUG: Error uploading to Google Sheets: {e}")
             await query.edit_message_text(f"❌ Ошибка при загрузке: {str(e)}")
     
-    def _format_google_sheets_table_preview(self, matching_result: IngredientMatchingResult) -> str:
-        """Format Google Sheets table preview"""
-        preview_text = "📊 **Предварительный просмотр таблицы Google Sheets:**\n\n"
+    def _format_google_sheets_table_preview(self, receipt_data, matching_result) -> str:
+        """Format table preview for Google Sheets upload"""
+        if not receipt_data.items or not matching_result.matches:
+            return "Нет данных для отображения"
         
-        # Create table header
-        preview_text += self._create_google_sheets_table_header()
-        preview_text += self._create_google_sheets_table_separator()
+        # Set fixed column widths (total max 58 characters)
+        date_width = 8        # Fixed width for date
+        volume_width = 6      # Fixed width for volume
+        price_width = 10      # Fixed width for price
+        product_width = 22    # Fixed width for product
         
-        # Add table rows
-        for i, match in enumerate(matching_result.matches):
-            preview_text += self._create_google_sheets_table_row(i + 1, match)
+        # Create header using the new format
+        header = f"{'Date':<{date_width}} | {'Vol':<{volume_width}} | {'цена':<{price_width}} | {'Product':<{product_width}}"
+        separator = "─" * (date_width + volume_width + price_width + product_width + 12)  # 12 characters for separators
         
-        preview_text += "\n💡 **Легенда:**\n"
-        preview_text += "✅ - Сопоставлено\n"
-        preview_text += "⚠️ - Частично сопоставлено\n"
-        preview_text += "❌ - Не сопоставлено\n"
+        lines = [header, separator]
         
-        return preview_text
+        # Add data rows using the new format
+        for i, item in enumerate(receipt_data.items):
+            # Get matching result for this item
+            match = None
+            if i < len(matching_result.matches):
+                match = matching_result.matches[i]
+            
+            # Prepare row data
+            current_date = datetime.now().strftime('%d.%m.%Y')
+            quantity = item.quantity if item.quantity is not None else 0
+            price = item.price if item.price is not None else 0
+            matched_product = match.matched_ingredient_name if match and match.matched_ingredient_name else ""
+            
+            # Extract volume from product name and multiply by quantity
+            volume_from_name = self._extract_volume_from_name(item.name)
+            if volume_from_name > 0:
+                # Multiply extracted volume by quantity
+                total_volume = volume_from_name * quantity
+                if total_volume == int(total_volume):
+                    volume_str = str(int(total_volume))
+                else:
+                    # Round to 2 decimal places
+                    volume_str = f"{total_volume:.2f}"
+            elif quantity > 0:
+                # Fallback to original behavior if no volume found in name
+                if quantity == int(quantity):
+                    volume_str = str(int(quantity))
+                else:
+                    # Round to 2 decimal places
+                    volume_str = f"{quantity:.2f}"
+            else:
+                volume_str = "-"
+            
+            # Format price using the same format as other tables (with spaces)
+            if price > 0:
+                if price == int(price):
+                    price_str = f"{int(price):,}".replace(",", " ")
+                else:
+                    price_str = f"{price:,.1f}".replace(",", " ")
+            else:
+                price_str = "-"
+            
+            # Handle long product names with word wrapping
+            matched_product_parts = self._wrap_text(matched_product, product_width)
+            
+            # Create multiple lines if product name is wrapped
+            for line_idx in range(len(matched_product_parts)):
+                current_product = matched_product_parts[line_idx]
+                
+                # Only show date, volume, and price on first line
+                if line_idx == 0:
+                    line = f"{current_date:<{date_width}} | {volume_str:<{volume_width}} | {price_str:<{price_width}} | {current_product:<{product_width}}"
+                else:
+                    line = f"{'':<{date_width}} | {'':<{volume_width}} | {'':<{price_width}} | {current_product:<{product_width}}"
+                
+                lines.append(line)
+        
+        return "\n".join(lines)
     
     def _format_google_sheets_matching_table(self, matching_result: IngredientMatchingResult) -> str:
-        """Format Google Sheets matching table"""
-        table_text = "📊 **Таблица сопоставления для Google Sheets:**\n\n"
+        """Format Google Sheets matching table for editing"""
+        if not matching_result.matches:
+            return "Нет ингредиентов для сопоставления."
         
         # Create table header
-        table_text += self._create_google_sheets_table_header()
-        table_text += self._create_google_sheets_table_separator()
+        table_lines = []
+        table_lines.append("**Сопоставление с ингредиентами Google Таблиц:**\n")
+        
+        # Add summary
+        summary = f"📊 **Статистика:** Всего: {matching_result.total_items} | "
+        summary += f"🟢 Точных: {matching_result.exact_matches} | "
+        summary += f"🟡 Частичных: {matching_result.partial_matches} | "
+        summary += f"🔴 Не найдено: {matching_result.no_matches}\n"
+        table_lines.append(summary)
+        
+        # Create table
+        table_lines.append("```")
+        table_lines.append(self._create_google_sheets_table_header())
+        table_lines.append(self._create_google_sheets_table_separator())
         
         # Add table rows
-        for i, match in enumerate(matching_result.matches):
-            table_text += self._create_google_sheets_table_row(i + 1, match)
+        for i, match in enumerate(matching_result.matches, 1):
+            table_lines.append(self._create_google_sheets_table_row(i, match))
         
-        return table_text
+        table_lines.append("```")
+        
+        return "\n".join(table_lines)
     
     def _create_google_sheets_table_header(self) -> str:
         """Create Google Sheets table header"""
-        return "| № | Товар из чека | Ингредиент | ID | Статус | Сходство |\n"
+        return f"{'№':<2} | {'Наименование':<20} | {'Google Таблицы':<20} | {'Статус':<4}"
     
     def _create_google_sheets_table_separator(self) -> str:
         """Create Google Sheets table separator"""
-        return "|---|---|---|---|---|---|\n"
+        return "-" * 50
     
     def _create_google_sheets_table_row(self, row_number: int, match: IngredientMatch) -> str:
-        """Create Google Sheets table row"""
-        status_emoji = self._get_google_sheets_status_emoji(match.match_status)
-        ingredient_name = self._truncate_name(match.matched_ingredient_name or '', 20)
-        item_name = self._truncate_name(match.receipt_item_name, 25)
+        """Create a Google Sheets table row for a match"""
+        # Wrap names instead of truncating
+        receipt_name_lines = self._wrap_text(match.receipt_item_name, 20)
+        ingredient_name_lines = self._wrap_text(
+            match.matched_ingredient_name or "—", 
+            20
+        )
         
-        return f"| {row_number} | {item_name} | {ingredient_name} | {match.matched_ingredient_id or ''} | {status_emoji} | {match.similarity_score:.2f} |\n"
+        # Get status emoji
+        status_emoji = self._get_google_sheets_status_emoji(match.match_status)
+        
+        # Create multi-line row
+        max_lines = max(len(receipt_name_lines), len(ingredient_name_lines))
+        lines = []
+        
+        for line_idx in range(max_lines):
+            receipt_name = receipt_name_lines[line_idx] if line_idx < len(receipt_name_lines) else ""
+            ingredient_name = ingredient_name_lines[line_idx] if line_idx < len(ingredient_name_lines) else ""
+            
+            if line_idx == 0:
+                # First line includes row number and status
+                line = f"{row_number:<2} | {receipt_name:<20} | {ingredient_name:<20} | {status_emoji:<4}"
+            else:
+                # Subsequent lines are indented
+                line = f"{'':<2} | {receipt_name:<20} | {ingredient_name:<20} | {'':<4}"
+            
+            lines.append(line)
+        
+        return "\n".join(lines)
     
     def _get_google_sheets_status_emoji(self, status) -> str:
-        """Get emoji for Google Sheets status"""
+        """Get emoji for Google Sheets match status"""
         if status == MatchStatus.EXACT_MATCH:
-            return "✅"
+            return "🟢"
         elif status == MatchStatus.PARTIAL_MATCH:
-            return "⚠️"
+            return "🟡"
         else:
-            return "❌"
+            return "🔴"
     
     def _calculate_similarity(self, text1: str, text2: str) -> float:
         """Calculate text similarity (simple implementation)"""
@@ -397,7 +522,7 @@ class GoogleSheetsCallbackHandler(BaseCallbackHandler):
         union = words1.union(words2)
         
         return len(intersection) / len(union) if union else 0.0
-    
+
     async def _ensure_google_sheets_ingredients_loaded(self, context: ContextTypes.DEFAULT_TYPE) -> bool:
         """Ensure Google Sheets ingredients are loaded, load them if necessary"""
         google_sheets_ingredients = context.bot_data.get('google_sheets_ingredients', {})
@@ -423,50 +548,73 @@ class GoogleSheetsCallbackHandler(BaseCallbackHandler):
             return name
         return name[:max_length-3] + "..."
     
-    def _extract_volume_from_name(self, name: str) -> str:
-        """Extract volume information from ingredient name"""
+    def _extract_volume_from_name(self, name: str) -> float:
+        """Extract volume/weight from product name and convert to base units (kg/l)"""
         import re
         
-        # Look for volume patterns like "500мл", "1л", "0.5л", etc.
-        volume_patterns = [
-            r'(\d+(?:\.\d+)?)\s*мл',
-            r'(\d+(?:\.\d+)?)\s*л',
-            r'(\d+(?:\.\d+)?)\s*г',
-            r'(\d+(?:\.\d+)?)\s*кг'
+        if not name:
+            return 0.0
+        
+        # Patterns to match various volume/weight indicators with conversion factors
+        patterns = [
+            # Base units (kg, l) - no conversion needed
+            (r'(\d+[,.]?\d*)\s*kg', 1.0),  # kg (with comma or dot as decimal separator)
+            (r'(\d+[,.]?\d*)\s*кг', 1.0),  # кг (Russian)
+            (r'(\d+[,.]?\d*)\s*l', 1.0),   # liters
+            (r'(\d+[,.]?\d*)\s*л', 1.0),   # литры (Russian)
+            # Small units (g, ml) - convert to base units (multiply by 0.001)
+            (r'(\d+[,.]?\d*)\s*ml', 0.001),  # milliliters -> liters
+            (r'(\d+[,.]?\d*)\s*мл', 0.001),  # миллилитры -> литры (Russian)
+            (r'(\d+[,.]?\d*)\s*g', 0.001),   # grams -> kg
+            (r'(\d+[,.]?\d*)\s*г', 0.001),   # граммы -> кг (Russian)
         ]
         
-        for pattern in volume_patterns:
+        for pattern, conversion_factor in patterns:
             match = re.search(pattern, name, re.IGNORECASE)
             if match:
-                return match.group(1) + pattern.split('\\')[1]
+                volume_str = match.group(1)
+                # Replace comma with dot for proper float conversion
+                volume_str = volume_str.replace(',', '.')
+                try:
+                    volume = float(volume_str)
+                    return volume * conversion_factor
+                except ValueError:
+                    continue
         
-        return ""
+        return 0.0
     
-    def _wrap_text(self, text: str, max_length: int = 20) -> str:
-        """Wrap text to fit in table cells"""
-        if len(text) <= max_length:
-            return text
+    def _wrap_text(self, text: str, max_width: int) -> list[str]:
+        """Wrap text to fit within max_width, breaking on words when possible"""
+        if not text:
+            return [""]
         
-        # Try to wrap at word boundaries
+        if len(text) <= max_width:
+            return [text]
+        
         words = text.split()
         lines = []
         current_line = ""
         
         for word in words:
-            if len(current_line + " " + word) <= max_length:
+            # If adding this word would exceed the width
+            if len(current_line) + len(word) + 1 > max_width:
+                if current_line:
+                    lines.append(current_line)
+                    current_line = word
+                else:
+                    # Single word is too long, split it with hyphen
+                    lines.append(word[:max_width-1] + "-")
+                    current_line = word[max_width-1:]
+            else:
                 if current_line:
                     current_line += " " + word
                 else:
                     current_line = word
-            else:
-                if current_line:
-                    lines.append(current_line)
-                current_line = word
         
         if current_line:
             lines.append(current_line)
         
-        return "\n".join(lines)
+        return lines
     
     def _save_ingredient_matching_data(self, user_id: int, context: ContextTypes.DEFAULT_TYPE):
         """Save ingredient matching data to storage"""
@@ -484,31 +632,22 @@ class GoogleSheetsCallbackHandler(BaseCallbackHandler):
             print(f"DEBUG: Error saving matching data: {e}")
     
     async def _show_upload_success_page(self, update: Update, context: ContextTypes.DEFAULT_TYPE, 
-                                      upload_data: list, message: str):
-        """Show upload success page"""
+                                      summary: str, message: str):
+        """Show the new upload success page interface"""
         query = update.callback_query
         await query.answer()
         
-        success_text = "✅ **Данные успешно загружены в Google Sheets!**\n\n"
-        success_text += f"📊 **Загружено позиций:** {len(upload_data)}\n"
-        success_text += f"📅 **Время:** {datetime.now().strftime('%d.%m.%Y %H:%M')}\n\n"
-        success_text += f"ℹ️ **Детали:** {message}\n\n"
+        # Create success message with only the header
+        success_text = "✅ **Данные успешно загружены в Google Sheets!**"
         
-        # Show statistics
-        matched_count = sum(1 for item in upload_data if item['status'] == 'matched')
-        partial_count = sum(1 for item in upload_data if item['status'] == 'partial_match')
-        unmatched_count = sum(1 for item in upload_data if item['status'] == 'not_matched')
-        
-        success_text += "📈 **Статистика сопоставления:**\n"
-        success_text += f"✅ Сопоставлено: {matched_count}\n"
-        success_text += f"⚠️ Частично: {partial_count}\n"
-        success_text += f"❌ Не найдено: {unmatched_count}\n\n"
-        
+        # Create new button layout
         keyboard = [
-            [InlineKeyboardButton("📊 Показать таблицу", callback_data="gs_show_table")],
-            [InlineKeyboardButton("📁 Скачать Excel", callback_data="generate_file_xlsx")],
-            [InlineKeyboardButton("◀️ Назад к чеку", callback_data="back_to_receipt")]
+            [InlineKeyboardButton("↩️ Отменить загрузку", callback_data="undo_google_sheets_upload")],
+            [InlineKeyboardButton("📄 Сгенерировать файл", callback_data="generate_excel_file")],
+            [InlineKeyboardButton("📋 Вернуться к чеку", callback_data="back_to_receipt")],
+            [InlineKeyboardButton("📸 Загрузить новый чек", callback_data="start_new_receipt")]
         ]
+        
         reply_markup = InlineKeyboardMarkup(keyboard)
         
         await query.edit_message_text(success_text, reply_markup=reply_markup, parse_mode='Markdown')
@@ -555,64 +694,3 @@ class GoogleSheetsCallbackHandler(BaseCallbackHandler):
             print(f"DEBUG: Error generating Excel file: {e}")
             await query.edit_message_text(f"❌ Ошибка при создании Excel файла: {str(e)}")
     
-    async def _show_google_sheets_matching_page(self, update: Update, context: ContextTypes.DEFAULT_TYPE,
-                                               page: int = 0, items_per_page: int = 10):
-        """Show Google Sheets matching page with full functionality"""
-        query = update.callback_query
-        await query.answer()
-        
-        matching_result = context.user_data.get('ingredient_matching_result')
-        if not matching_result:
-            await query.edit_message_text("❌ Результаты сопоставления не найдены")
-            return
-        
-        # Calculate statistics
-        total_items = len(matching_result.matches)
-        matched_count = sum(1 for match in matching_result.matches if match.match_status == MatchStatus.EXACT_MATCH)
-        partial_count = sum(1 for match in matching_result.matches if match.match_status == MatchStatus.PARTIAL_MATCH)
-        unmatched_count = sum(1 for match in matching_result.matches if match.match_status == MatchStatus.NO_MATCH)
-        
-        # Format page content
-        page_text = f"📊 **Google Sheets сопоставление (стр. {page + 1})**\n\n"
-        page_text += f"📈 **Статистика:**\n"
-        page_text += f"✅ Сопоставлено: {matched_count}\n"
-        page_text += f"⚠️ Частично: {partial_count}\n"
-        page_text += f"❌ Не найдено: {unmatched_count}\n\n"
-        
-        # Calculate pagination
-        start_idx = page * items_per_page
-        end_idx = min(start_idx + items_per_page, total_items)
-        
-        # Show items for current page
-        for i in range(start_idx, end_idx):
-            match = matching_result.matches[i]
-            status_emoji = self._get_google_sheets_status_emoji(match.match_status)
-            item_text = f"{i+1}. {status_emoji} {match.receipt_item_name[:30]}{'...' if len(match.receipt_item_name) > 30 else ''}"
-            if match.matched_ingredient_name:
-                item_text += f"\n   → {match.matched_ingredient_name[:25]}{'...' if len(match.matched_ingredient_name) > 25 else ''}"
-            page_text += item_text + "\n\n"
-        
-        # Create pagination buttons
-        keyboard = []
-        
-        # Navigation buttons
-        nav_buttons = []
-        if page > 0:
-            nav_buttons.append(InlineKeyboardButton("◀️", callback_data=f"gs_page_{page-1}"))
-        nav_buttons.append(InlineKeyboardButton(f"{page + 1}", callback_data="gs_current_page"))
-        if end_idx < total_items:
-            nav_buttons.append(InlineKeyboardButton("▶️", callback_data=f"gs_page_{page+1}"))
-        
-        if nav_buttons:
-            keyboard.append(nav_buttons)
-        
-        # Action buttons
-        keyboard.extend([
-            [InlineKeyboardButton("🔍 Ручное сопоставление", callback_data="gs_manual_matching")],
-            [InlineKeyboardButton("📊 Показать таблицу", callback_data="gs_show_table")],
-            [InlineKeyboardButton("📤 Загрузить в Google Sheets", callback_data="gs_upload")],
-            [InlineKeyboardButton("◀️ Назад", callback_data="back_to_receipt")]
-        ])
-        
-        reply_markup = InlineKeyboardMarkup(keyboard)
-        await query.edit_message_text(page_text, reply_markup=reply_markup, parse_mode='Markdown')

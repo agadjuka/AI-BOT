@@ -337,11 +337,12 @@ class CallbackHandlers(BaseCallbackHandler):
                 print(f"DEBUG: Created new matching result with {len(matching_result.matches)} matches")
             
             # Show Google Sheets matching page (same as original backup)
-            await self.google_sheets_handler._show_google_sheets_matching_page(update, context)
+            await self.google_sheets_handler._show_google_sheets_matching_page(update, context, receipt_data, matching_result)
         elif action == "gs_show_table":
             matching_result = context.user_data.get('ingredient_matching_result')
+            receipt_data = context.user_data.get('receipt_data')
             if matching_result:
-                await self.google_sheets_handler._show_google_sheets_matching_table(update, context, matching_result)
+                await self.google_sheets_handler._show_google_sheets_matching_table(update, context, receipt_data, matching_result)
         elif action == "gs_upload":
             # Direct upload to Google Sheets
             matching_result = context.user_data.get('ingredient_matching_result')
@@ -366,8 +367,9 @@ class CallbackHandlers(BaseCallbackHandler):
             await self.google_sheets_handler._show_google_sheets_position_selection(update, context)
         elif action == "preview_google_sheets_upload":
             matching_result = context.user_data.get('ingredient_matching_result')
+            receipt_data = context.user_data.get('receipt_data')
             if matching_result:
-                await self.google_sheets_handler._show_google_sheets_preview(update, context, matching_result)
+                await self.google_sheets_handler._show_google_sheets_preview(update, context, receipt_data, matching_result)
         elif action == "confirm_google_sheets_upload":
             matching_result = context.user_data.get('ingredient_matching_result')
             if matching_result:
@@ -382,7 +384,30 @@ class CallbackHandlers(BaseCallbackHandler):
             )
             return self.config.AWAITING_CORRECTION
         elif action == "back_to_google_sheets_matching":
-            await self.google_sheets_handler._show_google_sheets_matching_page(update, context)
+            matching_result = context.user_data.get('ingredient_matching_result')
+            receipt_data = context.user_data.get('receipt_data')
+            if matching_result:
+                await self.google_sheets_handler._show_google_sheets_matching_page(update, context, receipt_data, matching_result)
+        elif action == "edit_google_sheets_matching":
+            matching_result = context.user_data.get('ingredient_matching_result')
+            receipt_data = context.user_data.get('receipt_data')
+            if matching_result:
+                await self.google_sheets_handler._show_google_sheets_matching_table(update, context, receipt_data, matching_result)
+        elif action == "preview_google_sheets_upload":
+            matching_result = context.user_data.get('ingredient_matching_result')
+            receipt_data = context.user_data.get('receipt_data')
+            if matching_result:
+                await self.google_sheets_handler._show_google_sheets_preview(update, context, receipt_data, matching_result)
+        elif action == "confirm_google_sheets_upload":
+            matching_result = context.user_data.get('ingredient_matching_result')
+            if matching_result:
+                await self.google_sheets_handler._upload_to_google_sheets(update, context, matching_result)
+        elif action == "undo_google_sheets_upload":
+            # Handle undo upload
+            await update.callback_query.edit_message_text("❌ Функция отмены загрузки не реализована")
+        elif action == "start_new_receipt":
+            # Handle start new receipt
+            await update.callback_query.edit_message_text("📸 Загрузите фото нового чека для анализа")
         
         return self.config.AWAITING_CORRECTION
     
