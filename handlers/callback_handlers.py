@@ -13,6 +13,7 @@ from models.receipt import ReceiptData
 from handlers.base_callback_handler import BaseCallbackHandler
 from handlers.receipt_edit_callback_handler import ReceiptEditCallbackHandler
 from handlers.callback_dispatchers.receipt_edit_dispatcher import ReceiptEditDispatcher
+from handlers.callback_dispatchers.ingredient_matching_dispatcher import IngredientMatchingDispatcher
 from handlers.ingredient_matching_callback_handler import IngredientMatchingCallbackHandler
 from handlers.google_sheets_callback_handler import GoogleSheetsCallbackHandler
 from handlers.file_generation_callback_handler import FileGenerationCallbackHandler
@@ -34,8 +35,12 @@ class CallbackHandlers(BaseCallbackHandler):
         self.receipt_edit_handler = ReceiptEditCallbackHandler(config, analysis_service)
         self.receipt_edit_dispatcher = ReceiptEditDispatcher(config, analysis_service)
         self.ingredient_matching_handler = IngredientMatchingCallbackHandler(config, analysis_service)
+        self.ingredient_matching_dispatcher = IngredientMatchingDispatcher(config, analysis_service, self.ingredient_matching_handler, None)
         self.google_sheets_handler = GoogleSheetsCallbackHandler(config, analysis_service)
         self.file_generation_handler = FileGenerationCallbackHandler(config, analysis_service)
+        
+        # Update dispatcher with file generation handler reference
+        self.ingredient_matching_dispatcher.file_generation_handler = self.file_generation_handler
     
     async def handle_correction_choice(self, update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
         """Handle correction choice callback - main dispatcher"""
@@ -94,65 +99,7 @@ class CallbackHandlers(BaseCallbackHandler):
     
     async def _handle_ingredient_matching_actions(self, update: Update, context: ContextTypes.DEFAULT_TYPE, action: str) -> int:
         """Handle ingredient matching related actions"""
-        if action == "ingredient_matching":
-            await self.ingredient_matching_handler._show_ingredient_matching_results(update, context)
-        elif action == "manual_matching":
-            await self.ingredient_matching_handler._show_manual_matching_overview(update, context)
-        elif action == "position_selection":
-            await self.ingredient_matching_handler._show_position_selection_interface(update, context)
-        elif action == "show_matching_table":
-            matching_result = context.user_data.get('ingredient_matching_result')
-            if matching_result:
-                await self.file_generation_handler._show_matching_table_with_edit_button(update, context, matching_result)
-        elif action.startswith(("match_item_", "select_item_")):
-            item_index = int(action.split("_")[-1])
-            await self.ingredient_matching_handler._handle_item_selection_for_matching(update, context, item_index)
-        elif action.startswith("select_suggestion_"):
-            suggestion_number = int(action.split("_")[-1])
-            await self.ingredient_matching_handler._handle_ingredient_selection(update, context, suggestion_number)
-        elif action in ["next_item", "skip_item"]:
-            await self.ingredient_matching_handler._process_next_ingredient_match(update, context)
-        elif action == "manual_match_ingredients":
-            await self.ingredient_matching_handler._show_manual_matching_overview(update, context)
-        elif action == "rematch_ingredients":
-            context.user_data.pop('ingredient_matching_result', None)
-            context.user_data.pop('changed_ingredient_indices', None)
-            await self.ingredient_matching_handler._show_ingredient_matching_results(update, context)
-        elif action == "apply_matching_changes":
-            # Apply matching changes - delegate to message handlers
-            await update.callback_query.edit_message_text(
-                "✅ Изменения сопоставления применены!\n\n"
-                "Переходим к следующему шагу..."
-            )
-            return self.config.AWAITING_CORRECTION
-        elif action == "select_position_for_matching":
-            await self.ingredient_matching_handler._show_position_selection_interface(update, context)
-        elif action == "back_to_matching_overview":
-            await self.ingredient_matching_handler._show_manual_matching_overview(update, context)
-        elif action == "search_ingredient":
-            await update.callback_query.edit_message_text(
-                "🔍 Поиск ингредиента\n\n"
-                "Введите название ингредиента для поиска:"
-            )
-            return self.config.AWAITING_MANUAL_MATCH
-        elif action in ["skip_ingredient", "next_ingredient_match"]:
-            await self.ingredient_matching_handler._process_next_ingredient_match(update, context)
-        elif action == "confirm_back_without_changes":
-            # Confirm back without changes
-            await update.callback_query.edit_message_text(
-                "✅ Возврат без сохранения изменений\n\n"
-                "Изменения не были сохранены."
-            )
-            return self.config.AWAITING_CORRECTION
-        elif action == "cancel_back":
-            # Cancel back action
-            await update.callback_query.edit_message_text(
-                "❌ Отмена возврата\n\n"
-                "Продолжаем работу с текущими данными."
-            )
-            return self.config.AWAITING_CORRECTION
-        
-        return self.config.AWAITING_CORRECTION
+        return await self.ingredient_matching_dispatcher._handle_ingredient_matching_actions(update, context, action)
     
     async def _handle_google_sheets_actions(self, update: Update, context: ContextTypes.DEFAULT_TYPE, action: str) -> int:
         """Handle Google Sheets related actions"""
