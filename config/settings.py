@@ -4,6 +4,7 @@ Configuration settings for the AI Bot
 import os
 from typing import Optional
 from .ingredients import IngredientConfig
+from .secrets import secrets
 
 
 class BotConfig:
@@ -11,11 +12,11 @@ class BotConfig:
     
     def __init__(self):
         # Bot settings
-        self.BOT_TOKEN: str = "8291213805:AAEHDlkDCHLQ3RFtrB5HLMeU-nGzF1hOZYE"
+        self.BOT_TOKEN: str = secrets.BOT_TOKEN
         self.PHOTO_FILE_NAME: str = "last_photo.jpg"
         
         # Poster settings
-        self.POSTER_TOKEN: str = "853931:71424838d41a70ee724e07ef6c6f0774"
+        self.POSTER_TOKEN: str = secrets.POSTER_TOKEN
         
         # Google Sheets settings
         self.GOOGLE_SHEETS_CREDENTIALS: str = "google_sheets_credentials.json"  # Путь к файлу credentials.json
@@ -26,7 +27,7 @@ class BotConfig:
         self.ingredient_config = IngredientConfig()
         
         # Google Cloud settings
-        self.PROJECT_ID: str = "just-advice-470905-a3"
+        self.PROJECT_ID: str = secrets.PROJECT_ID
         self.LOCATION: str = "us-central1"
         self.MODEL_NAME: str = "gemini-2.5-flash"
         
@@ -46,6 +47,3 @@ class BotConfig:
 
 
 # AI prompts moved to config/prompts.py
-
-# Poster API token
-POSTER_TOKEN = "853931:71424838d41a70ee724e07ef6c6f0774"

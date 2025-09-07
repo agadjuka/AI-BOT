@@ -2,7 +2,7 @@
 
 import requests
 import json
-from config.settings import POSTER_TOKEN
+from config.secrets import POSTER_TOKEN
 
 def get_all_poster_ingredients() -> dict:
     """
