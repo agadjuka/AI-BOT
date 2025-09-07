@@ -1,0 +1,19 @@
+{
+  "matching_result": {
+    "matches": [
+      {
+        "receipt_item_name": "Новый товар",
+        "matched_ingredient_name": "",
+        "matched_ingredient_id": "",
+        "match_status": "no_match",
+        "similarity_score": 0.0,
+        "suggested_matches": []
+      }
+    ],
+    "total_items": 0,
+    "exact_matches": 0,
+    "partial_matches": 0,
+    "no_matches": 0
+  },
+  "changed_indices": []
+}
