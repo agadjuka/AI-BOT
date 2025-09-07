@@ -49,7 +49,9 @@ class CallbackHandlers(BaseCallbackHandler):
         
         elif action in ["google_sheets_matching", "gs_", "gs_upload", "gs_show_table", "upload_to_google_sheets",
                        "edit_google_sheets_matching", "preview_google_sheets_upload", "confirm_google_sheets_upload",
-                       "select_google_sheets_position", "apply_google_sheets_matching", "back_to_google_sheets_matching"]:
+                       "select_google_sheets_position", "apply_google_sheets_matching", "back_to_google_sheets_matching",
+                       "back_to_google_sheets_preview", "undo_google_sheets_upload", "generate_excel_file",
+                       "gs_skip_item", "gs_next_item", "skip_ingredient", "next_ingredient_match"] or action.startswith("edit_google_sheets_item_") or action.startswith("select_google_sheets_line_") or action.startswith("select_google_sheets_suggestion_") or action.startswith("search_google_sheets_ingredient_") or action.startswith("select_google_sheets_search_") or action.startswith("select_google_sheets_position_match_"):
             return await self._handle_google_sheets_actions(update, context, action)
         
         elif action in ["generate_supply_file", "generate_poster_file", "generate_google_sheets_file",
@@ -259,6 +261,8 @@ class CallbackHandlers(BaseCallbackHandler):
     
     async def _handle_google_sheets_actions(self, update: Update, context: ContextTypes.DEFAULT_TYPE, action: str) -> int:
         """Handle Google Sheets related actions"""
+        query = update.callback_query
+        
         if action == "google_sheets_matching":
             await self.google_sheets_handler._show_google_sheets_matching_page(update, context)
         elif action.startswith("gs_page_"):
@@ -336,6 +340,12 @@ class CallbackHandlers(BaseCallbackHandler):
                 context.user_data['changed_ingredient_indices'] = set()
                 print(f"DEBUG: Created new matching result with {len(matching_result.matches)} matches")
             
+            # Save data for future use
+            context.user_data['pending_google_sheets_upload'] = {
+                'receipt_data': receipt_data,
+                'matching_result': matching_result
+            }
+            
             # Show Google Sheets matching page (same as original backup)
             await self.google_sheets_handler._show_google_sheets_matching_page(update, context, receipt_data, matching_result)
         elif action == "gs_show_table":
@@ -360,54 +370,240 @@ class CallbackHandlers(BaseCallbackHandler):
         elif action == "gs_next_item":
             # Process next Google Sheets item
             await self.google_sheets_handler._show_google_sheets_position_selection(update, context)
-        elif action == "gs_skip_item":
-            # Skip current Google Sheets item
-            await self.google_sheets_handler._show_google_sheets_position_selection(update, context)
         elif action == "edit_google_sheets_matching":
             await self.google_sheets_handler._show_google_sheets_position_selection(update, context)
         elif action == "preview_google_sheets_upload":
-            matching_result = context.user_data.get('ingredient_matching_result')
-            receipt_data = context.user_data.get('receipt_data')
-            if matching_result:
-                await self.google_sheets_handler._show_google_sheets_preview(update, context, receipt_data, matching_result)
+            # User wants to preview Google Sheets upload
+            await query.answer("👁️ Показываю предпросмотр...")
+            
+            # Get pending data
+            pending_data = context.user_data.get('pending_google_sheets_upload')
+            if not pending_data:
+                await self.ui_manager.send_menu(
+                    update, context,
+                    "❌ **Ошибка предпросмотра**\n\n"
+                    "Данные для предпросмотра не найдены.\n"
+                    "Попробуйте начать процесс заново.",
+                    InlineKeyboardMarkup([
+                        [InlineKeyboardButton("📊 Загрузить в Google Sheets", callback_data="upload_to_google_sheets")],
+                        [InlineKeyboardButton("◀️ Назад", callback_data="back_to_receipt")]
+                    ]),
+                    'Markdown'
+                )
+                return self.config.AWAITING_CORRECTION
+            
+            receipt_data = pending_data['receipt_data']
+            matching_result = pending_data['matching_result']
+            
+            # Show Google Sheets preview
+            await self.google_sheets_handler._show_google_sheets_preview(update, context, receipt_data, matching_result)
         elif action == "confirm_google_sheets_upload":
-            matching_result = context.user_data.get('ingredient_matching_result')
-            if matching_result:
-                await self.google_sheets_handler._upload_to_google_sheets(update, context, matching_result)
+            # User confirmed Google Sheets upload
+            await query.answer("✅ Загружаю в Google Sheets...")
+            
+            # Get pending data
+            pending_data = context.user_data.get('pending_google_sheets_upload')
+            if not pending_data:
+                await self.ui_manager.send_menu(
+                    update, context,
+                    "❌ **Ошибка загрузки**\n\n"
+                    "Данные для загрузки не найдены.\n"
+                    "Попробуйте начать процесс заново.",
+                    InlineKeyboardMarkup([
+                        [InlineKeyboardButton("📊 Загрузить в Google Sheets", callback_data="upload_to_google_sheets")],
+                        [InlineKeyboardButton("◀️ Назад", callback_data="back_to_receipt")]
+                    ]),
+                    'Markdown'
+                )
+                return self.config.AWAITING_CORRECTION
+            
+            receipt_data = pending_data['receipt_data']
+            matching_result = pending_data['matching_result']
+            
+            # Execute actual upload
+            await self.google_sheets_handler._upload_to_google_sheets(update, context, matching_result)
+            
+            # Clear pending data
+            context.user_data.pop('pending_google_sheets_upload', None)
         elif action == "select_google_sheets_position":
             await self.google_sheets_handler._show_google_sheets_position_selection(update, context)
         elif action == "apply_google_sheets_matching":
             # Apply Google Sheets matching changes
-            await update.callback_query.edit_message_text(
-                "✅ Изменения сопоставления Google Sheets применены!\n\n"
-                "Переходим к следующему шагу..."
-            )
+            await query.answer("✅ Изменения применены!")
+            
+            # Return to Google Sheets preview
+            pending_data = context.user_data.get('pending_google_sheets_upload')
+            if pending_data:
+                receipt_data = pending_data['receipt_data']
+                matching_result = pending_data['matching_result']
+                await self.google_sheets_handler._show_google_sheets_preview(update, context, receipt_data, matching_result)
             return self.config.AWAITING_CORRECTION
         elif action == "back_to_google_sheets_matching":
-            matching_result = context.user_data.get('ingredient_matching_result')
-            receipt_data = context.user_data.get('receipt_data')
-            if matching_result:
-                await self.google_sheets_handler._show_google_sheets_matching_page(update, context, receipt_data, matching_result)
+            # Return to Google Sheets matching table
+            await query.answer("◀️ Возвращаюсь к таблице сопоставления...")
+            
+            pending_data = context.user_data.get('pending_google_sheets_upload')
+            if pending_data:
+                await self.google_sheets_handler._show_google_sheets_matching_table(update, context, 
+                    pending_data['receipt_data'], pending_data['matching_result'])
         elif action == "edit_google_sheets_matching":
-            matching_result = context.user_data.get('ingredient_matching_result')
-            receipt_data = context.user_data.get('receipt_data')
-            if matching_result:
-                await self.google_sheets_handler._show_google_sheets_matching_table(update, context, receipt_data, matching_result)
+            # User wants to edit Google Sheets matching
+            await query.answer("✏️ Открываю редактор сопоставления...")
+            
+            # Get pending data
+            pending_data = context.user_data.get('pending_google_sheets_upload')
+            if not pending_data:
+                await self.ui_manager.send_menu(
+                    update, context,
+                    "❌ **Ошибка редактирования сопоставления**\n\n"
+                    "Данные для редактирования не найдены.\n"
+                    "Попробуйте начать процесс заново.",
+                    InlineKeyboardMarkup([
+                        [InlineKeyboardButton("📊 Загрузить в Google Sheets", callback_data="upload_to_google_sheets")],
+                        [InlineKeyboardButton("◀️ Назад", callback_data="back_to_receipt")]
+                    ]),
+                    'Markdown'
+                )
+                return self.config.AWAITING_CORRECTION
+            
+            receipt_data = pending_data['receipt_data']
+            matching_result = pending_data['matching_result']
+            
+            # Show Google Sheets matching table
+            await self.google_sheets_handler._show_google_sheets_matching_table(update, context, receipt_data, matching_result)
         elif action == "preview_google_sheets_upload":
-            matching_result = context.user_data.get('ingredient_matching_result')
-            receipt_data = context.user_data.get('receipt_data')
-            if matching_result:
-                await self.google_sheets_handler._show_google_sheets_preview(update, context, receipt_data, matching_result)
+            # User wants to preview Google Sheets upload
+            await query.answer("👁️ Показываю предпросмотр...")
+            
+            # Get pending data
+            pending_data = context.user_data.get('pending_google_sheets_upload')
+            if not pending_data:
+                await self.ui_manager.send_menu(
+                    update, context,
+                    "❌ **Ошибка предпросмотра**\n\n"
+                    "Данные для предпросмотра не найдены.\n"
+                    "Попробуйте начать процесс заново.",
+                    InlineKeyboardMarkup([
+                        [InlineKeyboardButton("📊 Загрузить в Google Sheets", callback_data="upload_to_google_sheets")],
+                        [InlineKeyboardButton("◀️ Назад", callback_data="back_to_receipt")]
+                    ]),
+                    'Markdown'
+                )
+                return self.config.AWAITING_CORRECTION
+            
+            receipt_data = pending_data['receipt_data']
+            matching_result = pending_data['matching_result']
+            
+            # Show Google Sheets preview
+            await self.google_sheets_handler._show_google_sheets_preview(update, context, receipt_data, matching_result)
         elif action == "confirm_google_sheets_upload":
-            matching_result = context.user_data.get('ingredient_matching_result')
-            if matching_result:
-                await self.google_sheets_handler._upload_to_google_sheets(update, context, matching_result)
+            # User confirmed Google Sheets upload
+            await query.answer("✅ Загружаю в Google Sheets...")
+            
+            # Get pending data
+            pending_data = context.user_data.get('pending_google_sheets_upload')
+            if not pending_data:
+                await self.ui_manager.send_menu(
+                    update, context,
+                    "❌ **Ошибка загрузки**\n\n"
+                    "Данные для загрузки не найдены.\n"
+                    "Попробуйте начать процесс заново.",
+                    InlineKeyboardMarkup([
+                        [InlineKeyboardButton("📊 Загрузить в Google Sheets", callback_data="upload_to_google_sheets")],
+                        [InlineKeyboardButton("◀️ Назад", callback_data="back_to_receipt")]
+                    ]),
+                    'Markdown'
+                )
+                return self.config.AWAITING_CORRECTION
+            
+            receipt_data = pending_data['receipt_data']
+            matching_result = pending_data['matching_result']
+            
+            # Execute actual upload
+            await self.google_sheets_handler._upload_to_google_sheets(update, context, matching_result)
+            
+            # Clear pending data
+            context.user_data.pop('pending_google_sheets_upload', None)
+        elif action == "back_to_google_sheets_preview":
+            # Return to Google Sheets preview
+            await query.answer("◀️ Возвращаюсь к предпросмотру...")
+            pending_data = context.user_data.get('pending_google_sheets_upload')
+            if pending_data:
+                receipt_data = pending_data['receipt_data']
+                matching_result = pending_data['matching_result']
+                await self.google_sheets_handler._show_google_sheets_preview(update, context, receipt_data, matching_result)
         elif action == "undo_google_sheets_upload":
             # Handle undo upload
+            await query.answer("↩️ Отменяю загрузку...")
             await update.callback_query.edit_message_text("❌ Функция отмены загрузки не реализована")
         elif action == "start_new_receipt":
             # Handle start new receipt
             await update.callback_query.edit_message_text("📸 Загрузите фото нового чека для анализа")
+        elif action == "generate_excel_file":
+            # Generate Excel file
+            matching_result = context.user_data.get('ingredient_matching_result')
+            if matching_result:
+                await self.google_sheets_handler._generate_excel_file(update, context)
+            else:
+                await update.callback_query.edit_message_text("❌ Результаты сопоставления не найдены")
+        elif action.startswith("edit_google_sheets_item_"):
+            # User wants to edit specific Google Sheets item
+            item_index = int(action.split("_")[4])
+            await query.answer("✏️ Открываю редактор сопоставления...")
+            await self.google_sheets_handler._show_google_sheets_manual_matching_for_item(update, context, item_index)
+        elif action.startswith("select_google_sheets_line_"):
+            # User selected a line for Google Sheets matching
+            line_number = int(action.split("_")[4])
+            item_index = line_number - 1  # Convert to 0-based index
+            await query.answer(f"Выбрана строка {line_number}")
+            await self.google_sheets_handler._show_google_sheets_manual_matching_for_item(update, context, item_index)
+        elif action.startswith("select_google_sheets_suggestion_"):
+            # User selected a suggestion for Google Sheets matching
+            parts = action.split("_")
+            item_index = int(parts[4])
+            suggestion_index = int(parts[5])
+            await query.answer("✅ Выбрано предложение...")
+            await self.google_sheets_handler._handle_google_sheets_suggestion_selection(update, context, item_index, suggestion_index)
+        elif action.startswith("search_google_sheets_ingredient_"):
+            # User wants to search for Google Sheets ingredient
+            item_index = int(action.split("_")[4])
+            await query.answer("🔍 Введите поисковый запрос...")
+            await update.callback_query.edit_message_text(
+                f"🔍 **Поиск ингредиента для позиции {item_index + 1}**\n\n"
+                "Введите поисковый запрос:"
+            )
+            context.user_data['current_gs_matching_item'] = item_index
+            return self.config.AWAITING_MANUAL_MATCH
+        elif action.startswith("select_google_sheets_search_"):
+            # User selected a search result for Google Sheets matching
+            parts = action.split("_")
+            item_index = int(parts[4])
+            result_index = int(parts[5])
+            await query.answer("✅ Выбран результат поиска...")
+            await self.google_sheets_handler._handle_google_sheets_search_selection(update, context, item_index, result_index)
+        elif action.startswith("select_google_sheets_position_match_"):
+            # User selected a position match from search results
+            parts = action.split("_")
+            selected_line = int(parts[4])
+            result_index = int(parts[5]) - 1
+            await query.answer("✅ Выбрано совпадение...")
+            await self.google_sheets_handler._handle_google_sheets_suggestion_selection(update, context, result_index)
+        elif action == "gs_skip_item":
+            # Skip current item
+            await query.answer("⏭️ Пропускаю позицию...")
+            await self.google_sheets_handler._handle_skip_item(update, context)
+        elif action == "gs_next_item":
+            # Move to next item
+            await query.answer("➡️ Переход к следующей позиции...")
+            await self.google_sheets_handler._handle_next_item(update, context)
+        elif action == "skip_ingredient":
+            # Skip current ingredient (legacy)
+            await query.answer("⏭️ Пропускаю ингредиент...")
+            await self.google_sheets_handler._handle_skip_item(update, context)
+        elif action == "next_ingredient_match":
+            # Move to next ingredient match (legacy)
+            await query.answer("➡️ Переход к следующему ингредиенту...")
+            await self.google_sheets_handler._handle_next_item(update, context)
         
         return self.config.AWAITING_CORRECTION
     

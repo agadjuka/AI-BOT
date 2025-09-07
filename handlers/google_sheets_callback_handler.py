@@ -1,6 +1,7 @@
 """
 Google Sheets callback handler for Telegram bot
 """
+import asyncio
 from datetime import datetime
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import ContextTypes
@@ -106,15 +107,15 @@ class GoogleSheetsCallbackHandler(BaseCallbackHandler):
         query = update.callback_query
         await query.answer()
         
-        # Get data from parameters or context
-        if not matching_result:
-            matching_result = context.user_data.get('ingredient_matching_result')
-        if not receipt_data:
-            receipt_data = context.user_data.get('receipt_data')
-        
-        if not matching_result:
-            await query.edit_message_text("❌ Результаты сопоставления не найдены")
-            return
+        # Get data from parameters or pending data
+        if not matching_result or not receipt_data:
+            pending_data = context.user_data.get('pending_google_sheets_upload')
+            if pending_data:
+                receipt_data = pending_data['receipt_data']
+                matching_result = pending_data['matching_result']
+            else:
+                await query.edit_message_text("❌ Результаты сопоставления не найдены")
+                return
         
         # Format the matching table for Google Sheets
         table_text = self._format_google_sheets_matching_table(matching_result)
@@ -131,17 +132,19 @@ class GoogleSheetsCallbackHandler(BaseCallbackHandler):
         for i, (index, match) in enumerate(items_needing_matching):
             # Get status emoji instead of pencil
             status_emoji = self._get_google_sheets_status_emoji(match.match_status)
-            item_text = f"{index+1}. {match.receipt_item_name[:20]}{'...' if len(match.receipt_item_name) > 20 else ''}"
+            button_text = f"{status_emoji} {self._truncate_name(match.receipt_item_name, 15)}"
             
             if i % 2 == 0:
                 # Start new row
-                keyboard.append([InlineKeyboardButton(f"{status_emoji} {item_text}", callback_data=f"gs_select_item_{index}")])
+                keyboard.append([InlineKeyboardButton(button_text, callback_data=f"edit_google_sheets_item_{index}")])
             else:
                 # Add to existing row
-                keyboard[-1].append(InlineKeyboardButton(f"{status_emoji} {item_text}", callback_data=f"gs_select_item_{index}"))
+                keyboard[-1].append(InlineKeyboardButton(button_text, callback_data=f"edit_google_sheets_item_{index}"))
         
         # Add control buttons
         keyboard.extend([
+            [InlineKeyboardButton("🔍 Выбрать позицию для сопоставления", callback_data="select_google_sheets_position")],
+            [InlineKeyboardButton("✅ Применить изменения", callback_data="apply_google_sheets_matching")],
             [InlineKeyboardButton("👁️ Предпросмотр", callback_data="preview_google_sheets_upload")],
             [InlineKeyboardButton("◀️ Назад", callback_data="upload_to_google_sheets")]
         ])
@@ -151,151 +154,241 @@ class GoogleSheetsCallbackHandler(BaseCallbackHandler):
         await self._send_long_message_with_keyboard_callback(query.message, table_text, reply_markup)
     
     async def _show_google_sheets_position_selection(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
-        """Show Google Sheets position selection"""
+        """Show position selection for Google Sheets matching"""
         query = update.callback_query
         await query.answer()
         
-        matching_result = context.user_data.get('ingredient_matching_result')
-        if not matching_result:
-            await query.edit_message_text("❌ Результаты сопоставления не найдены")
+        pending_data = context.user_data.get('pending_google_sheets_upload')
+        if not pending_data:
+            await self.ui_manager.send_temp(
+                update, context, "Ошибка: данные для сопоставления не найдены.", duration=5
+            )
             return
         
-        # Show items for position selection
-        items_text = "🔍 **Выберите позицию для сопоставления с Google Sheets:**\n\n"
+        matching_result = pending_data['matching_result']
         
+        # Show instruction
+        text = "**Выберите позицию для сопоставления**\n\n"
+        text += "Введите номер строки, которую хотите сопоставить с ингредиентом из Google Таблиц:"
+        
+        # Create buttons for each item
         keyboard = []
-        for i, match in enumerate(matching_result.matches):
+        for i, match in enumerate(matching_result.matches, 1):
             status_emoji = self._get_google_sheets_status_emoji(match.match_status)
-            item_text = f"{i+1}. {match.receipt_item_name[:30]}{'...' if len(match.receipt_item_name) > 30 else ''}"
-            keyboard.append([InlineKeyboardButton(f"{status_emoji} {item_text}", callback_data=f"gs_select_item_{i}")])
+            button_text = f"{i}. {status_emoji} {self._truncate_name(match.receipt_item_name, 20)}"
+            keyboard.append([InlineKeyboardButton(button_text, callback_data=f"select_google_sheets_line_{i}")])
         
         # Add back button
-        keyboard.append([InlineKeyboardButton("◀️ Назад", callback_data="gs_matching_page")])
+        keyboard.append([InlineKeyboardButton("◀️ Назад", callback_data="back_to_google_sheets_matching")])
         
         reply_markup = InlineKeyboardMarkup(keyboard)
-        await query.edit_message_text(items_text, reply_markup=reply_markup, parse_mode='Markdown')
+        
+        await self.ui_manager.send_menu(
+            update, context, text, reply_markup, 'Markdown'
+        )
     
     async def _show_google_sheets_manual_matching_for_item(self, update: Update, context: ContextTypes.DEFAULT_TYPE, item_index: int):
-        """Show Google Sheets manual matching for specific item"""
+        """Show manual matching interface for specific Google Sheets item"""
         query = update.callback_query
         await query.answer()
         
-        matching_result = context.user_data.get('ingredient_matching_result')
-        if not matching_result or item_index >= len(matching_result.matches):
-            await query.edit_message_text("❌ Неверный индекс позиции")
+        pending_data = context.user_data.get('pending_google_sheets_upload')
+        if not pending_data:
+            await self.ui_manager.send_temp(
+                update, context, "Ошибка: данные для сопоставления не найдены.", duration=5
+            )
             return
         
-        match = matching_result.matches[item_index]
+        matching_result = pending_data['matching_result']
         
-        # Show item details
-        item_text = f"🔍 **Google Sheets сопоставление позиции {item_index + 1}:**\n\n"
-        item_text += f"📝 **Товар из чека:** {match.receipt_item_name}\n\n"
+        if item_index >= len(matching_result.matches):
+            await self.ui_manager.send_temp(
+                update, context, "Ошибка: неверный индекс товара.", duration=5
+            )
+            return
         
-        # Get Google Sheets suggestions
+        current_match = matching_result.matches[item_index]
+        
+        # Show current match info
+        progress_text = f"**Редактор сопоставления для Google Таблиц**\n\n"
+        progress_text += f"**Товар:** {current_match.receipt_item_name}\n\n"
+        progress_text += "**Выберите подходящий ингредиент:**\n\n"
+        
+        # Get Google Sheets ingredients
         google_sheets_ingredients = context.bot_data.get('google_sheets_ingredients', {})
-        if not google_sheets_ingredients:
-            await self._ensure_google_sheets_ingredients_loaded(context)
-            google_sheets_ingredients = context.bot_data.get('google_sheets_ingredients', {})
         
-        if google_sheets_ingredients:
-            # Find similar ingredients
-            suggestions = []
-            for ingredient_id, ingredient_data in google_sheets_ingredients.items():
-                similarity = self._calculate_similarity(match.receipt_item_name, ingredient_data['name'])
-                if similarity > 0.3:  # Threshold for suggestions
-                    suggestions.append({
-                        'id': ingredient_id,
-                        'name': ingredient_data['name'],
-                        'similarity': similarity
-                    })
-            
-            # Sort by similarity
-            suggestions.sort(key=lambda x: x['similarity'], reverse=True)
-            
-            if suggestions:
-                item_text += f"💡 **Предложения из Google Sheets:**\n"
-                for i, suggestion in enumerate(suggestions[:5], 1):
-                    item_text += f"{i}. {suggestion['name']} (сходство: {suggestion['similarity']:.2f})\n"
-            else:
-                item_text += "❌ Подходящие ингредиенты не найдены\n"
+        if current_match.suggested_matches:
+            # Show suggested matches
+            suggestions_text = self._format_google_sheets_suggestions(current_match)
+            progress_text += suggestions_text + "\n\n"
         else:
-            item_text += "❌ Google Sheets ингредиенты не загружены\n"
+            progress_text += "❌ **Подходящих вариантов не найдено**\n\n"
         
         # Create buttons
         keyboard = []
         
-        # Add suggestion buttons
-        if google_sheets_ingredients:
-            suggestions = []
-            for ingredient_id, ingredient_data in google_sheets_ingredients.items():
-                similarity = self._calculate_similarity(match.receipt_item_name, ingredient_data['name'])
-                if similarity > 0.3:
-                    suggestions.append({
-                        'id': ingredient_id,
-                        'name': ingredient_data['name'],
-                        'similarity': similarity
-                    })
-            
-            suggestions.sort(key=lambda x: x['similarity'], reverse=True)
-            
-            for i, suggestion in enumerate(suggestions[:5], 1):
-                suggestion_text = suggestion['name'][:25] + ('...' if len(suggestion['name']) > 25 else '')
-                keyboard.append([InlineKeyboardButton(f"✅ {i}. {suggestion_text}", callback_data=f"gs_select_suggestion_{i-1}")])
+        # Add suggestion buttons in two columns
+        if current_match.suggested_matches:
+            for i, suggestion in enumerate(current_match.suggested_matches[:6], 1):  # Show max 6 suggestions (3 rows x 2 columns)
+                button_text = f"{i}. {self._truncate_name(suggestion['name'], 15)} ({int(suggestion['score'] * 100)}%)"
+                if i % 2 == 1:
+                    # Start new row
+                    keyboard.append([InlineKeyboardButton(button_text, callback_data=f"select_google_sheets_suggestion_{item_index}_{i-1}")])
+                else:
+                    # Add to existing row
+                    keyboard[-1].append(InlineKeyboardButton(button_text, callback_data=f"select_google_sheets_suggestion_{item_index}_{i-1}"))
         
-        # Add control buttons
+        # Add search and control buttons
         keyboard.extend([
-            [InlineKeyboardButton("🔍 Поиск вручную", callback_data="gs_manual_search")],
-            [InlineKeyboardButton("❌ Пропустить", callback_data="gs_skip_item")],
-            [InlineKeyboardButton("◀️ Назад к списку", callback_data="gs_position_selection")]
+            [InlineKeyboardButton("🔍 Поиск", callback_data=f"search_google_sheets_ingredient_{item_index}")],
+            [InlineKeyboardButton("◀️ Назад", callback_data="back_to_google_sheets_matching")]
         ])
         
         reply_markup = InlineKeyboardMarkup(keyboard)
-        await query.edit_message_text(item_text, reply_markup=reply_markup, parse_mode='Markdown')
+        
+        await self.ui_manager.send_menu(
+            update, context, progress_text, reply_markup, 'Markdown'
+        )
+
+    def _format_google_sheets_suggestions(self, match) -> str:
+        """Format Google Sheets suggestions for manual matching"""
+        if not match.suggested_matches:
+            return "Нет предложений"
+        
+        lines = []
+        for i, suggestion in enumerate(match.suggested_matches[:5], 1):  # Show max 5 suggestions
+            name = self._truncate_name(suggestion['name'], 25)
+            score = int(suggestion['score'] * 100)
+            lines.append(f"{i}. {name} ({score}%)")
+        
+        return "\n".join(lines)
     
     async def _handle_google_sheets_suggestion_selection(self, update: Update, context: ContextTypes.DEFAULT_TYPE, 
-                                                       suggestion_number: int):
+                                                       item_index: int, suggestion_index: int):
         """Handle Google Sheets suggestion selection"""
+        query = update.callback_query
+        await query.answer("✅ Сопоставление обновлено!")
+        
+        pending_data = context.user_data.get('pending_google_sheets_upload')
+        if not pending_data:
+            await self.ui_manager.send_temp(
+                update, context, "Ошибка: данные для сопоставления не найдены.", duration=5
+            )
+            return
+        
+        matching_result = pending_data['matching_result']
+        
+        if item_index >= len(matching_result.matches):
+            await self.ui_manager.send_temp(
+                update, context, "Ошибка: неверный индекс товара.", duration=5
+            )
+            return
+        
+        current_match = matching_result.matches[item_index]
+        
+        if not current_match.suggested_matches or suggestion_index >= len(current_match.suggested_matches):
+            await self.ui_manager.send_temp(
+                update, context, "Ошибка: неверный индекс предложения.", duration=5
+            )
+            return
+        
+        # Get selected suggestion
+        selected_suggestion = current_match.suggested_matches[suggestion_index]
+        
+        # Update the match
+        current_match.matched_ingredient_name = selected_suggestion['name']
+        current_match.matched_ingredient_id = selected_suggestion['id']
+        from models.ingredient_matching import MatchStatus
+        current_match.match_status = MatchStatus.EXACT_MATCH
+        current_match.similarity_score = selected_suggestion['score']
+        
+        # Show success message
+        await self.ui_manager.send_temp(
+            update, context,
+            f"✅ Сопоставлено: {current_match.receipt_item_name} → {selected_suggestion['name']}",
+            duration=2
+        )
+        
+        # Return to Google Sheets matching table (editor) with updated data
+        await self._show_google_sheets_matching_table(update, context, 
+            pending_data['receipt_data'], matching_result)
+    
+    async def _handle_google_sheets_search_selection(self, update: Update, context: ContextTypes.DEFAULT_TYPE, 
+                                                   item_index: int, result_index: int):
+        """Handle Google Sheets search result selection"""
+        query = update.callback_query
+        await query.answer("✅ Сопоставление обновлено!")
+        
+        pending_data = context.user_data.get('pending_google_sheets_upload')
+        if not pending_data:
+            await self.ui_manager.send_temp(
+                update, context, "Ошибка: данные для сопоставления не найдены.", duration=5
+            )
+            return
+        
+        matching_result = pending_data['matching_result']
+        
+        if item_index >= len(matching_result.matches):
+            await self.ui_manager.send_temp(
+                update, context, "Ошибка: неверный индекс товара.", duration=5
+            )
+            return
+        
+        current_match = matching_result.matches[item_index]
+        
+        # Get search results from user data
+        search_results = context.user_data.get('google_sheets_search_results', [])
+        if not search_results or result_index >= len(search_results):
+            await self.ui_manager.send_temp(
+                update, context, "Ошибка: неверный индекс результата поиска.", duration=5
+            )
+            return
+        
+        # Get selected search result
+        selected_result = search_results[result_index]
+        
+        # Update the match
+        current_match.matched_ingredient_name = selected_result['name']
+        current_match.matched_ingredient_id = selected_result.get('id', '')
+        from models.ingredient_matching import MatchStatus
+        current_match.match_status = MatchStatus.EXACT_MATCH
+        current_match.similarity_score = 1.0  # Exact match from search
+        
+        # Clear search data
+        context.user_data.pop('google_sheets_search_results', None)
+        context.user_data.pop('google_sheets_search_mode', None)
+        context.user_data.pop('google_sheets_search_item_index', None)
+        
+        # Show success message
+        await self.ui_manager.send_temp(
+            update, context,
+            f"✅ Сопоставлено: {current_match.receipt_item_name} → {selected_result['name']}",
+            duration=2
+        )
+        
+        # Return to Google Sheets matching table (editor) with updated data
+        await self._show_google_sheets_matching_table(update, context, 
+            pending_data['receipt_data'], matching_result)
+    
+    async def _handle_skip_item(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
+        """Handle skipping current item"""
         query = update.callback_query
         await query.answer()
         
-        matching_result = context.user_data.get('ingredient_matching_result')
+        # Get current item index
         current_item = context.user_data.get('current_gs_matching_item', 0)
+        matching_result = context.user_data.get('ingredient_matching_result')
         
         if not matching_result or current_item >= len(matching_result.matches):
             await query.edit_message_text("❌ Неверный индекс позиции")
             return
         
+        # Mark as skipped
         match = matching_result.matches[current_item]
-        
-        # Get Google Sheets suggestions
-        google_sheets_ingredients = context.bot_data.get('google_sheets_ingredients', {})
-        if not google_sheets_ingredients:
-            await query.edit_message_text("❌ Google Sheets ингредиенты не загружены")
-            return
-        
-        # Find the selected suggestion
-        suggestions = []
-        for ingredient_id, ingredient_data in google_sheets_ingredients.items():
-            similarity = self._calculate_similarity(match.receipt_item_name, ingredient_data['name'])
-            if similarity > 0.3:
-                suggestions.append({
-                    'id': ingredient_id,
-                    'name': ingredient_data['name'],
-                    'similarity': similarity
-                })
-        
-        suggestions.sort(key=lambda x: x['similarity'], reverse=True)
-        
-        if suggestion_number >= len(suggestions):
-            await query.edit_message_text("❌ Неверный номер предложения")
-            return
-        
-        # Select the suggestion
-        selected_suggestion = suggestions[suggestion_number]
-        match.matched_ingredient_name = selected_suggestion['name']
-        match.matched_ingredient_id = selected_suggestion['id']
-        match.match_status = MatchStatus.EXACT_MATCH
-        match.similarity_score = selected_suggestion['similarity']
+        match.match_status = MatchStatus.NO_MATCH
+        match.matched_ingredient_name = "Пропущено"
+        match.matched_ingredient_id = None
+        match.similarity_score = 0.0
         
         # Update changed indices
         changed_indices = context.user_data.get('changed_ingredient_indices', set())
@@ -306,19 +399,45 @@ class GoogleSheetsCallbackHandler(BaseCallbackHandler):
         self._save_ingredient_matching_data(update.effective_user.id, context)
         
         # Show success message
-        success_text = f"✅ **Google Sheets сопоставление выполнено!**\n\n"
+        success_text = f"⏭️ **Позиция пропущена!**\n\n"
         success_text += f"📝 **Товар:** {match.receipt_item_name}\n"
-        success_text += f"🎯 **Ингредиент:** {match.matched_ingredient_name}\n"
-        success_text += f"📊 **Сходство:** {match.similarity_score:.2f}\n\n"
+        success_text += f"❌ **Статус:** Пропущено\n\n"
         success_text += "Переходим к следующей позиции..."
         
         keyboard = [
             [InlineKeyboardButton("➡️ Следующая позиция", callback_data="gs_next_item")],
-            [InlineKeyboardButton("◀️ Назад к списку", callback_data="gs_position_selection")]
+            [InlineKeyboardButton("◀️ Назад", callback_data="back_to_google_sheets_matching")]
         ]
         reply_markup = InlineKeyboardMarkup(keyboard)
         
         await query.edit_message_text(success_text, reply_markup=reply_markup, parse_mode='Markdown')
+    
+    async def _handle_next_item(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
+        """Handle moving to next item"""
+        query = update.callback_query
+        await query.answer()
+        
+        # Get current item index
+        current_item = context.user_data.get('current_gs_matching_item', 0)
+        matching_result = context.user_data.get('ingredient_matching_result')
+        
+        if not matching_result:
+            await query.edit_message_text("❌ Результаты сопоставления не найдены")
+            return
+        
+        # Move to next item
+        next_item = current_item + 1
+        
+        if next_item >= len(matching_result.matches):
+            # All items processed, return to matching table
+            await self._show_google_sheets_matching_table(update, context)
+            return
+        
+        # Update current item index
+        context.user_data['current_gs_matching_item'] = next_item
+        
+        # Show next item
+        await self._show_google_sheets_manual_matching_for_item(update, context, next_item)
     
     async def _upload_to_google_sheets(self, update: Update, context: ContextTypes.DEFAULT_TYPE,
                                      matching_result: IngredientMatchingResult):
@@ -694,3 +813,19 @@ class GoogleSheetsCallbackHandler(BaseCallbackHandler):
             print(f"DEBUG: Error generating Excel file: {e}")
             await query.edit_message_text(f"❌ Ошибка при создании Excel файла: {str(e)}")
     
+    async def _send_long_message_with_keyboard_callback(self, message, text: str, reply_markup):
+        """Send long message with keyboard (for callback query)"""
+        if len(text) <= self.config.MAX_MESSAGE_LENGTH:
+            await message.reply_text(text, reply_markup=reply_markup, parse_mode='Markdown')
+            return
+        
+        # Split into parts
+        parts = [text[i:i + self.config.MAX_MESSAGE_LENGTH] for i in range(0, len(text), self.config.MAX_MESSAGE_LENGTH)]
+        
+        # Send all parts except last
+        for part in parts[:-1]:
+            await message.reply_text(part, parse_mode='Markdown')
+            await asyncio.sleep(self.config.MESSAGE_DELAY)
+        
+        # Send last part with keyboard
+        await message.reply_text(parts[-1], reply_markup=reply_markup, parse_mode='Markdown')
