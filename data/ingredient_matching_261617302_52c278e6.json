@@ -36,7 +36,7 @@
         ]
       },
       {
-        "receipt_item_name": "Blue Triangle Flour (Flour) - 1kg",
+        "receipt_item_name": "Segitiga Biru (Wheat Flour) - 1kg",
         "matched_ingredient_name": "flour",
         "matched_ingredient_id": 18,
         "match_status": "exact",
@@ -48,29 +48,29 @@
             "score": 0.9
           },
           {
-            "name": "pickles cucumber",
-            "id": 128,
-            "score": 0.26666666666666666
+            "name": "babu cucumber",
+            "id": 55,
+            "score": 0.2857142857142857
+          },
+          {
+            "name": "weges potato",
+            "id": 57,
+            "score": 0.2926829268292683
           },
           {
             "name": "prawn frozen ",
             "id": 76,
-            "score": 0.2926829268292683
+            "score": 0.24390243902439024
           },
           {
-            "name": "dumplings mush",
-            "id": 102,
-            "score": 0.27906976744186046
-          },
-          {
-            "name": "peanut souse",
-            "id": 37,
-            "score": 0.2926829268292683
+            "name": "condensed milk",
+            "id": 106,
+            "score": 0.23255813953488372
           }
         ]
       },
       {
-        "receipt_item_name": "Dine FF Crinkle (French Fries) 2,5kg",
+        "receipt_item_name": "Dine FF Crinkle (French Fries) - 2.5kg",
         "matched_ingredient_name": "french fries",
         "matched_ingredient_id": 58,
         "match_status": "exact",
@@ -104,21 +104,21 @@
         ]
       },
       {
-        "receipt_item_name": "Greenfields Mozzarella (Mozzarella Cheese) - 1kg",
-        "matched_ingredient_name": "feta cheese",
-        "matched_ingredient_id": 35,
-        "match_status": "partial",
-        "similarity_score": 0.9,
+        "receipt_item_name": "Greenfields Mozzarella - 1kg",
+        "matched_ingredient_name": "mozzarela",
+        "matched_ingredient_id": 47,
+        "match_status": "no_match",
+        "similarity_score": 0.5142857142857142,
         "suggested_matches": [
           {
-            "name": "feta cheese",
-            "id": 35,
-            "score": 0.9
+            "name": "mozzarela",
+            "id": 47,
+            "score": 0.5142857142857142
           },
           {
-            "name": "dumplings cottage cheese",
-            "id": 104,
-            "score": 0.9
+            "name": "condensed milk",
+            "id": 106,
+            "score": 0.4
           },
           {
             "name": "green olives ",
@@ -126,14 +126,14 @@
             "score": 0.4
           },
           {
-            "name": "mozzarela",
-            "id": 47,
-            "score": 0.33962264150943394
+            "name": "french fries",
+            "id": 58,
+            "score": 0.3684210526315789
           },
           {
-            "name": "condensed milk",
-            "id": 106,
-            "score": 0.27586206896551724
+            "name": "weges potato",
+            "id": 57,
+            "score": 0.3157894736842105
           }
         ]
       },
@@ -174,8 +174,8 @@
     ],
     "total_items": 5,
     "exact_matches": 2,
-    "partial_matches": 1,
-    "no_matches": 2
+    "partial_matches": 0,
+    "no_matches": 3
   },
   "changed_indices": []
 }

@@ -41,7 +41,6 @@ class CallbackHandlers(BaseCallbackHandler):
         await query.answer()
         
         action = query.data
-        print(f"DEBUG: Callback action: {action}")
         
         # Route to appropriate handler based on action
         if action in ["add_row", "edit_total", "auto_calculate_total", "finish_editing", "edit_receipt", 
@@ -57,7 +56,7 @@ class CallbackHandlers(BaseCallbackHandler):
                        "cancel_back"]:
             return await self._handle_ingredient_matching_actions(update, context, action)
         
-        elif action in ["google_sheets_matching", "gs_", "gs_upload", "gs_show_table", "upload_to_google_sheets",
+        elif action in ["google_sheets_matching", "gs_upload", "upload_to_google_sheets", "gs_show_table",
                        "edit_google_sheets_matching", "preview_google_sheets_upload", "confirm_google_sheets_upload",
                        "select_google_sheets_position", "back_to_google_sheets_matching",
                        "back_to_google_sheets_preview", "undo_google_sheets_upload", "generate_excel_file",
@@ -69,7 +68,6 @@ class CallbackHandlers(BaseCallbackHandler):
             return await self._handle_file_generation_actions(update, context, action)
         
         elif action == "finish":
-            # "finish" button no longer needed as report is already shown
             await query.answer("Отчет уже готов!")
             return self.config.AWAITING_CORRECTION
         
@@ -77,7 +75,6 @@ class CallbackHandlers(BaseCallbackHandler):
             return await self._cancel(update, context)
         
         elif action == "analyze_receipt":
-            # Handle analyze receipt - delegate to message handlers
             await update.callback_query.edit_message_text(
                 "📸 Анализ чека\n\n"
                 "Отправьте фото чека для анализа:"
@@ -85,12 +82,10 @@ class CallbackHandlers(BaseCallbackHandler):
             return self.config.AWAITING_CORRECTION
         
         elif action == "noop":
-            # Handle no-op action (empty button)
             await query.answer()
             return self.config.AWAITING_CORRECTION
         
         else:
-            print(f"DEBUG: Unknown callback action: {action}")
             await query.answer("Неизвестное действие")
             return self.config.AWAITING_CORRECTION
     
@@ -109,16 +104,11 @@ class CallbackHandlers(BaseCallbackHandler):
         elif action == "back_to_edit":
             await self.receipt_edit_handler._send_edit_menu(update, context)
         elif action.startswith("edit_item_"):
-            # Handle item editing - set line to edit and show edit menu
             item_number = int(action.split("_")[-1])
             context.user_data['line_to_edit'] = item_number
-            
-            # Clean up all messages except anchor before showing new menu
             await self.ui_manager.cleanup_all_except_anchor(update, context)
-            
             await self.receipt_edit_handler._send_edit_menu(update, context)
         elif action.startswith("delete_item_"):
-            # Handle item deletion - delegate to message handlers
             item_number = int(action.split("_")[-1])
             context.user_data['deleting_item'] = item_number
             await update.callback_query.edit_message_text(
@@ -127,7 +117,6 @@ class CallbackHandlers(BaseCallbackHandler):
             )
             return self.config.AWAITING_DELETE_LINE_NUMBER
         elif action == "delete_row":
-            # Handle delete row - use temporary message to preserve main receipt
             await self.ui_manager.send_temp(
                 update, context,
                 "🗑️ Удаление строки\n\n"
@@ -136,7 +125,6 @@ class CallbackHandlers(BaseCallbackHandler):
             )
             return self.config.AWAITING_DELETE_LINE_NUMBER
         elif action == "edit_line_number":
-            # Handle edit line number - use temporary message to preserve main receipt
             await self.ui_manager.send_temp(
                 update, context,
                 "✏️ Редактирование строки\n\n"
@@ -145,7 +133,6 @@ class CallbackHandlers(BaseCallbackHandler):
             )
             return self.config.AWAITING_LINE_NUMBER
         elif action == "manual_edit_total":
-            # Handle manual total edit - use temporary message to preserve main receipt
             await self.ui_manager.send_temp(
                 update, context,
                 "💰 Редактирование общей суммы\n\n"
@@ -154,47 +141,31 @@ class CallbackHandlers(BaseCallbackHandler):
             )
             return self.config.AWAITING_TOTAL_EDIT
         elif action == "reanalyze":
-            # Handle reanalysis - reanalyze the same photo
             await update.callback_query.answer("🔄 Анализирую фото заново...")
             
-            print(f"DEBUG: Starting reanalysis")
-            print(f"DEBUG: Anchor message ID: {context.user_data.get('anchor_message_id')}")
-            
-            # Send processing message
             await self.ui_manager.send_temp(
                 update, context,
                 "🔄 Обрабатываю квитанцию...",
                 duration=10
             )
             
-            # Clean up all messages except anchor before showing new menu
             await self.ui_manager.cleanup_all_except_anchor(update, context)
-            
-            # Clear all old data
             self._clear_receipt_data(context)
             
-            # Send photo to Gemini again
             try:
                 analysis_data = self.analysis_service.analyze_receipt(self.config.PHOTO_FILE_NAME)
-                
-                # Convert to ReceiptData model
                 receipt_data = ReceiptData.from_dict(analysis_data)
                 
-                # Validate and correct data
                 is_valid, message = self.validator.validate_receipt_data(receipt_data)
                 if not is_valid:
                     print(f"Предупреждение валидации: {message}")
                 
                 context.user_data['receipt_data'] = receipt_data
-                # Save original data for change tracking
-                context.user_data['original_data'] = ReceiptData.from_dict(receipt_data.to_dict())  # Deep copy
+                context.user_data['original_data'] = ReceiptData.from_dict(receipt_data.to_dict())
                 
-                # Show new report using the same method as primary analysis
-                print(f"DEBUG: Analysis completed, showing new report")
                 from handlers.photo_handler import PhotoHandler
                 photo_handler = PhotoHandler(self.config, self.analysis_service)
                 await photo_handler.show_final_report_with_edit_button(update, context)
-                print(f"DEBUG: New report shown")
                 return self.config.AWAITING_CORRECTION
                 
             except (json.JSONDecodeError, KeyError, IndexError, ValueError) as e:
@@ -202,39 +173,29 @@ class CallbackHandlers(BaseCallbackHandler):
                 await update.callback_query.message.reply_text("Не удалось распознать структуру чека. Попробуйте сделать фото более четким.")
                 return self.config.AWAITING_CORRECTION
         elif action == "back_to_receipt":
-            # Handle back to receipt - restore original data and show fresh root menu
-            # Delete the current message before showing receipt
             try:
                 await update.callback_query.delete_message()
             except Exception as e:
                 print(f"DEBUG: Error deleting message: {e}")
             
-            # Restore original receipt data (discard any changes)
             original_data = context.user_data.get('original_data')
             if original_data:
-                # Restore original data
                 context.user_data['receipt_data'] = ReceiptData.from_dict(original_data.to_dict())
-                print("DEBUG: Restored original receipt data, discarding changes")
             else:
-                # Fallback to current data if no original data
                 receipt_data = context.user_data.get('receipt_data')
                 if not receipt_data:
                     await update.callback_query.edit_message_text("❌ Данные чека не найдены")
                     return self.config.AWAITING_CORRECTION
             
-            # Use UI Manager to clean up and return to receipt
             await self.ui_manager.back_to_receipt(update, context)
-            # Show fresh final report with edit button
             await self.receipt_edit_handler._show_final_report_with_edit_button_callback(update, context)
         elif action == "back_to_main_menu":
-            # Handle back to main menu - avoid circular import
             await update.callback_query.edit_message_text(
                 "🏠 Главное меню\n\n"
                 "Используйте /start для начала новой работы."
             )
             return self.config.AWAITING_CORRECTION
         elif action.startswith("field_"):
-            # Handle field editing - delegate to message handlers
             parts = action.split("_")
             if len(parts) >= 3:
                 line_number = int(parts[1])
@@ -257,27 +218,21 @@ class CallbackHandlers(BaseCallbackHandler):
                     duration=30
                 )
                 
-                # Add to cleanup list for immediate deletion when user responds
                 if 'messages_to_cleanup' not in context.user_data:
                     context.user_data['messages_to_cleanup'] = []
                 context.user_data['messages_to_cleanup'].append(temp_message.message_id)
                 return self.config.AWAITING_FIELD_EDIT
         elif action.startswith("apply_"):
-            # Handle apply changes - save changes to original_data and show receipt menu
             line_number = int(action.split("_")[-1])
             context.user_data['applying_changes'] = line_number
             
-            # Save current changes to original_data (this makes changes permanent)
             current_data = context.user_data.get('receipt_data')
             if current_data:
                 context.user_data['original_data'] = ReceiptData.from_dict(current_data.to_dict())
-                print(f"DEBUG: Applied changes for line {line_number}, updated original_data")
             
-            # Clear field editing context
             context.user_data.pop('field_to_edit', None)
             context.user_data.pop('line_to_edit', None)
             
-            # Show receipt menu with edit buttons
             await self.receipt_edit_handler._show_final_report_with_edit_button_callback(update, context)
             return self.config.AWAITING_CORRECTION
         
@@ -295,23 +250,17 @@ class CallbackHandlers(BaseCallbackHandler):
             matching_result = context.user_data.get('ingredient_matching_result')
             if matching_result:
                 await self.file_generation_handler._show_matching_table_with_edit_button(update, context, matching_result)
-        elif action.startswith("match_item_"):
-            item_index = int(action.split("_")[-1])
-            await self.ingredient_matching_handler._handle_item_selection_for_matching(update, context, item_index)
-        elif action.startswith("select_item_"):
+        elif action.startswith(("match_item_", "select_item_")):
             item_index = int(action.split("_")[-1])
             await self.ingredient_matching_handler._handle_item_selection_for_matching(update, context, item_index)
         elif action.startswith("select_suggestion_"):
             suggestion_number = int(action.split("_")[-1])
             await self.ingredient_matching_handler._handle_ingredient_selection(update, context, suggestion_number)
-        elif action == "next_item":
-            await self.ingredient_matching_handler._process_next_ingredient_match(update, context)
-        elif action == "skip_item":
+        elif action in ["next_item", "skip_item"]:
             await self.ingredient_matching_handler._process_next_ingredient_match(update, context)
         elif action == "manual_match_ingredients":
             await self.ingredient_matching_handler._show_manual_matching_overview(update, context)
         elif action == "rematch_ingredients":
-            # Clear existing matching and start fresh
             context.user_data.pop('ingredient_matching_result', None)
             context.user_data.pop('changed_ingredient_indices', None)
             await self.ingredient_matching_handler._show_ingredient_matching_results(update, context)
@@ -327,15 +276,12 @@ class CallbackHandlers(BaseCallbackHandler):
         elif action == "back_to_matching_overview":
             await self.ingredient_matching_handler._show_manual_matching_overview(update, context)
         elif action == "search_ingredient":
-            # Handle ingredient search - delegate to message handlers
             await update.callback_query.edit_message_text(
                 "🔍 Поиск ингредиента\n\n"
                 "Введите название ингредиента для поиска:"
             )
             return self.config.AWAITING_MANUAL_MATCH
-        elif action == "skip_ingredient":
-            await self.ingredient_matching_handler._process_next_ingredient_match(update, context)
-        elif action == "next_ingredient_match":
+        elif action in ["skip_ingredient", "next_ingredient_match"]:
             await self.ingredient_matching_handler._process_next_ingredient_match(update, context)
         elif action == "confirm_back_without_changes":
             # Confirm back without changes
@@ -363,16 +309,12 @@ class CallbackHandlers(BaseCallbackHandler):
         elif action.startswith("gs_page_"):
             page = int(action.split("_")[-1])
             await self.google_sheets_handler._show_google_sheets_matching_page(update, context, page)
-        elif action == "gs_manual_matching":
+        elif action in ["gs_manual_matching", "gs_position_selection"]:
             await self.google_sheets_handler._show_google_sheets_position_selection(update, context)
-        elif action == "gs_position_selection":
-            await self.google_sheets_handler._show_google_sheets_position_selection(update, context)
-        elif action == "gs_upload" or action == "upload_to_google_sheets":
-            # User wants to upload data to Google Sheets - restore from backup
+        elif action in ["gs_upload", "upload_to_google_sheets"]:
             query = update.callback_query
             await query.answer("📊 Загружаю данные в Google Sheets...")
             
-            # Get receipt data from context
             receipt_data = context.user_data.get('receipt_data')
             if not receipt_data:
                 await query.edit_message_text(
@@ -387,7 +329,6 @@ class CallbackHandlers(BaseCallbackHandler):
                 )
                 return self.config.AWAITING_CORRECTION
             
-            # Ensure Google Sheets ingredients are loaded
             if not await self.google_sheets_handler._ensure_google_sheets_ingredients_loaded(context):
                 await query.edit_message_text(
                     "❌ **Ошибка загрузки в Google Sheets**\n\n"
@@ -401,60 +342,41 @@ class CallbackHandlers(BaseCallbackHandler):
                 )
                 return self.config.AWAITING_CORRECTION
             
-            # Get Google Sheets ingredients from bot data
             google_sheets_ingredients = context.bot_data.get('google_sheets_ingredients', {})
             
-            # Convert format from {id: {'name': name}} to {name: id} for matching service (same as backup)
             google_sheets_ingredients_for_matching = {}
             for ingredient_id, ingredient_data in google_sheets_ingredients.items():
                 ingredient_name = ingredient_data.get('name', '')
                 if ingredient_name:
                     google_sheets_ingredients_for_matching[ingredient_name] = ingredient_id
             
-            # Get current receipt hash
             user_id = update.effective_user.id
             receipt_hash = receipt_data.get_receipt_hash()
             
-            # Check if we have saved matching data
             saved_data = self.ingredient_storage.load_matching_result(user_id, receipt_hash)
             if saved_data:
-                # We have saved data, use it
                 matching_result, changed_indices = saved_data
                 context.user_data['ingredient_matching_result'] = matching_result
                 context.user_data['changed_ingredient_indices'] = changed_indices
-                print(f"DEBUG: Using saved matching data for receipt {receipt_hash}")
             else:
-                # No saved data found - create new matching with Google Sheets ingredients
-                print(f"DEBUG: No saved data found for receipt {receipt_hash}, creating new matching with Google Sheets ingredients")
                 from services.ingredient_matching_service import IngredientMatchingService
                 ingredient_matching_service = IngredientMatchingService()
                 matching_result = ingredient_matching_service.match_ingredients(receipt_data, google_sheets_ingredients_for_matching)
                 
-                # Save matching result
                 context.user_data['ingredient_matching_result'] = matching_result
                 context.user_data['changed_ingredient_indices'] = set()
-                print(f"DEBUG: Created new matching result with {len(matching_result.matches)} matches")
             
-            # Save data for future use
             context.user_data['pending_google_sheets_upload'] = {
                 'receipt_data': receipt_data,
                 'matching_result': matching_result
             }
             
-            # Show Google Sheets matching page (same as original backup)
             await self.google_sheets_handler._show_google_sheets_matching_page(update, context, receipt_data, matching_result)
         elif action == "gs_show_table":
             matching_result = context.user_data.get('ingredient_matching_result')
             receipt_data = context.user_data.get('receipt_data')
             if matching_result:
                 await self.google_sheets_handler._show_google_sheets_matching_table(update, context, receipt_data, matching_result)
-        elif action == "gs_upload":
-            # Direct upload to Google Sheets
-            matching_result = context.user_data.get('ingredient_matching_result')
-            if matching_result:
-                await self.google_sheets_handler._upload_to_google_sheets(update, context, matching_result)
-            else:
-                await query.edit_message_text("❌ Результаты сопоставления не найдены")
         elif action.startswith("gs_select_item_"):
             item_index = int(action.split("_")[-1])
             context.user_data['current_gs_matching_item'] = item_index
@@ -463,10 +385,8 @@ class CallbackHandlers(BaseCallbackHandler):
             suggestion_number = int(action.split("_")[-1])
             await self.google_sheets_handler._handle_google_sheets_suggestion_selection(update, context, suggestion_number)
         elif action == "gs_next_item":
-            # Process next Google Sheets item
             await self.google_sheets_handler._show_google_sheets_position_selection(update, context)
         elif action == "edit_google_sheets_matching":
-            # Delete the current message before showing position selection
             try:
                 await update.callback_query.delete_message()
             except Exception as e:
@@ -650,21 +570,11 @@ class CallbackHandlers(BaseCallbackHandler):
             result_index = int(parts[5]) - 1
             await query.answer("✅ Выбрано совпадение...")
             await self.google_sheets_handler._handle_google_sheets_suggestion_selection(update, context, result_index)
-        elif action == "gs_skip_item":
-            # Skip current item
+        elif action in ["gs_skip_item", "skip_ingredient"]:
             await query.answer("⏭️ Пропускаю позицию...")
             await self.google_sheets_handler._handle_skip_item(update, context)
-        elif action == "gs_next_item":
-            # Move to next item
+        elif action in ["gs_next_item", "next_ingredient_match"]:
             await query.answer("➡️ Переход к следующей позиции...")
-            await self.google_sheets_handler._handle_next_item(update, context)
-        elif action == "skip_ingredient":
-            # Skip current ingredient (legacy)
-            await query.answer("⏭️ Пропускаю ингредиент...")
-            await self.google_sheets_handler._handle_skip_item(update, context)
-        elif action == "next_ingredient_match":
-            # Move to next ingredient match (legacy)
-            await query.answer("➡️ Переход к следующему ингредиенту...")
             await self.google_sheets_handler._handle_next_item(update, context)
         
         return self.config.AWAITING_CORRECTION
@@ -693,24 +603,6 @@ class CallbackHandlers(BaseCallbackHandler):
         
         return self.config.AWAITING_CORRECTION
     
-    async def _ensure_google_sheets_ingredients_loaded(self, context: ContextTypes.DEFAULT_TYPE) -> bool:
-        """Ensure Google Sheets ingredients are loaded, load them if necessary"""
-        google_sheets_ingredients = context.bot_data.get('google_sheets_ingredients', {})
-        
-        if not google_sheets_ingredients:
-            # Load Google Sheets ingredients from config (same as original backup)
-            from google_sheets_handler import get_google_sheets_ingredients
-            google_sheets_ingredients = get_google_sheets_ingredients()
-            
-            if not google_sheets_ingredients:
-                return False
-            
-            # Save Google Sheets ingredients to bot data for future use
-            context.bot_data["google_sheets_ingredients"] = google_sheets_ingredients
-            print(f"✅ Загружено {len(google_sheets_ingredients)} ингредиентов Google Sheets по требованию")
-            print(f"DEBUG: Первые 5 ингредиентов: {list(google_sheets_ingredients.keys())[:5]}")
-        
-        return True
     
     async def _cancel(self, update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
         """Cancel current operation"""
