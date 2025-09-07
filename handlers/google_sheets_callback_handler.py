@@ -99,7 +99,12 @@ class GoogleSheetsCallbackHandler(BaseCallbackHandler):
             'matching_result': matching_result
         }
         
-        await query.edit_message_text(text, reply_markup=reply_markup, parse_mode='Markdown')
+        try:
+            await query.edit_message_text(text, reply_markup=reply_markup, parse_mode='Markdown')
+        except Exception as e:
+            print(f"DEBUG: Error editing message in preview: {e}")
+            # If editing fails, try to send a new message
+            await query.message.reply_text(text, reply_markup=reply_markup, parse_mode='Markdown')
     
     async def _show_google_sheets_matching_table(self, update: Update, context: ContextTypes.DEFAULT_TYPE,
                                                receipt_data=None, matching_result=None):
@@ -144,7 +149,6 @@ class GoogleSheetsCallbackHandler(BaseCallbackHandler):
         # Add control buttons
         keyboard.extend([
             [InlineKeyboardButton("🔍 Выбрать позицию для сопоставления", callback_data="select_google_sheets_position")],
-            [InlineKeyboardButton("✅ Применить изменения", callback_data="apply_google_sheets_matching")],
             [InlineKeyboardButton("👁️ Предпросмотр", callback_data="preview_google_sheets_upload")],
             [InlineKeyboardButton("◀️ Назад", callback_data="upload_to_google_sheets")]
         ])
@@ -302,6 +306,12 @@ class GoogleSheetsCallbackHandler(BaseCallbackHandler):
         current_match.match_status = MatchStatus.EXACT_MATCH
         current_match.similarity_score = selected_suggestion['score']
         
+        # Delete the current message (editor interface) to make it disappear
+        try:
+            await query.delete_message()
+        except Exception as e:
+            print(f"DEBUG: Error deleting message: {e}")
+        
         # Show success message
         await self.ui_manager.send_temp(
             update, context,
@@ -358,6 +368,12 @@ class GoogleSheetsCallbackHandler(BaseCallbackHandler):
         context.user_data.pop('google_sheets_search_results', None)
         context.user_data.pop('google_sheets_search_mode', None)
         context.user_data.pop('google_sheets_search_item_index', None)
+        
+        # Delete the current message (editor interface) to make it disappear
+        try:
+            await query.delete_message()
+        except Exception as e:
+            print(f"DEBUG: Error deleting message: {e}")
         
         # Show success message
         await self.ui_manager.send_temp(
