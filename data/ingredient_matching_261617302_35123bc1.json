@@ -36,7 +36,7 @@
         ]
       },
       {
-        "receipt_item_name": "Blue Triangle Flour - 1kg",
+        "receipt_item_name": "Segitiga Biru (Flour) - 1kg",
         "matched_ingredient_name": "flour",
         "matched_ingredient_id": 18,
         "match_status": "exact",
@@ -48,29 +48,29 @@
             "score": 0.9
           },
           {
-            "name": "prawn frozen ",
-            "id": 76,
-            "score": 0.34285714285714286
+            "name": "babu cucumber",
+            "id": 55,
+            "score": 0.3333333333333333
           },
           {
-            "name": "pickles cucumber",
-            "id": 128,
-            "score": 0.3076923076923077
+            "name": "condensed milk",
+            "id": 106,
+            "score": 0.2702702702702703
           },
           {
-            "name": "dumplings mush",
-            "id": 102,
-            "score": 0.32432432432432434
+            "name": "weges potato",
+            "id": 57,
+            "score": 0.2857142857142857
           },
           {
-            "name": "mango froz",
-            "id": 60,
-            "score": 0.36363636363636365
+            "name": "sour cream",
+            "id": 105,
+            "score": 0.30303030303030304
           }
         ]
       },
       {
-        "receipt_item_name": "Dine FF Crinkle (French Fries) - 2,5kg",
+        "receipt_item_name": "Dine FF Crinkle (French Fries) - 2.5kg",
         "matched_ingredient_name": "french fries",
         "matched_ingredient_id": 58,
         "match_status": "exact",
@@ -134,6 +134,40 @@
             "name": "weges potato",
             "id": 57,
             "score": 0.3157894736842105
+          }
+        ]
+      },
+      {
+        "receipt_item_name": "Новый товар",
+        "matched_ingredient_name": null,
+        "matched_ingredient_id": null,
+        "match_status": "no_match",
+        "similarity_score": 0.05714285714285714,
+        "suggested_matches": [
+          {
+            "name": "dumplings cottage cheese",
+            "id": 104,
+            "score": 0.05714285714285714
+          },
+          {
+            "name": "dumplings chiken",
+            "id": 101,
+            "score": 0.07407407407407407
+          },
+          {
+            "name": "pickles cucumber",
+            "id": 128,
+            "score": 0.07407407407407407
+          },
+          {
+            "name": "condensed milk",
+            "id": 106,
+            "score": 0.08
+          },
+          {
+            "name": "dumplings meat",
+            "id": 103,
+            "score": 0.08
           }
         ]
       },

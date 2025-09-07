@@ -2,7 +2,7 @@
   "matching_result": {
     "matches": [
       {
-        "receipt_item_name": "Biokul (Yogurt) plain - 1000ml",
+        "receipt_item_name": "Biokul Yogurt plain - 1000ml",
         "matched_ingredient_name": "dumplings meat",
         "matched_ingredient_id": 103,
         "match_status": "no_match",
@@ -36,7 +36,7 @@
         ]
       },
       {
-        "receipt_item_name": "Segitiga Biru (Wheat Flour) Bening - 1kg",
+        "receipt_item_name": "Segitiga Biru (Flour) - 1kg",
         "matched_ingredient_name": "flour",
         "matched_ingredient_id": 18,
         "match_status": "exact",
@@ -48,29 +48,29 @@
             "score": 0.9
           },
           {
-            "name": "dumplings cottage cheese",
-            "id": 104,
-            "score": 0.23333333333333334
-          },
-          {
-            "name": "dumplings chiken",
-            "id": 101,
-            "score": 0.2692307692307692
-          },
-          {
-            "name": "prawn frozen ",
-            "id": 76,
-            "score": 0.2916666666666667
-          },
-          {
             "name": "babu cucumber",
             "id": 55,
+            "score": 0.3333333333333333
+          },
+          {
+            "name": "condensed milk",
+            "id": 106,
+            "score": 0.2702702702702703
+          },
+          {
+            "name": "weges potato",
+            "id": 57,
             "score": 0.2857142857142857
+          },
+          {
+            "name": "sour cream",
+            "id": 105,
+            "score": 0.30303030303030304
           }
         ]
       },
       {
-        "receipt_item_name": "Dine FF Crinkle (French Fries) 2.5kg",
+        "receipt_item_name": "Dine FF Crinkle (French Fries) - 2.5kg",
         "matched_ingredient_name": "french fries",
         "matched_ingredient_id": 58,
         "match_status": "exact",
@@ -104,21 +104,21 @@
         ]
       },
       {
-        "receipt_item_name": "Greenfields (Mozzarella Cheese) - 1kg",
-        "matched_ingredient_name": "feta cheese",
-        "matched_ingredient_id": 35,
-        "match_status": "partial",
-        "similarity_score": 0.9,
+        "receipt_item_name": "Greenfields Mozzarella - 1kg",
+        "matched_ingredient_name": "mozzarela",
+        "matched_ingredient_id": 47,
+        "match_status": "no_match",
+        "similarity_score": 0.5142857142857142,
         "suggested_matches": [
           {
-            "name": "feta cheese",
-            "id": 35,
-            "score": 0.9
+            "name": "mozzarela",
+            "id": 47,
+            "score": 0.5142857142857142
           },
           {
-            "name": "dumplings cottage cheese",
-            "id": 104,
-            "score": 0.9
+            "name": "condensed milk",
+            "id": 106,
+            "score": 0.4
           },
           {
             "name": "green olives ",
@@ -126,14 +126,48 @@
             "score": 0.4
           },
           {
-            "name": "mozzarela",
-            "id": 47,
-            "score": 0.42857142857142855
+            "name": "french fries",
+            "id": 58,
+            "score": 0.3684210526315789
+          },
+          {
+            "name": "weges potato",
+            "id": 57,
+            "score": 0.3157894736842105
+          }
+        ]
+      },
+      {
+        "receipt_item_name": "Новый товар",
+        "matched_ingredient_name": null,
+        "matched_ingredient_id": null,
+        "match_status": "no_match",
+        "similarity_score": 0.05714285714285714,
+        "suggested_matches": [
+          {
+            "name": "dumplings cottage cheese",
+            "id": 104,
+            "score": 0.05714285714285714
+          },
+          {
+            "name": "dumplings chiken",
+            "id": 101,
+            "score": 0.07407407407407407
+          },
+          {
+            "name": "pickles cucumber",
+            "id": 128,
+            "score": 0.07407407407407407
           },
           {
             "name": "condensed milk",
             "id": 106,
-            "score": 0.3404255319148936
+            "score": 0.08
+          },
+          {
+            "name": "dumplings meat",
+            "id": 103,
+            "score": 0.08
           }
         ]
       },
@@ -174,8 +208,8 @@
     ],
     "total_items": 5,
     "exact_matches": 2,
-    "partial_matches": 1,
-    "no_matches": 2
+    "partial_matches": 0,
+    "no_matches": 3
   },
   "changed_indices": []
 }
