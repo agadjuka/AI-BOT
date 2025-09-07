@@ -21,6 +21,7 @@ from services.ai_service import AIService, ReceiptAnalysisService
 from handlers.message_handlers import MessageHandlers
 from handlers.callback_handlers import CallbackHandlers
 from utils.ingredient_storage import IngredientStorage
+from utils.message_sender import MessageSender
 from google_sheets_handler import get_google_sheets_ingredients
 
 
@@ -94,6 +95,13 @@ def main() -> None:
     # Initialize handlers
     message_handlers = MessageHandlers(config, analysis_service)
     callback_handlers = CallbackHandlers(config, analysis_service)
+    
+    # Initialize message sender for centralized message sending
+    # Example usage:
+    # message_sender = MessageSender(config)
+    # await message_sender.send_success_message(update, context, "Операция выполнена успешно!")
+    # await message_sender.send_error_message(update, context, "Произошла ошибка при обработке")
+    # await message_sender.send_temp_message(update, context, "Временное сообщение", duration=5)
     
     # Initialize ingredient storage with 1 hour cleanup
     ingredient_storage = IngredientStorage(max_age_hours=1)
