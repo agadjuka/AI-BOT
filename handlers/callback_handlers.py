@@ -1,17 +1,13 @@
 """
-Refactored callback handlers for Telegram bot
+Refactored callback handlers for Telegram bot - dispatcher only
 """
-import json
-from datetime import datetime
-from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
+from telegram import Update
 from telegram.ext import ContextTypes
 
 from config.settings import BotConfig
 from services.ai_service import ReceiptAnalysisService
 from services.google_sheets_service import GoogleSheetsService
-from models.receipt import ReceiptData
 from handlers.base_callback_handler import BaseCallbackHandler
-from handlers.receipt_edit_callback_handler import ReceiptEditCallbackHandler
 from handlers.callback_dispatchers.receipt_edit_dispatcher import ReceiptEditDispatcher
 from handlers.callback_dispatchers.ingredient_matching_dispatcher import IngredientMatchingDispatcher
 from handlers.callback_dispatchers.google_sheets_dispatcher import GoogleSheetsDispatcher
@@ -33,18 +29,16 @@ class CallbackHandlers(BaseCallbackHandler):
             spreadsheet_id=config.GOOGLE_SHEETS_SPREADSHEET_ID
         )
         
-        # Initialize specialized handlers
-        self.receipt_edit_handler = ReceiptEditCallbackHandler(config, analysis_service)
-        self.receipt_edit_dispatcher = ReceiptEditDispatcher(config, analysis_service)
+        # Initialize specialized handlers for dispatchers
         self.ingredient_matching_handler = IngredientMatchingCallbackHandler(config, analysis_service)
-        self.ingredient_matching_dispatcher = IngredientMatchingDispatcher(config, analysis_service, self.ingredient_matching_handler, None)
         self.google_sheets_handler = GoogleSheetsCallbackHandler(config, analysis_service)
-        self.google_sheets_dispatcher = GoogleSheetsDispatcher(config, analysis_service, self.google_sheets_handler)
         self.file_generation_handler = FileGenerationCallbackHandler(config, analysis_service)
-        self.file_generation_dispatcher = FileGenerationDispatcher(config, analysis_service, self.google_sheets_handler, self.ingredient_matching_handler)
         
-        # Update dispatcher with file generation handler reference
-        self.ingredient_matching_dispatcher.file_generation_handler = self.file_generation_handler
+        # Initialize dispatchers
+        self.receipt_edit_dispatcher = ReceiptEditDispatcher(config, analysis_service)
+        self.ingredient_matching_dispatcher = IngredientMatchingDispatcher(config, analysis_service, self.ingredient_matching_handler, self.file_generation_handler)
+        self.google_sheets_dispatcher = GoogleSheetsDispatcher(config, analysis_service, self.google_sheets_handler)
+        self.file_generation_dispatcher = FileGenerationDispatcher(config, analysis_service, self.google_sheets_handler, self.ingredient_matching_handler)
     
     async def handle_correction_choice(self, update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
         """Handle correction choice callback - main dispatcher"""
@@ -65,7 +59,7 @@ class CallbackHandlers(BaseCallbackHandler):
                        "select_position_for_matching", "back_to_matching_overview", "search_ingredient",
                        "skip_ingredient", "next_ingredient_match", "confirm_back_without_changes",
                        "cancel_back"]:
-            return await self._handle_ingredient_matching_actions(update, context, action)
+            return await self.ingredient_matching_dispatcher._handle_ingredient_matching_actions(update, context, action)
         
         elif action in ["google_sheets_matching", "gs_upload", "upload_to_google_sheets", "gs_show_table",
                        "edit_google_sheets_matching", "preview_google_sheets_upload", "confirm_google_sheets_upload",
@@ -101,13 +95,6 @@ class CallbackHandlers(BaseCallbackHandler):
             return self.config.AWAITING_CORRECTION
     
     
-    async def _handle_ingredient_matching_actions(self, update: Update, context: ContextTypes.DEFAULT_TYPE, action: str) -> int:
-        """Handle ingredient matching related actions"""
-        return await self.ingredient_matching_dispatcher._handle_ingredient_matching_actions(update, context, action)
-    
-    
-    
-    
     async def _cancel(self, update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
         """Cancel current operation"""
         query = update.callback_query
@@ -121,119 +108,5 @@ class CallbackHandlers(BaseCallbackHandler):
             "❌ Операция отменена\n\n"
             "Используйте /start для начала новой работы."
         )
-        
-        return self.config.AWAITING_CORRECTION
-    
-    
-    async def _show_upload_success_page(self, update: Update, context: ContextTypes.DEFAULT_TYPE, 
-                                      summary: str, message: str):
-        """Show the new upload success page interface"""
-        # Clean up all messages except anchor first
-        await self.ui_manager.cleanup_all_except_anchor(update, context)
-        
-        # Create success message with only the header
-        success_text = "✅ **Данные успешно загружены в Google Sheets!**"
-        
-        # Create new button layout
-        keyboard = [
-            [InlineKeyboardButton("↩️ Отменить загрузку", callback_data="undo_google_sheets_upload")],
-            [InlineKeyboardButton("📄 Сгенерировать файл", callback_data="generate_excel_file")],
-            [InlineKeyboardButton("📋 Вернуться к чеку", callback_data="back_to_receipt")],
-            [InlineKeyboardButton("📸 Загрузить новый чек", callback_data="start_new_receipt")]
-        ]
-        
-        reply_markup = InlineKeyboardMarkup(keyboard)
-        
-        await self.ui_manager.send_menu(
-            update, context,
-            success_text,
-            reply_markup,
-            'Markdown'
-        )
-    
-    async def _handle_undo_google_sheets_upload(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
-        """Handle undo Google Sheets upload"""
-        try:
-            # Get last upload data
-            last_upload = context.user_data.get('last_google_sheets_upload')
-            if not last_upload:
-                await update.callback_query.edit_message_text(
-                    "❌ **Нет данных о последней загрузке для отмены**\n\n"
-                    "Информация о последней загрузке не найдена.",
-                    reply_markup=InlineKeyboardMarkup([
-                        [InlineKeyboardButton("📋 Вернуться к чеку", callback_data="back_to_receipt")]
-                    ]),
-                    parse_mode='Markdown'
-                )
-                return self.config.AWAITING_CORRECTION
-            
-            # Get upload details
-            worksheet_name = last_upload.get('worksheet_name', 'Receipts')
-            row_count = last_upload.get('row_count', 0)
-            
-            if row_count <= 0:
-                await update.callback_query.edit_message_text(
-                    "❌ **Нет данных для отмены**\n\n"
-                    "Количество строк для отмены равно нулю.",
-                    reply_markup=InlineKeyboardMarkup([
-                        [InlineKeyboardButton("📋 Вернуться к чеку", callback_data="back_to_receipt")]
-                    ]),
-                    parse_mode='Markdown'
-                )
-                return self.config.AWAITING_CORRECTION
-            
-            # Attempt to delete the uploaded rows
-            success, message = self.google_sheets_service.delete_last_uploaded_rows(worksheet_name, row_count)
-            
-            if success:
-                # Clear the last upload data
-                context.user_data.pop('last_google_sheets_upload', None)
-                
-                # Get the data for preview
-                pending_data = context.user_data.get('pending_google_sheets_upload')
-                if pending_data:
-                    receipt_data = pending_data['receipt_data']
-                    matching_result = pending_data['matching_result']
-                    
-                    # Show regular preview (same as before upload)
-                    await self.google_sheets_dispatcher._show_google_sheets_preview(update, context, receipt_data, matching_result)
-                else:
-                    # Fallback if no pending data
-                    await update.callback_query.edit_message_text(
-                        f"✍️ **Загрузка успешно отменена!**\n\n"
-                        f"📊 **Отменено строк:** {row_count}\n"
-                        f"📋 **Лист:** {worksheet_name}\n"
-                        f"🕒 **Время отмены:** {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\n\n"
-                        f"Данные были удалены из Google Sheets.",
-                        reply_markup=InlineKeyboardMarkup([
-                            [InlineKeyboardButton("📋 Вернуться к чеку", callback_data="back_to_receipt")],
-                            [InlineKeyboardButton("📸 Загрузить новый чек", callback_data="start_new_receipt")]
-                        ]),
-                        parse_mode='Markdown'
-                    )
-            else:
-                # Show error message
-                await update.callback_query.edit_message_text(
-                    f"❌ **Ошибка отмены загрузки**\n\n"
-                    f"Не удалось отменить загрузку: {message}\n\n"
-                    f"Попробуйте удалить данные вручную в Google Sheets.",
-                    reply_markup=InlineKeyboardMarkup([
-                        [InlineKeyboardButton("📋 Вернуться к чеку", callback_data="back_to_receipt")],
-                        [InlineKeyboardButton("🔄 Попробовать снова", callback_data="undo_google_sheets_upload")]
-                    ]),
-                    parse_mode='Markdown'
-                )
-                
-        except Exception as e:
-            print(f"DEBUG: Error in undo Google Sheets upload: {e}")
-            await update.callback_query.edit_message_text(
-                f"❌ **Произошла ошибка при отмене загрузки**\n\n"
-                f"Неожиданная ошибка: {str(e)}\n\n"
-                f"Попробуйте удалить данные вручную в Google Sheets.",
-                reply_markup=InlineKeyboardMarkup([
-                    [InlineKeyboardButton("📋 Вернуться к чеку", callback_data="back_to_receipt")]
-                ]),
-                parse_mode='Markdown'
-            )
         
         return self.config.AWAITING_CORRECTION
