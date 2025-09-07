@@ -16,7 +16,8 @@ from telegram.ext import (
 )
 from telegram.error import Conflict, NetworkError
 
-from config.settings import BotConfig, PromptConfig
+from config.settings import BotConfig
+from config.prompts import PromptManager
 from services.ai_service import AIService, ReceiptAnalysisService
 from handlers.message_handlers import MessageHandlers
 from handlers.callback_handlers import CallbackHandlers
@@ -86,10 +87,10 @@ def main() -> None:
     """Main function to start the bot"""
     # Initialize configuration
     config = BotConfig()
-    prompt_config = PromptConfig()
+    prompt_manager = PromptManager()
     
     # Initialize services
-    ai_service = AIService(config, prompt_config)
+    ai_service = AIService(config, prompt_manager)
     analysis_service = ReceiptAnalysisService(ai_service)
     
     # Initialize handlers

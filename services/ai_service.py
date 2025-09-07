@@ -6,15 +6,16 @@ from typing import Dict, Any
 import vertexai
 from vertexai.generative_models import GenerativeModel, Part
 
-from config.settings import BotConfig, PromptConfig
+from config.settings import BotConfig
+from config.prompts import PromptManager
 
 
 class AIService:
     """Service for AI operations using Google Gemini"""
     
-    def __init__(self, config: BotConfig, prompt_config: PromptConfig):
+    def __init__(self, config: BotConfig, prompt_manager: PromptManager):
         self.config = config
-        self.prompt_config = prompt_config
+        self.prompt_manager = prompt_manager
     
     def analyze_receipt_phase1(self, image_path: str) -> str:
         """
@@ -28,7 +29,7 @@ class AIService:
         image_part = Part.from_data(data=image_data, mime_type="image/jpeg")
         
         print("Отправка запроса в Gemini (Фаза 1: Анализ)...")
-        response = model.generate_content([image_part, self.prompt_config.PROMPT_ANALYZE])
+        response = model.generate_content([image_part, self.prompt_manager.get_analyze_prompt()])
         
         clean_response = response.text.strip().replace("```json", "").replace("```", "")
         print("Ответ от Gemini (Фаза 1):", clean_response)
@@ -42,7 +43,7 @@ class AIService:
         model = GenerativeModel(self.config.MODEL_NAME)
         
         print("Отправка запроса в Gemini (Фаза 2: Форматирование)...")
-        response = model.generate_content(self.prompt_config.PROMPT_FORMAT + final_data)
+        response = model.generate_content(self.prompt_manager.get_format_prompt() + final_data)
         print("Ответ от Gemini (Фаза 2):", response.text)
         return response.text
     
