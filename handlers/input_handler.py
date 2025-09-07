@@ -50,13 +50,25 @@ class InputHandler(BaseMessageHandler):
             # Edit specific field
             return await self._handle_field_edit(update, context, user_input, line_number, field_to_edit)
         else:
-            # Old format (for compatibility)
-            return await self._handle_old_format_edit(update, context, user_input, line_number)
+            # No field specified - show error
+            await self.ui_manager.send_temp(
+                update, context,
+                "❌ Ошибка: не указано поле для редактирования.\n"
+                "Пожалуйста, выберите поле для редактирования из меню.",
+                duration=5
+            )
+            return self.config.AWAITING_FIELD_EDIT
     
     async def _handle_field_edit(self, update: Update, context: ContextTypes.DEFAULT_TYPE, 
                                 user_input: str, line_number: int, field_to_edit: str) -> int:
         """Handle field-specific editing"""
         try:
+            # Clean up temporary messages immediately when user responds
+            await self.ui_manager.cleanup_all_except_anchor(update, context)
+            
+            # Clear the cleanup list after cleaning up
+            context.user_data['messages_to_cleanup'] = []
+            
             data: ReceiptData = context.user_data['receipt_data']
             item_to_edit = data.get_item(line_number)
             
@@ -85,9 +97,8 @@ class InputHandler(BaseMessageHandler):
                 
                 setattr(item_to_edit, field_to_edit, numeric_value)
                 
-                # If changed quantity or price, and sum was automatically calculated,
-                # then recalculate sum automatically
-                if field_to_edit in ['quantity', 'price'] and item_to_edit.auto_calculated:
+                # If changed quantity or price, recalculate sum automatically
+                if field_to_edit in ['quantity', 'price']:
                     quantity = item_to_edit.quantity
                     price = item_to_edit.price
                     if quantity is not None and price is not None and quantity > 0 and price > 0:
@@ -116,16 +127,7 @@ class InputHandler(BaseMessageHandler):
             if field_to_edit in ['quantity', 'price', 'total'] and isinstance(new_value, (int, float)):
                 new_value = self.number_formatter.format_number_with_spaces(new_value)
             
-            status_icon = "✅" if item_to_edit.status == 'confirmed' else "🔴" if item_to_edit.status == 'error' else "⚠️"
-            
-            # Show success message
-            await self.ui_manager.send_temp(
-                update, context,
-                f"✅ Обновлено! {field_labels[field_to_edit].capitalize()}: **{new_value}** {status_icon}",
-                duration=2
-            )
-            
-            # Show updated edit menu with new data
+            # Show updated edit menu with new data (no success message needed)
             edit_menu_message_id = context.user_data.get('edit_menu_message_id')
             await self._send_edit_menu(update, context, edit_menu_message_id)
             
@@ -138,41 +140,6 @@ class InputHandler(BaseMessageHandler):
             await self._send_edit_menu(update, context, edit_menu_message_id)
             return self.config.AWAITING_FIELD_EDIT
     
-    async def _handle_old_format_edit(self, update: Update, context: ContextTypes.DEFAULT_TYPE, 
-                                    user_input: str, line_number: int) -> int:
-        """Handle old format editing (for compatibility)"""
-        try:
-            name, qty_str, price_str, total_str = [x.strip() for x in user_input.split(',')]
-            qty = float(qty_str)
-            price = float(price_str)
-            total = float(total_str)
-            
-            data: ReceiptData = context.user_data['receipt_data']
-            item = data.get_item(line_number)
-            if item:
-                item.name = name
-                item.quantity = qty
-                item.price = price
-                item.total = total
-                # Automatically update status based on new data
-                item = self.processor.auto_update_item_status(item)
-            
-            # Update ingredient matching after item edit
-            await self._update_ingredient_matching_after_data_change(update, context, data, "item_edit")
-            
-            # Update report with new data
-            await self.show_final_report_with_edit_button(update, context)
-            return self.config.AWAITING_CORRECTION
-
-        except (ValueError, IndexError):
-            await self.ui_manager.send_temp(
-                update, context,
-                "Ошибка формата. Пожалуйста, попробуйте еще раз.\n"
-                "Формат: `Название, Количество, Цена, Сумма` (4 значения через запятую)\n"
-                "Пример: `Udang Kupas, 4, 150000, 600000`",
-                duration=10
-            )
-            return self.config.AWAITING_INPUT
     
     async def handle_line_number_input(self, update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
         """Handle line number input for editing"""

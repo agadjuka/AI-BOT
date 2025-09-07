@@ -781,46 +781,64 @@ class GoogleSheetsCallbackHandler(BaseCallbackHandler):
         await query.edit_message_text(success_text, reply_markup=reply_markup, parse_mode='Markdown')
     
     async def _generate_excel_file(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
-        """Generate Excel file from matching result"""
-        query = update.callback_query
-        await query.answer()
-        
-        matching_result = context.user_data.get('ingredient_matching_result')
-        if not matching_result:
-            await query.edit_message_text("❌ Результаты сопоставления не найдены")
-            return
-        
+        """Generate Excel file with the same data that was uploaded to Google Sheets"""
         try:
-            # Show generating message
-            await query.edit_message_text("📁 Генерируем Excel файл...")
+            # Clean up all messages except anchor before generating file
+            await self.ui_manager.cleanup_all_except_anchor(update, context)
+            
+            # Get receipt data and Google Sheets matching result
+            receipt_data = context.user_data.get('receipt_data')
+            matching_result = context.user_data.get('google_sheets_matching_result')
+            
+            if not receipt_data:
+                await self.ui_manager.send_temp(
+                    update, context, "❌ Нет данных чека для генерации файла.", duration=5
+                )
+                return
+            
+            if not matching_result:
+                await self.ui_manager.send_temp(
+                    update, context, "❌ Нет данных сопоставления Google Sheets для генерации файла.", duration=5
+                )
+                return
             
             # Generate Excel file
-            excel_file = await self.file_generator.generate_excel_file(matching_result)
+            file_path = self.file_generator.generate_excel_file(receipt_data, matching_result)
             
-            if excel_file:
-                # Send file
-                await context.bot.send_document(
-                    chat_id=update.effective_chat.id,
-                    document=excel_file,
-                    filename=f"ingredient_matching_{datetime.now().strftime('%Y%m%d_%H%M%S')}.xlsx",
-                    caption="📊 **Файл сопоставления ингредиентов**\n\n"
-                           "Excel файл с результатами сопоставления ингредиентов из чека с Google Sheets."
-                )
+            if file_path:
+                # Send the Excel file first
+                with open(file_path, 'rb') as file:
+                    file_message = await update.callback_query.message.reply_document(
+                        document=file,
+                        filename=f"receipt_data_{datetime.now().strftime('%Y%m%d_%H%M%S')}.xlsx",
+                        caption="📄 **Excel-файл с данными чека создан!**"
+                    )
+                    
+                    # Save file message ID for cleanup
+                    if 'messages_to_cleanup' not in context.user_data:
+                        context.user_data['messages_to_cleanup'] = []
+                    context.user_data['messages_to_cleanup'].append(file_message.message_id)
                 
-                # Show success message
-                await query.edit_message_text(
-                    "✅ **Excel файл успешно создан!**\n\n"
-                    "Файл отправлен в чат.",
-                    reply_markup=InlineKeyboardMarkup([
-                        [InlineKeyboardButton("◀️ Назад", callback_data="gs_show_table")]
-                    ])
-                )
+                # Clean up the file
+                import os
+                try:
+                    os.remove(file_path)
+                except Exception as e:
+                    print(f"Warning: Could not remove temporary file {file_path}: {e}")
+                
+                # Now show the Google Sheets preview again with the same data
+                await self._show_google_sheets_preview(update, context, receipt_data, matching_result)
+                
             else:
-                await query.edit_message_text("❌ Ошибка при создании Excel файла")
+                await self.ui_manager.send_temp(
+                    update, context, "❌ Ошибка при создании Excel файла.", duration=5
+                )
                 
         except Exception as e:
-            print(f"DEBUG: Error generating Excel file: {e}")
-            await query.edit_message_text(f"❌ Ошибка при создании Excel файла: {str(e)}")
+            print(f"Error generating Excel file: {e}")
+            await self.ui_manager.send_temp(
+                update, context, f"❌ Ошибка при создании Excel файла: {str(e)}", duration=5
+            )
     
     async def _send_long_message_with_keyboard_callback(self, message, text: str, reply_markup):
         """Send long message with keyboard (for callback query)"""

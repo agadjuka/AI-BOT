@@ -1,0 +1,283 @@
+{
+  "matching_result": {
+    "matches": [
+      {
+        "receipt_item_name": "Biokul Yogurt plain - 1000ml",
+        "matched_ingredient_name": "dumplings meat",
+        "matched_ingredient_id": 103,
+        "match_status": "no_match",
+        "similarity_score": 0.35,
+        "suggested_matches": [
+          {
+            "name": "dumplings meat",
+            "id": 103,
+            "score": 0.35
+          },
+          {
+            "name": "dumplings mush",
+            "id": 102,
+            "score": 0.35
+          },
+          {
+            "name": "cocunut cream",
+            "id": 73,
+            "score": 0.358974358974359
+          },
+          {
+            "name": "botol 250ml",
+            "id": 48,
+            "score": 0.3783783783783784
+          },
+          {
+            "name": "dumplings cottage cheese",
+            "id": 104,
+            "score": 0.24
+          }
+        ]
+      },
+      {
+        "receipt_item_name": "Blue Triangle Flour (Flour) - 1kg",
+        "matched_ingredient_name": "flour",
+        "matched_ingredient_id": 18,
+        "match_status": "exact",
+        "similarity_score": 0.9,
+        "suggested_matches": [
+          {
+            "name": "flour",
+            "id": 18,
+            "score": 0.9
+          },
+          {
+            "name": "pickles cucumber",
+            "id": 128,
+            "score": 0.26666666666666666
+          },
+          {
+            "name": "prawn frozen ",
+            "id": 76,
+            "score": 0.2926829268292683
+          },
+          {
+            "name": "dumplings mush",
+            "id": 102,
+            "score": 0.27906976744186046
+          },
+          {
+            "name": "peanut souse",
+            "id": 37,
+            "score": 0.2926829268292683
+          }
+        ]
+      },
+      {
+        "receipt_item_name": "Dine FF Crinkle (French Fries) 2,5kg",
+        "matched_ingredient_name": "french fries",
+        "matched_ingredient_id": 58,
+        "match_status": "exact",
+        "similarity_score": 0.9,
+        "suggested_matches": [
+          {
+            "name": "french fries",
+            "id": 58,
+            "score": 0.9
+          },
+          {
+            "name": "dumplings cottage cheese",
+            "id": 104,
+            "score": 0.3157894736842105
+          },
+          {
+            "name": "dumplings chiken",
+            "id": 101,
+            "score": 0.3673469387755102
+          },
+          {
+            "name": "pickles cucumber",
+            "id": 128,
+            "score": 0.2857142857142857
+          },
+          {
+            "name": "green olives ",
+            "id": 53,
+            "score": 0.3111111111111111
+          }
+        ]
+      },
+      {
+        "receipt_item_name": "Greenfields Mozzarella (Mozzarella Cheese) - 1kg",
+        "matched_ingredient_name": "feta cheese",
+        "matched_ingredient_id": 35,
+        "match_status": "partial",
+        "similarity_score": 0.9,
+        "suggested_matches": [
+          {
+            "name": "feta cheese",
+            "id": 35,
+            "score": 0.9
+          },
+          {
+            "name": "dumplings cottage cheese",
+            "id": 104,
+            "score": 0.9
+          },
+          {
+            "name": "green olives ",
+            "id": 53,
+            "score": 0.4
+          },
+          {
+            "name": "mozzarela",
+            "id": 47,
+            "score": 0.33962264150943394
+          },
+          {
+            "name": "condensed milk",
+            "id": 106,
+            "score": 0.27586206896551724
+          }
+        ]
+      },
+      {
+        "receipt_item_name": "жим",
+        "matched_ingredient_name": null,
+        "matched_ingredient_id": null,
+        "match_status": "no_match",
+        "similarity_score": 0.0,
+        "suggested_matches": [
+          {
+            "name": "dumplings cottage cheese",
+            "id": 104,
+            "score": 0.0
+          },
+          {
+            "name": "dumplings chiken",
+            "id": 101,
+            "score": 0.0
+          },
+          {
+            "name": "pickles cucumber",
+            "id": 128,
+            "score": 0.0
+          },
+          {
+            "name": "condensed milk",
+            "id": 106,
+            "score": 0.0
+          },
+          {
+            "name": "dumplings meat",
+            "id": 103,
+            "score": 0.0
+          }
+        ]
+      },
+      {
+        "receipt_item_name": "пом",
+        "matched_ingredient_name": null,
+        "matched_ingredient_id": null,
+        "match_status": "no_match",
+        "similarity_score": 0.0,
+        "suggested_matches": [
+          {
+            "name": "dumplings cottage cheese",
+            "id": 104,
+            "score": 0.0
+          },
+          {
+            "name": "dumplings chiken",
+            "id": 101,
+            "score": 0.0
+          },
+          {
+            "name": "pickles cucumber",
+            "id": 128,
+            "score": 0.0
+          },
+          {
+            "name": "condensed milk",
+            "id": 106,
+            "score": 0.0
+          },
+          {
+            "name": "dumplings meat",
+            "id": 103,
+            "score": 0.0
+          }
+        ]
+      },
+      {
+        "receipt_item_name": "Новый товар",
+        "matched_ingredient_name": null,
+        "matched_ingredient_id": null,
+        "match_status": "no_match",
+        "similarity_score": 0.05714285714285714,
+        "suggested_matches": [
+          {
+            "name": "dumplings cottage cheese",
+            "id": 104,
+            "score": 0.05714285714285714
+          },
+          {
+            "name": "dumplings chiken",
+            "id": 101,
+            "score": 0.07407407407407407
+          },
+          {
+            "name": "pickles cucumber",
+            "id": 128,
+            "score": 0.07407407407407407
+          },
+          {
+            "name": "condensed milk",
+            "id": 106,
+            "score": 0.08
+          },
+          {
+            "name": "dumplings meat",
+            "id": 103,
+            "score": 0.08
+          }
+        ]
+      },
+      {
+        "receipt_item_name": "Новый товар",
+        "matched_ingredient_name": null,
+        "matched_ingredient_id": null,
+        "match_status": "no_match",
+        "similarity_score": 0.05714285714285714,
+        "suggested_matches": [
+          {
+            "name": "dumplings cottage cheese",
+            "id": 104,
+            "score": 0.05714285714285714
+          },
+          {
+            "name": "dumplings chiken",
+            "id": 101,
+            "score": 0.07407407407407407
+          },
+          {
+            "name": "pickles cucumber",
+            "id": 128,
+            "score": 0.07407407407407407
+          },
+          {
+            "name": "condensed milk",
+            "id": 106,
+            "score": 0.08
+          },
+          {
+            "name": "dumplings meat",
+            "id": 103,
+            "score": 0.08
+          }
+        ]
+      }
+    ],
+    "total_items": 8,
+    "exact_matches": 2,
+    "partial_matches": 1,
+    "no_matches": 5
+  },
+  "changed_indices": []
+}

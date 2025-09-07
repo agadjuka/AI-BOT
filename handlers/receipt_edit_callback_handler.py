@@ -201,32 +201,26 @@ class ReceiptEditCallbackHandler(BaseCallbackHandler):
         
         # Determine chat_id and message sending method
         if hasattr(update, 'callback_query') and update.callback_query:
-            chat_id = update.callback_query.message.chat_id
-            reply_method = update.callback_query.message.reply_text
-        elif hasattr(update, 'message') and update.message:
-            chat_id = update.message.chat_id
-            reply_method = update.message.reply_text
-        else:
-            return
-        
-        if message_id_to_edit:
-            # Edit existing message
-            success = await self.ui_manager.edit_menu(
-                update, context, message_id_to_edit, text, reply_markup, 'Markdown'
-            )
-            if not success:
+            # For callback queries, send new message to preserve receipt menu
+            try:
+                await update.callback_query.message.reply_text(
+                    text, reply_markup=reply_markup, parse_mode='Markdown'
+                )
+            except Exception as e:
+                print(f"DEBUG: Error editing message: {e}")
                 # If couldn't edit, send new message
-                message = await self.ui_manager.send_menu(
-                    update, context, text, reply_markup, 'Markdown'
+                message = await update.callback_query.message.reply_text(
+                    text, reply_markup=reply_markup, parse_mode='Markdown'
                 )
                 context.user_data['edit_menu_message_id'] = message.message_id
-        else:
-            # Create new message
+        elif hasattr(update, 'message') and update.message:
+            # For regular messages, create new message
             message = await self.ui_manager.send_menu(
                 update, context, text, reply_markup, 'Markdown'
             )
-            # Save message ID for subsequent editing
             context.user_data['edit_menu_message_id'] = message.message_id
+        else:
+            return
     
     async def _show_final_report_with_edit_button_callback(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         """Show final report with edit buttons (for callback query)"""

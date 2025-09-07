@@ -8,6 +8,7 @@ from telegram.ext import ContextTypes
 from config.settings import BotConfig
 from services.ai_service import ReceiptAnalysisService
 from services.google_sheets_service import GoogleSheetsService
+from models.receipt import ReceiptData
 from handlers.base_callback_handler import BaseCallbackHandler
 from handlers.receipt_edit_callback_handler import ReceiptEditCallbackHandler
 from handlers.ingredient_matching_callback_handler import IngredientMatchingCallbackHandler
@@ -110,6 +111,10 @@ class CallbackHandlers(BaseCallbackHandler):
             # Handle item editing - set line to edit and show edit menu
             item_number = int(action.split("_")[-1])
             context.user_data['line_to_edit'] = item_number
+            
+            # Clean up all messages except anchor before showing new menu
+            await self.ui_manager.cleanup_all_except_anchor(update, context)
+            
             await self.receipt_edit_handler._send_edit_menu(update, context)
         elif action.startswith("delete_item_"):
             # Handle item deletion - delegate to message handlers
@@ -121,24 +126,30 @@ class CallbackHandlers(BaseCallbackHandler):
             )
             return self.config.AWAITING_DELETE_LINE_NUMBER
         elif action == "delete_row":
-            # Handle delete row - delegate to message handlers
-            await update.callback_query.edit_message_text(
+            # Handle delete row - use temporary message to preserve main receipt
+            await self.ui_manager.send_temp(
+                update, context,
                 "🗑️ Удаление строки\n\n"
-                "Введите номер строки для удаления:"
+                "Введите номер строки для удаления:",
+                duration=30
             )
             return self.config.AWAITING_DELETE_LINE_NUMBER
         elif action == "edit_line_number":
-            # Handle edit line number - delegate to message handlers
-            await update.callback_query.edit_message_text(
+            # Handle edit line number - use temporary message to preserve main receipt
+            await self.ui_manager.send_temp(
+                update, context,
                 "✏️ Редактирование строки\n\n"
-                "Введите номер строки для редактирования:"
+                "Введите номер строки для редактирования:",
+                duration=30
             )
             return self.config.AWAITING_LINE_NUMBER
         elif action == "manual_edit_total":
-            # Handle manual total edit - delegate to message handlers
-            await update.callback_query.edit_message_text(
+            # Handle manual total edit - use temporary message to preserve main receipt
+            await self.ui_manager.send_temp(
+                update, context,
                 "💰 Редактирование общей суммы\n\n"
-                "Введите новую общую сумму:"
+                "Введите новую общую сумму:",
+                duration=30
             )
             return self.config.AWAITING_TOTAL_EDIT
         elif action == "reanalyze":
@@ -149,21 +160,30 @@ class CallbackHandlers(BaseCallbackHandler):
             )
             return self.config.AWAITING_CORRECTION
         elif action == "back_to_receipt":
-            # Handle back to receipt - clean up and show fresh root menu
+            # Handle back to receipt - restore original data and show fresh root menu
             # Delete the current message before showing receipt
             try:
                 await update.callback_query.delete_message()
             except Exception as e:
                 print(f"DEBUG: Error deleting message: {e}")
             
-            receipt_data = context.user_data.get('receipt_data')
-            if receipt_data:
-                # Use UI Manager to clean up and return to receipt
-                await self.ui_manager.back_to_receipt(update, context)
-                # Show fresh final report with edit button
-                await self.receipt_edit_handler._show_final_report_with_edit_button_callback(update, context)
+            # Restore original receipt data (discard any changes)
+            original_data = context.user_data.get('original_data')
+            if original_data:
+                # Restore original data
+                context.user_data['receipt_data'] = ReceiptData.from_dict(original_data.to_dict())
+                print("DEBUG: Restored original receipt data, discarding changes")
             else:
-                await update.callback_query.edit_message_text("❌ Данные чека не найдены")
+                # Fallback to current data if no original data
+                receipt_data = context.user_data.get('receipt_data')
+                if not receipt_data:
+                    await update.callback_query.edit_message_text("❌ Данные чека не найдены")
+                    return self.config.AWAITING_CORRECTION
+            
+            # Use UI Manager to clean up and return to receipt
+            await self.ui_manager.back_to_receipt(update, context)
+            # Show fresh final report with edit button
+            await self.receipt_edit_handler._show_final_report_with_edit_button_callback(update, context)
         elif action == "back_to_main_menu":
             # Handle back to main menu - avoid circular import
             await update.callback_query.edit_message_text(
@@ -177,8 +197,8 @@ class CallbackHandlers(BaseCallbackHandler):
             if len(parts) >= 3:
                 line_number = int(parts[1])
                 field_name = parts[2]
-                context.user_data['editing_field'] = field_name
-                context.user_data['editing_line'] = line_number
+                context.user_data['field_to_edit'] = field_name
+                context.user_data['line_to_edit'] = line_number
                 
                 field_display_names = {
                     'name': 'название товара',
@@ -188,19 +208,29 @@ class CallbackHandlers(BaseCallbackHandler):
                 }
                 
                 field_name_display = field_display_names.get(field_name, field_name)
-                await update.callback_query.edit_message_text(
+                temp_message = await self.ui_manager.send_temp(
+                    update, context,
                     f"✏️ Редактирование {field_name_display} для строки {line_number}\n\n"
-                    f"Введите новое значение:"
+                    f"Введите новое значение:",
+                    duration=30
                 )
+                
+                # Add to cleanup list for immediate deletion when user responds
+                if 'messages_to_cleanup' not in context.user_data:
+                    context.user_data['messages_to_cleanup'] = []
+                context.user_data['messages_to_cleanup'].append(temp_message.message_id)
                 return self.config.AWAITING_FIELD_EDIT
         elif action.startswith("apply_"):
-            # Handle apply changes - delegate to message handlers
+            # Handle apply changes - show receipt menu
             line_number = int(action.split("_")[-1])
             context.user_data['applying_changes'] = line_number
-            await update.callback_query.edit_message_text(
-                f"✅ Изменения для строки {line_number} применены!\n\n"
-                "Переходим к следующему шагу..."
-            )
+            
+            # Clear field editing context
+            context.user_data.pop('field_to_edit', None)
+            context.user_data.pop('line_to_edit', None)
+            
+            # Show receipt menu with edit buttons
+            await self.receipt_edit_handler._show_final_report_with_edit_button_callback(update, context)
             return self.config.AWAITING_CORRECTION
         
         return self.config.AWAITING_CORRECTION
@@ -766,19 +796,28 @@ class CallbackHandlers(BaseCallbackHandler):
                 # Clear the last upload data
                 context.user_data.pop('last_google_sheets_upload', None)
                 
-                # Show success message
-                await update.callback_query.edit_message_text(
-                    f"✅ **Загрузка успешно отменена!**\n\n"
-                    f"📊 **Отменено строк:** {row_count}\n"
-                    f"📋 **Лист:** {worksheet_name}\n"
-                    f"🕒 **Время отмены:** {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\n\n"
-                    f"Данные были удалены из Google Sheets.",
-                    reply_markup=InlineKeyboardMarkup([
-                        [InlineKeyboardButton("📋 Вернуться к чеку", callback_data="back_to_receipt")],
-                        [InlineKeyboardButton("📸 Загрузить новый чек", callback_data="start_new_receipt")]
-                    ]),
-                    parse_mode='Markdown'
-                )
+                # Get the data for preview
+                pending_data = context.user_data.get('pending_google_sheets_upload')
+                if pending_data:
+                    receipt_data = pending_data['receipt_data']
+                    matching_result = pending_data['matching_result']
+                    
+                    # Show regular preview (same as before upload)
+                    await self.google_sheets_handler._show_google_sheets_preview(update, context, receipt_data, matching_result)
+                else:
+                    # Fallback if no pending data
+                    await update.callback_query.edit_message_text(
+                        f"✍️ **Загрузка успешно отменена!**\n\n"
+                        f"📊 **Отменено строк:** {row_count}\n"
+                        f"📋 **Лист:** {worksheet_name}\n"
+                        f"🕒 **Время отмены:** {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\n\n"
+                        f"Данные были удалены из Google Sheets.",
+                        reply_markup=InlineKeyboardMarkup([
+                            [InlineKeyboardButton("📋 Вернуться к чеку", callback_data="back_to_receipt")],
+                            [InlineKeyboardButton("📸 Загрузить новый чек", callback_data="start_new_receipt")]
+                        ]),
+                        parse_mode='Markdown'
+                    )
             else:
                 # Show error message
                 await update.callback_query.edit_message_text(

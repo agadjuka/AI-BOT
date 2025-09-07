@@ -44,10 +44,14 @@ class ReceiptProcessor:
     
     @staticmethod
     def auto_calculate_total_if_needed(item: ReceiptItem) -> ReceiptItem:
-        """DO NOT automatically calculate - only for scanner mode"""
-        # В режиме сканера НЕ вычисляем значения автоматически
-        # Все значения должны быть строго из чека
-        item.auto_calculated = False
+        """Automatically calculate total if quantity and price are available"""
+        # Calculate total if both quantity and price are available and valid
+        if (item.quantity is not None and item.price is not None and 
+            item.quantity > 0 and item.price > 0):
+            # Only calculate if total is not set or is 0
+            if item.total is None or item.total == 0:
+                item.total = item.quantity * item.price
+                item.auto_calculated = True
         return item
     
     @staticmethod
