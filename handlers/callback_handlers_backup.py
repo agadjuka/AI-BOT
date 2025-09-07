@@ -1,0 +1,3626 @@
+"""
+Callback handlers for Telegram bot
+"""
+import asyncio
+import json
+import io
+from datetime import datetime
+from typing import Optional
+from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
+from telegram.ext import ContextTypes
+
+from config.settings import BotConfig
+from models.receipt import ReceiptData, ReceiptItem
+from models.ingredient_matching import IngredientMatchingResult, IngredientMatch
+from services.ai_service import ReceiptAnalysisService
+from services.ingredient_matching_service import IngredientMatchingService
+from services.file_generator_service import FileGeneratorService
+from services.google_sheets_service import GoogleSheetsService
+from utils.formatters import ReceiptFormatter, NumberFormatter, TextParser
+from utils.ingredient_formatter import IngredientFormatter
+from utils.ingredient_storage import IngredientStorage
+from utils.receipt_processor import ReceiptProcessor
+from utils.ui_manager import UIManager
+from validators.receipt_validator import ReceiptValidator
+
+
+class CallbackHandlers:
+    """Handlers for Telegram callback queries"""
+    
+    def __init__(self, config: BotConfig, analysis_service: ReceiptAnalysisService):
+        self.config = config
+        self.analysis_service = analysis_service
+        self.formatter = ReceiptFormatter()
+        self.number_formatter = NumberFormatter()
+        self.text_parser = TextParser()
+        self.processor = ReceiptProcessor()
+        self.validator = ReceiptValidator()
+        self.ingredient_matching_service = IngredientMatchingService()
+        self.ingredient_formatter = IngredientFormatter()
+        self.ingredient_storage = IngredientStorage()
+        self.file_generator = FileGeneratorService()
+        self.google_sheets_service = GoogleSheetsService(
+            credentials_path=config.GOOGLE_SHEETS_CREDENTIALS,
+            spreadsheet_id=config.GOOGLE_SHEETS_SPREADSHEET_ID
+        )
+        self.ui_manager = UIManager(config)
+    
+    async def _ensure_poster_ingredients_loaded(self, context: ContextTypes.DEFAULT_TYPE) -> bool:
+        """Ensure poster ingredients are loaded, load them if necessary"""
+        poster_ingredients = context.bot_data.get('poster_ingredients', {})
+        
+        if not poster_ingredients:
+            # Load poster ingredients
+            from poster_handler import get_all_poster_ingredients
+            poster_ingredients = get_all_poster_ingredients()
+            
+            if not poster_ingredients:
+                return False
+            
+            # Save poster ingredients to bot data for future use
+            context.bot_data["poster_ingredients"] = poster_ingredients
+            print(f"DEBUG: Loaded {len(poster_ingredients)} poster ingredients")
+        
+        return True
+    
+    async def _ensure_google_sheets_ingredients_loaded(self, context: ContextTypes.DEFAULT_TYPE) -> bool:
+        """Ensure Google Sheets ingredients are loaded, load them if necessary"""
+        google_sheets_ingredients = context.bot_data.get('google_sheets_ingredients', {})
+        
+        if not google_sheets_ingredients:
+            # Load Google Sheets ingredients
+            from google_sheets_handler import get_google_sheets_ingredients
+            google_sheets_ingredients = get_google_sheets_ingredients()
+            
+            if not google_sheets_ingredients:
+                return False
+            
+            # Save Google Sheets ingredients to bot data for future use
+            context.bot_data["google_sheets_ingredients"] = google_sheets_ingredients
+            print(f"✅ Загружено {len(google_sheets_ingredients)} ингредиентов Google Sheets по требованию")
+            print(f"DEBUG: Первые 5 ингредиентов: {list(google_sheets_ingredients.keys())[:5]}")
+        
+        return True
+    
+    async def handle_correction_choice(self, update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
+        """Handle correction choice callback"""
+        query = update.callback_query
+        await query.answer()
+        
+        action = query.data
+        print(f"DEBUG: Callback action: {action}")
+        
+        if action == "finish":
+            # "finish" button no longer needed as report is already shown
+            await query.answer("Отчет уже готов!")
+            return self.config.AWAITING_CORRECTION
+        
+        if action == "add_row":
+            # Add new row - this will become the single working menu
+            await self._add_new_row(update, context)
+            return self.config.AWAITING_FIELD_EDIT
+        
+        if action == "delete_row":
+            # Request line number for deletion
+            await self.ui_manager.send_temp(
+                update, context,
+                "Введите номер строки для удаления:\n\n"
+                "Например: `3` (для удаления строки 3)",
+                duration=10
+            )
+            return self.config.AWAITING_DELETE_LINE_NUMBER
+        
+        if action == "edit_total":
+            # Show total edit menu - this will become the single working menu
+            await self._show_total_edit_menu(update, context)
+            return self.config.AWAITING_CORRECTION
+        
+        if action == "auto_calculate_total":
+            # Automatically calculate total
+            await self._auto_calculate_total(update, context)
+            return self.config.AWAITING_CORRECTION
+        
+        if action == "manual_edit_total":
+            # Request new total sum manually
+            current_total = context.user_data.get('receipt_data', {}).grand_total_text
+            formatted_total = self.number_formatter.format_number_with_spaces(self.text_parser.parse_number_from_text(current_total))
+            
+            await self.ui_manager.send_temp(
+                update, context,
+                f"Текущая итоговая сумма: **{formatted_total}**\n\n"
+                "Введите новую итоговую сумму:",
+                duration=10
+            )
+            return self.config.AWAITING_TOTAL_EDIT
+        
+        if action == "edit_line_number":
+            # Request line number for editing
+            await self.ui_manager.send_temp(
+                update, context,
+                "Введите номер строки для редактирования:\n\n"
+                "Например: `3` (для редактирования строки 3)",
+                duration=10
+            )
+            return self.config.AWAITING_LINE_NUMBER
+        
+        if action == "reanalyze":
+            # Delete old report
+            await query.answer("🔄 Анализирую фото заново...")
+            
+            # Clean up all messages except anchor before showing new menu
+            await self.ui_manager.cleanup_all_except_anchor(update, context)
+            
+            # Clear all old data
+            self._clear_receipt_data(context)
+            
+            # Send photo to Gemini again
+            try:
+                analysis_data = self.analysis_service.analyze_receipt(self.config.PHOTO_FILE_NAME)
+                
+                # Convert to ReceiptData model
+                receipt_data = ReceiptData.from_dict(analysis_data)
+                
+                # Validate and correct data
+                is_valid, message = self.validator.validate_receipt_data(receipt_data)
+                if not is_valid:
+                    print(f"Предупреждение валидации: {message}")
+                
+                context.user_data['receipt_data'] = receipt_data
+                # Save original data for change tracking
+                context.user_data['original_data'] = ReceiptData.from_dict(receipt_data.to_dict())  # Deep copy
+                
+                # Show new report
+                await self._show_final_report_with_edit_button_callback(update, context)
+                return self.config.AWAITING_CORRECTION
+                
+            except (json.JSONDecodeError, KeyError, IndexError, ValueError) as e:
+                print(f"Ошибка парсинга JSON или структуры данных от Gemini: {e}")
+                await query.message.reply_text("Не удалось распознать структуру чека. Попробуйте сделать фото более четким.")
+                return self.config.AWAITING_CORRECTION
+        
+        if action == "match_ingredients":
+            # Start ingredient matching process
+            await query.answer("🔍 Загружаю таблицу сопоставления ингредиентов...")
+            
+            # Clean up all messages except anchor before showing new menu
+            await self.ui_manager.cleanup_all_except_anchor(update, context)
+            
+            # Get receipt data
+            receipt_data = context.user_data.get('receipt_data')
+            
+            if not receipt_data:
+                await query.message.reply_text("Ошибка: данные чека не найдены.")
+                return self.config.AWAITING_CORRECTION
+            
+            # Ensure poster ingredients are loaded
+            if not await self._ensure_poster_ingredients_loaded(context):
+                await query.message.reply_text("❌ Ошибка: не удалось загрузить справочник ингредиентов из Poster.\nПроверьте подключение к интернету и попробуйте снова.")
+                return self.config.AWAITING_CORRECTION
+            
+            # Get poster ingredients from bot data
+            poster_ingredients = context.bot_data.get('poster_ingredients', {})
+            
+            # Get current receipt hash
+            user_id = update.effective_user.id
+            receipt_hash = receipt_data.get_receipt_hash()
+            print(f"DEBUG: Looking for saved data for user {user_id}, receipt {receipt_hash}")
+            
+            # ALWAYS try to load from persistent storage first (this ensures we get the correct data for this specific receipt)
+            saved_data = self.ingredient_storage.load_matching_result(user_id, receipt_hash)
+            
+            if saved_data:
+                # Load existing matching data for this specific receipt
+                matching_result, changed_indices = saved_data
+                context.user_data['ingredient_matching_result'] = matching_result
+                context.user_data['changed_ingredient_indices'] = changed_indices
+                context.user_data['current_match_index'] = 0
+                print(f"DEBUG: Loaded existing matching data from storage with {len(matching_result.matches)} matches, {len(changed_indices)} changed indices")
+            else:
+                # No saved data found - this should not happen if auto-creation works correctly
+                print(f"DEBUG: No saved data found for receipt {receipt_hash}, creating new matching")
+                matching_result = self.ingredient_matching_service.match_ingredients(receipt_data, poster_ingredients)
+                
+                # Save matching result
+                context.user_data['ingredient_matching_result'] = matching_result
+                context.user_data['current_match_index'] = 0
+                context.user_data['changed_ingredient_indices'] = set()
+                
+                # Save to persistent storage
+                self._save_ingredient_matching_data(user_id, context)
+                print(f"DEBUG: Created new matching data with {len(matching_result.matches)} matches")
+            
+            # Show matching results
+            await self._show_ingredient_matching_results(update, context)
+            return self.config.AWAITING_INGREDIENT_MATCHING
+        
+        if action == "manual_match_ingredients":
+            # Start manual matching process
+            await query.answer("✋ Начинаю ручное сопоставление...")
+            
+            matching_result = context.user_data.get('ingredient_matching_result')
+            if not matching_result:
+                await query.message.reply_text("Ошибка: результаты сопоставления не найдены.")
+                return self.config.AWAITING_CORRECTION
+            
+            # Clean up all messages except anchor before showing new menu
+            await self.ui_manager.cleanup_all_except_anchor(update, context)
+            
+            # Show new manual matching interface with all items that need matching
+            await self._show_manual_matching_overview(update, context)
+            return self.config.AWAITING_MANUAL_MATCH
+        
+        if action == "rematch_ingredients":
+            # Restart ingredient matching
+            await query.answer("🔄 Перезапускаю сопоставление...")
+            
+            receipt_data = context.user_data.get('receipt_data')
+            
+            if not receipt_data:
+                await query.message.reply_text("Ошибка: данные чека не найдены.")
+                return self.config.AWAITING_CORRECTION
+            
+            # Ensure poster ingredients are loaded
+            if not await self._ensure_poster_ingredients_loaded(context):
+                await query.message.reply_text("❌ Ошибка: не удалось загрузить справочник ингредиентов из Poster.\nПроверьте подключение к интернету и попробуйте снова.")
+                return self.config.AWAITING_CORRECTION
+            
+            # Get poster ingredients from bot data
+            poster_ingredients = context.bot_data.get('poster_ingredients', {})
+            
+            # Clean up all messages except anchor before showing new menu
+            await self.ui_manager.cleanup_all_except_anchor(update, context)
+            
+            # Perform ingredient matching again
+            matching_result = self.ingredient_matching_service.match_ingredients(receipt_data, poster_ingredients)
+            context.user_data['ingredient_matching_result'] = matching_result
+            context.user_data['current_match_index'] = 0
+            context.user_data['changed_ingredient_indices'] = set()
+            
+            # Save to persistent storage
+            user_id = update.effective_user.id
+            self._save_ingredient_matching_data(user_id, context)
+            
+            # Clear matching data from context so it will be loaded from storage next time
+            context.user_data.pop('ingredient_matching_result', None)
+            context.user_data.pop('changed_ingredient_indices', None)
+            context.user_data.pop('current_match_index', None)
+            
+            # Show matching results (will load from storage)
+            await self._show_ingredient_matching_results(update, context)
+            return self.config.AWAITING_INGREDIENT_MATCHING
+        
+        if action == "back_to_receipt":
+            # New architecture: Clean up everything except anchor and show fresh root menu
+            await query.answer("📄 Возвращаюсь к чеку...")
+            
+            # Clean up all messages except anchor
+            await self.ui_manager.cleanup_all_except_anchor(update, context)
+            
+            # Clear only temporary/UI data, keep core receipt data
+            self.ui_manager._clear_temporary_data(context)
+            
+            # Show fresh root menu (final report)
+            await self._show_final_report_with_edit_button_callback(update, context)
+            return self.config.AWAITING_CORRECTION
+        
+        if action == "back_to_main_menu":
+            # Return to main menu
+            await query.answer("🏠 Возвращаюсь в главное меню...")
+            await self.ui_manager.cleanup_all_except_anchor(update, context)
+            
+            # Clear all data
+            context.user_data.clear()
+            
+            # Show main menu
+            keyboard = [
+                [InlineKeyboardButton("📸 Анализировать чек", callback_data="analyze_receipt")],
+                [InlineKeyboardButton("📄 Получить файл для загрузки в постер", callback_data="generate_supply_file")],
+                [InlineKeyboardButton("📊 Загрузить в Google таблицы", callback_data="upload_to_google_sheets")]
+            ]
+            reply_markup = InlineKeyboardMarkup(keyboard)
+            
+            await self.ui_manager.send_menu(
+                update, context,
+                "🏠 **Главное меню**\n\nВыберите действие:",
+                reply_markup,
+                'Markdown'
+            )
+            return self.config.AWAITING_CORRECTION
+        
+        if action == "undo_google_sheets_upload":
+            # Undo the last Google Sheets upload
+            await query.answer("↩️ Отменяю загрузку...")
+            await self._undo_google_sheets_upload(update, context)
+            return self.config.AWAITING_CORRECTION
+        
+        if action == "generate_excel_file":
+            # Generate Excel file with the same data
+            await query.answer("📄 Генерирую Excel файл...")
+            await self._generate_excel_file(update, context)
+            return self.config.AWAITING_CORRECTION
+        
+        if action == "start_new_receipt":
+            # Start new receipt analysis
+            await query.answer("📸 Начинаю анализ нового чека...")
+            await self._start_new_receipt(update, context)
+            return self.config.AWAITING_CORRECTION
+        
+        if action == "next_ingredient_match":
+            # Move to next ingredient match
+            await query.answer("➡️ Переход к следующему ингредиенту...")
+            
+            current_match_index = context.user_data.get('current_match_index', 0)
+            matching_result = context.user_data.get('ingredient_matching_result')
+            
+            if not matching_result:
+                await query.message.reply_text("Ошибка: данные сопоставления не найдены.")
+                return self.config.AWAITING_CORRECTION
+            
+            current_match_index += 1
+            context.user_data['current_match_index'] = current_match_index
+            
+            # Clean up all messages except anchor before showing new menu
+            await self.ui_manager.cleanup_all_except_anchor(update, context)
+            
+            if current_match_index >= len(matching_result.matches):
+                # All matches processed, show final result
+                await self._show_final_ingredient_matching_result(update, context)
+            else:
+                # Show next match
+                await self._show_manual_matching_for_current_item(update, context)
+            
+            return self.config.AWAITING_MANUAL_MATCH
+        
+        if action.startswith("select_ingredient_"):
+            # Handle ingredient selection
+            suggestion_number = int(action.split('_')[2])
+            
+            # Clean up all messages except anchor before showing new menu
+            await self.ui_manager.cleanup_all_except_anchor(update, context)
+            
+            await self._handle_ingredient_selection(update, context, suggestion_number)
+            return self.config.AWAITING_MANUAL_MATCH
+        
+        if action == "search_ingredient":
+            # Handle search request
+            await self.ui_manager.send_temp(
+                update, context, "🔍 Введите поисковый запрос в текстовом сообщении", duration=10
+            )
+            context.user_data['awaiting_search'] = True
+            return self.config.AWAITING_MANUAL_MATCH
+        
+        if action == "skip_ingredient":
+            # Skip current ingredient
+            await query.answer("⏭️ Пропускаю ингредиент...")
+            
+            # Clean up all messages except anchor before showing new menu
+            await self.ui_manager.cleanup_all_except_anchor(update, context)
+            
+            await self._process_next_ingredient_match(update, context)
+            return self.config.AWAITING_MANUAL_MATCH
+        
+        if action.startswith("select_search_"):
+            # Handle search result selection
+            suggestion_number = int(action.split('_')[2])
+            
+            # Clean up all messages except anchor before showing new menu
+            await self.ui_manager.cleanup_all_except_anchor(update, context)
+            
+            await self._handle_search_result_selection(update, context, suggestion_number)
+            return self.config.AWAITING_MANUAL_MATCH
+        
+        if action.startswith("select_item_"):
+            # Handle item selection for manual matching
+            item_index = int(action.split('_')[2])
+            
+            # Clean up all messages except anchor before showing new menu
+            await self.ui_manager.cleanup_all_except_anchor(update, context)
+            
+            await self._handle_item_selection_for_matching(update, context, item_index)
+            return self.config.AWAITING_MANUAL_MATCH
+        
+        if action == "select_position_for_matching":
+            # Handle position selection request
+            print(f"DEBUG: select_position_for_matching called")
+            
+            # Clean up all messages except anchor before showing new menu
+            await self.ui_manager.cleanup_all_except_anchor(update, context)
+            
+            # Show the same table as before, but with position selection interface
+            await self._show_position_selection_interface(update, context)
+            return self.config.AWAITING_MANUAL_MATCH
+        
+        
+        if action == "back_to_matching_overview":
+            # Return to matching overview
+            await query.answer("📋 Возвращаюсь к обзору сопоставления...")
+            
+            # Clean up all messages except anchor before showing new menu
+            await self.ui_manager.cleanup_all_except_anchor(update, context)
+            
+            # Clear position selection mode flag
+            context.user_data.pop('in_position_selection_mode', None)
+            context.user_data.pop('selected_line_number', None)
+            context.user_data.pop('position_match_search_results', None)
+            
+            await self._show_manual_matching_overview(update, context)
+            return self.config.AWAITING_MANUAL_MATCH
+        
+        if action.startswith("select_position_match_"):
+            # Handle position match selection from search results
+            position_number = int(action.split('_')[3])
+            
+            # Clean up all messages except anchor before showing new menu
+            await self.ui_manager.cleanup_all_except_anchor(update, context)
+            
+            await self._handle_position_match_selection(update, context, position_number)
+            return self.config.AWAITING_MANUAL_MATCH
+        
+        if action.startswith("select_position_"):
+            # Handle position selection from search results
+            position_number = int(action.split('_')[2])
+            
+            # Clean up all messages except anchor before showing new menu
+            await self.ui_manager.cleanup_all_except_anchor(update, context)
+            
+            await self._handle_position_selection(update, context, position_number)
+            return self.config.AWAITING_MANUAL_MATCH
+        
+        if action.startswith("match_item_"):
+            # Handle item matching with selected position
+            parts = action.split('_')
+            item_index = int(parts[2])
+            position_id = parts[3]
+            
+            # Clean up all messages except anchor before showing new menu
+            await self.ui_manager.cleanup_all_except_anchor(update, context)
+            
+            await self._handle_item_position_matching(update, context, item_index, position_id)
+            return self.config.AWAITING_MANUAL_MATCH
+        
+        if action == "confirm_back_without_changes":
+            # User confirmed to go back without saving changes
+            # But we still save the current state to preserve any work done
+            matching_result = context.user_data.get('ingredient_matching_result')
+            receipt_data = context.user_data.get('receipt_data')
+            changed_indices = context.user_data.get('changed_ingredient_indices', set())
+            
+            if matching_result and receipt_data:
+                # Save current state to persistent storage
+                user_id = update.effective_user.id
+                receipt_hash = receipt_data.get_receipt_hash()
+                success = self.ingredient_storage.save_matching_result(user_id, matching_result, changed_indices, receipt_hash)
+                print(f"DEBUG: Saved state before returning without applying - success: {success}")
+            
+            # Always clear matching data from context so it will be loaded from storage next time
+            context.user_data.pop('ingredient_matching_result', None)
+            context.user_data.pop('changed_ingredient_indices', None)
+            context.user_data.pop('current_match_index', None)
+            
+            await query.answer("📄 Возвращаюсь к генерации файла...")
+            await self.ui_manager.cleanup_all_except_anchor(update, context)
+            
+            # Check if we have receipt data
+            receipt_data = context.user_data.get('receipt_data')
+            if receipt_data:
+                # Show matching table with edit button
+                await self._show_matching_table_with_edit_button(update, context, receipt_data, matching_result)
+            else:
+                # Fallback to receipt report
+                await self._show_final_report_with_edit_button_callback(update, context)
+            return self.config.AWAITING_CORRECTION
+        
+        if action == "cancel_back":
+            # User cancelled going back, return to ingredient matching
+            await query.answer("❌ Отменено")
+            await self._show_ingredient_matching_results(update, context)
+            return self.config.AWAITING_INGREDIENT_MATCHING
+        
+        if action == "apply_matching_changes":
+            # Apply matching changes and return to main receipt
+            await query.answer("✅ Применяю изменения...")
+            
+            # Get matching result and receipt data
+            matching_result = context.user_data.get('ingredient_matching_result')
+            receipt_data = context.user_data.get('receipt_data')
+            
+            if not matching_result or not receipt_data:
+                await query.message.reply_text("Ошибка: данные сопоставления или чека не найдены.")
+                return self.config.AWAITING_CORRECTION
+            
+            # Save matching data to persistent storage
+            user_id = update.effective_user.id
+            receipt_hash = receipt_data.get_receipt_hash()
+            changed_indices = context.user_data.get('changed_ingredient_indices', set())
+            print(f"DEBUG: Before saving - user_id: {user_id}, receipt_hash: {receipt_hash}")
+            print(f"DEBUG: Before saving - changed_indices: {changed_indices}")
+            success = self.ingredient_storage.save_matching_result(user_id, matching_result, changed_indices, receipt_hash)
+            print(f"DEBUG: Applied changes - saved {len(matching_result.matches)} matches, {len(changed_indices)} changed indices, success: {success}")
+            
+            # Clear matching data from context so it will be loaded from storage next time
+            # This ensures we always get the latest saved version
+            context.user_data.pop('ingredient_matching_result', None)
+            context.user_data.pop('changed_ingredient_indices', None)
+            context.user_data.pop('current_match_index', None)
+            
+            # Clean up all messages except anchor before showing new menu
+            await self.ui_manager.cleanup_all_except_anchor(update, context)
+            
+            # Return to main receipt
+            await self._show_final_report_with_edit_button_callback(update, context)
+            return self.config.AWAITING_CORRECTION
+        
+        if action == "analyze_receipt":
+            # User wants to analyze receipt
+            await query.answer("📸 Отправьте фото чека для анализа")
+            return self.config.AWAITING_CORRECTION
+        
+        if action == "generate_supply_file":
+            # User wants to generate supply file
+            await query.answer("📄 Загружаю данные из постера и сопоставляю ингредиенты...")
+            
+            # Clean up all messages except anchor before showing new menu
+            await self.ui_manager.cleanup_all_except_anchor(update, context)
+            
+            # Check if we have processed receipt data
+            receipt_data = context.user_data.get('receipt_data')
+            
+            if not receipt_data:
+                await self.ui_manager.send_menu(
+                    update, context,
+                    "📄 **Получить файл для загрузки в постер**\n\n"
+                    "❌ Сначала необходимо проанализировать чек.\n\n"
+                    "**Пошаговая инструкция:**\n"
+                    "1️⃣ Нажмите кнопку '📸 Анализировать чек'\n"
+                    "2️⃣ Отправьте фото чека\n"
+                    "3️⃣ Затем вернитесь к этой кнопке для получения файла\n\n"
+                    "Файл будет содержать товары с сопоставленными наименованиями из Poster.",
+                    InlineKeyboardMarkup([
+                        [InlineKeyboardButton("📸 Анализировать чек", callback_data="analyze_receipt")],
+                        [InlineKeyboardButton("◀️ Назад", callback_data="back_to_receipt")]
+                    ]),
+                    'Markdown'
+                )
+                return self.config.AWAITING_CORRECTION
+            
+            # Check if we already have matching data
+            user_id = update.effective_user.id
+            receipt_hash = receipt_data.get_receipt_hash()
+            saved_data = self.ingredient_storage.load_matching_result(user_id, receipt_hash)
+            
+            if saved_data:
+                # We have matching data, show table with edit button
+                matching_result, changed_indices = saved_data
+                context.user_data['ingredient_matching_result'] = matching_result
+                context.user_data['changed_ingredient_indices'] = changed_indices
+                await self._show_matching_table_with_edit_button(update, context, receipt_data, matching_result)
+            else:
+                # No matching data, load poster ingredients and match
+                await self._load_poster_ingredients_and_match(update, context, receipt_data)
+            return self.config.AWAITING_CORRECTION
+        
+        if action == "generate_file_from_table":
+            # User wants to generate file from table
+            await query.answer("📄 Генерирую файл...")
+            
+            # Clean up all messages except anchor before showing new menu
+            await self.ui_manager.cleanup_all_except_anchor(update, context)
+            
+            # Get receipt data and matching result from context
+            receipt_data = context.user_data.get('receipt_data')
+            matching_result = context.user_data.get('ingredient_matching_result')
+            
+            if not receipt_data or not matching_result:
+                await self.ui_manager.send_menu(
+                    update, context,
+                    "❌ **Ошибка генерации файла**\n\n"
+                    "Данные для генерации файла не найдены.\n"
+                    "Попробуйте начать процесс заново.",
+                    InlineKeyboardMarkup([
+                        [InlineKeyboardButton("📄 Получить файл для загрузки в постер", callback_data="generate_supply_file")],
+                        [InlineKeyboardButton("◀️ Назад", callback_data="back_to_receipt")]
+                    ]),
+                    'Markdown'
+                )
+                return self.config.AWAITING_CORRECTION
+            
+            # Generate and send file
+            await self._generate_and_send_supply_file(update, context, receipt_data, matching_result)
+            return self.config.AWAITING_CORRECTION
+        
+        if action.startswith("generate_file_"):
+            # User selected file format
+            file_format = action.split('_')[2]  # xlsx
+            await query.answer(f"📄 Генерирую файл в формате {file_format.upper()}...")
+            
+            # Clean up all messages except anchor before showing new menu
+            await self.ui_manager.cleanup_all_except_anchor(update, context)
+            
+            # Get saved data
+            pending_data = context.user_data.get('pending_file_generation')
+            if not pending_data:
+                await self.ui_manager.send_menu(
+                    update, context,
+                    "❌ **Ошибка генерации файла**\n\n"
+                    "Данные для генерации файла не найдены.\n"
+                    "Попробуйте начать процесс заново.",
+                    InlineKeyboardMarkup([
+                        [InlineKeyboardButton("📄 Получить файл для загрузки в постер", callback_data="generate_supply_file")],
+                        [InlineKeyboardButton("◀️ Назад", callback_data="back_to_receipt")]
+                    ]),
+                    'Markdown'
+                )
+                return self.config.AWAITING_CORRECTION
+            
+            receipt_data = pending_data['receipt_data']
+            matching_result = pending_data['matching_result']
+            
+            # Generate and send file
+            await self._generate_file_in_format(update, context, receipt_data, matching_result, file_format)
+            
+            # Clear pending data
+            context.user_data.pop('pending_file_generation', None)
+            return self.config.AWAITING_CORRECTION
+        
+        if action == "upload_to_google_sheets":
+            # User wants to upload data to Google Sheets
+            await query.answer("📊 Загружаю данные в Google Sheets...")
+            
+            # Clean up all messages except anchor before showing new menu
+            await self.ui_manager.cleanup_all_except_anchor(update, context)
+            
+            # Get receipt data from context
+            receipt_data = context.user_data.get('receipt_data')
+            if not receipt_data:
+                await self.ui_manager.send_menu(
+                    update, context,
+                    "❌ **Нет данных для загрузки**\n\n"
+                    "Сначала необходимо загрузить и проанализировать чек.\n"
+                    "Нажмите 'Анализировать чек' и загрузите фото чека.",
+                    InlineKeyboardMarkup([
+                        [InlineKeyboardButton("📸 Анализировать чек", callback_data="analyze_receipt")],
+                        [InlineKeyboardButton("◀️ Главное меню", callback_data="back_to_main_menu")]
+                    ]),
+                    'Markdown'
+                )
+                return self.config.AWAITING_CORRECTION
+            
+            # Ensure Google Sheets ingredients are loaded
+            if not await self._ensure_google_sheets_ingredients_loaded(context):
+                await self.ui_manager.send_menu(
+                    update, context,
+                    "❌ **Ошибка загрузки в Google Sheets**\n\n"
+                    "Не удалось загрузить справочник ингредиентов для Google Sheets.\n"
+                    "Проверьте настройки конфигурации.",
+                    InlineKeyboardMarkup([
+                        [InlineKeyboardButton("📊 Загрузить в Google Sheets", callback_data="upload_to_google_sheets")],
+                        [InlineKeyboardButton("◀️ Назад", callback_data="back_to_receipt")]
+                    ]),
+                    'Markdown'
+                )
+                return self.config.AWAITING_CORRECTION
+            
+            # Get Google Sheets ingredients from bot data
+            google_sheets_ingredients = context.bot_data.get('google_sheets_ingredients', {})
+            
+            # Get current receipt hash
+            user_id = update.effective_user.id
+            receipt_hash = receipt_data.get_receipt_hash()
+            
+            # Check if we have saved matching data
+            saved_data = self.ingredient_storage.load_matching_result(user_id, receipt_hash)
+            if saved_data:
+                # We have saved data, use it
+                matching_result, changed_indices = saved_data
+                context.user_data['ingredient_matching_result'] = matching_result
+                context.user_data['changed_ingredient_indices'] = changed_indices
+            else:
+                # No saved data found - create new matching with Google Sheets ingredients
+                print(f"DEBUG: No saved data found for receipt {receipt_hash}, creating new matching with Google Sheets ingredients")
+                matching_result = self.ingredient_matching_service.match_ingredients(receipt_data, google_sheets_ingredients)
+                
+                # Save matching result
+                context.user_data['ingredient_matching_result'] = matching_result
+                context.user_data['changed_ingredient_indices'] = set()
+            
+            # Upload to Google Sheets
+            await self._upload_to_google_sheets(update, context, receipt_data, matching_result)
+            return self.config.AWAITING_CORRECTION
+        
+        if action == "confirm_google_sheets_upload":
+            # User confirmed Google Sheets upload
+            await query.answer("📊 Загружаю данные в Google Sheets...")
+            
+            # Clean up all messages except anchor before showing new menu
+            await self.ui_manager.cleanup_all_except_anchor(update, context)
+            
+            # Get saved data
+            pending_data = context.user_data.get('pending_google_sheets_upload')
+            if not pending_data:
+                await self.ui_manager.send_menu(
+                    update, context,
+                    "❌ **Ошибка загрузки в Google Sheets**\n\n"
+                    "Данные для загрузки не найдены.\n"
+                    "Попробуйте начать процесс заново.",
+                    InlineKeyboardMarkup([
+                        [InlineKeyboardButton("📊 Загрузить в Google Sheets", callback_data="upload_to_google_sheets")],
+                        [InlineKeyboardButton("◀️ Назад", callback_data="back_to_receipt")]
+                    ]),
+                    'Markdown'
+                )
+                return self.config.AWAITING_CORRECTION
+            
+            receipt_data = pending_data['receipt_data']
+            matching_result = pending_data['matching_result']
+            
+            # Execute actual upload
+            await self._execute_google_sheets_upload(update, context, receipt_data, matching_result)
+            
+            # Clear pending data
+            context.user_data.pop('pending_google_sheets_upload', None)
+            return self.config.AWAITING_CORRECTION
+        
+        if action == "edit_google_sheets_matching":
+            # User wants to edit Google Sheets matching
+            await query.answer("✏️ Открываю редактор сопоставления...")
+            
+            # Get pending data
+            pending_data = context.user_data.get('pending_google_sheets_upload')
+            if not pending_data:
+                await self.ui_manager.send_menu(
+                    update, context,
+                    "❌ **Ошибка редактирования сопоставления**\n\n"
+                    "Данные для редактирования не найдены.\n"
+                    "Попробуйте начать процесс заново.",
+                    InlineKeyboardMarkup([
+                        [InlineKeyboardButton("📊 Загрузить в Google Sheets", callback_data="upload_to_google_sheets")],
+                        [InlineKeyboardButton("◀️ Назад", callback_data="back_to_receipt")]
+                    ]),
+                    'Markdown'
+                )
+                return self.config.AWAITING_CORRECTION
+            
+            receipt_data = pending_data['receipt_data']
+            matching_result = pending_data['matching_result']
+            
+            # Show Google Sheets matching table
+            await self._show_google_sheets_matching_table(update, context, receipt_data, matching_result)
+            return self.config.AWAITING_CORRECTION
+        
+        if action == "preview_google_sheets_upload":
+            # User wants to preview Google Sheets upload
+            await query.answer("👁️ Показываю предпросмотр...")
+            
+            # Get pending data
+            pending_data = context.user_data.get('pending_google_sheets_upload')
+            if not pending_data:
+                await self.ui_manager.send_menu(
+                    update, context,
+                    "❌ **Ошибка предпросмотра**\n\n"
+                    "Данные для предпросмотра не найдены.\n"
+                    "Попробуйте начать процесс заново.",
+                    InlineKeyboardMarkup([
+                        [InlineKeyboardButton("📊 Загрузить в Google Sheets", callback_data="upload_to_google_sheets")],
+                        [InlineKeyboardButton("◀️ Назад", callback_data="back_to_receipt")]
+                    ]),
+                    'Markdown'
+                )
+                return self.config.AWAITING_CORRECTION
+            
+            receipt_data = pending_data['receipt_data']
+            matching_result = pending_data['matching_result']
+            
+            # Show Google Sheets preview
+            await self._show_google_sheets_preview(update, context, receipt_data, matching_result)
+            return self.config.AWAITING_CORRECTION
+        
+        if action == "apply_google_sheets_matching":
+            # Apply Google Sheets matching changes
+            await query.answer("✅ Изменения применены!")
+            
+            # Return to Google Sheets preview
+            pending_data = context.user_data.get('pending_google_sheets_upload')
+            if pending_data:
+                receipt_data = pending_data['receipt_data']
+                matching_result = pending_data['matching_result']
+                await self._show_google_sheets_preview(update, context, receipt_data, matching_result)
+            return self.config.AWAITING_CORRECTION
+        
+        if action == "back_to_google_sheets_preview":
+            # Return to Google Sheets preview
+            await query.answer("◀️ Возвращаюсь к предпросмотру...")
+            
+            pending_data = context.user_data.get('pending_google_sheets_upload')
+            if pending_data:
+                receipt_data = pending_data['receipt_data']
+                matching_result = pending_data['matching_result']
+                await self._show_google_sheets_preview(update, context, receipt_data, matching_result)
+            return self.config.AWAITING_CORRECTION
+        
+        if action == "select_google_sheets_position":
+            # User wants to select position for Google Sheets matching
+            await query.answer("🔍 Выберите позицию для сопоставления...")
+            
+            # Show position selection interface
+            await self._show_google_sheets_position_selection(update, context)
+            return self.config.AWAITING_CORRECTION
+        
+        if action.startswith("edit_google_sheets_item_"):
+            # User wants to edit specific Google Sheets item
+            item_index = int(action.split("_")[4])  # Changed from [3] to [4]
+            await query.answer("✏️ Открываю редактор сопоставления...")
+            
+            # Show manual matching for this item
+            await self._show_google_sheets_manual_matching_for_item(update, context, item_index)
+            return self.config.AWAITING_CORRECTION
+        
+        if action.startswith("select_google_sheets_line_"):
+            # User selected a line for Google Sheets matching
+            line_number = int(action.split("_")[4])  # Fixed: line_number is at position 4
+            item_index = line_number - 1  # Convert to 0-based index
+            await query.answer(f"Выбрана строка {line_number}")
+            
+            # Show manual matching interface for this specific item
+            await self._show_google_sheets_manual_matching_for_item(update, context, item_index)
+            return self.config.AWAITING_CORRECTION
+        
+        if action.startswith("select_google_sheets_suggestion_"):
+            # User selected a suggestion for Google Sheets matching
+            parts = action.split("_")
+            item_index = int(parts[4])  # Fixed: item_index is at position 4
+            suggestion_index = int(parts[5])  # Fixed: suggestion_index is at position 5
+            
+            await self._handle_google_sheets_suggestion_selection(update, context, item_index, suggestion_index)
+            return self.config.AWAITING_CORRECTION
+        
+        if action.startswith("search_google_sheets_ingredient_"):
+            # User wants to search for Google Sheets ingredient
+            item_index = int(action.split("_")[4])  # Fixed: item_index is at position 4
+            await query.answer("🔍 Введите поисковый запрос...")
+            
+            print(f"DEBUG: search_google_sheets_ingredient_{item_index} button pressed")
+            print(f"DEBUG: Setting google_sheets_search_mode = True for item_index = {item_index}")
+            
+            # Set search mode - use the correct flag for ingredient search
+            context.user_data['google_sheets_search_mode'] = True
+            context.user_data['google_sheets_search_item_index'] = item_index
+            
+            print(f"DEBUG: Flags set - google_sheets_search_mode: {context.user_data.get('google_sheets_search_mode')}")
+            print(f"DEBUG: Flags set - google_sheets_search_item_index: {context.user_data.get('google_sheets_search_item_index')}")
+            
+            await self.ui_manager.send_temp(
+                update, context, 
+                "Введите наименование ингредиента для поиска в Google Таблицах:", 
+                duration=10
+            )
+            return self.config.AWAITING_CORRECTION
+        
+        if action.startswith("select_google_sheets_search_"):
+            # User selected a search result for Google Sheets matching
+            parts = action.split("_")
+            item_index = int(parts[4])
+            result_index = int(parts[5])
+            
+            await self._handle_google_sheets_search_selection(update, context, item_index, result_index)
+            return self.config.AWAITING_CORRECTION
+        
+        
+        if action == "back_to_google_sheets_matching":
+            # Return to Google Sheets matching table
+            await query.answer("◀️ Возвращаюсь к таблице сопоставления...")
+            
+            pending_data = context.user_data.get('pending_google_sheets_upload')
+            if pending_data:
+                await self._show_google_sheets_matching_table(update, context, 
+                    pending_data['receipt_data'], pending_data['matching_result'])
+            return self.config.AWAITING_CORRECTION
+        
+        if action.startswith("select_google_sheets_position_match_"):
+            # User selected a position match from search results
+            parts = action.split("_")
+            selected_line = int(parts[4])
+            result_index = int(parts[5]) - 1
+            
+            await self._handle_google_sheets_position_match_selection(update, context, selected_line, result_index)
+            return self.config.AWAITING_CORRECTION
+        
+        if action.startswith("select_google_sheets_search_"):
+            # User selected a search result for specific item
+            parts = action.split("_")
+            item_index = int(parts[3])
+            result_index = int(parts[4])
+            
+            await self._handle_google_sheets_search_selection(update, context, item_index, result_index)
+            return self.config.AWAITING_CORRECTION
+        
+        if action == "cancel":
+            # Check if we're in edit menu
+            if context.user_data.get('line_to_edit'):
+                # Clean up all messages except anchor before showing new menu
+                await self.ui_manager.cleanup_all_except_anchor(update, context)
+                
+                # Return to updated report
+                await self._show_final_report_with_edit_button_callback(update, context)
+                return self.config.AWAITING_CORRECTION
+            else:
+                # Clear position selection mode flag
+                context.user_data.pop('in_position_selection_mode', None)
+                context.user_data.pop('selected_line_number', None)
+                context.user_data.pop('position_match_search_results', None)
+                
+                # Regular cancellation
+                await self._cancel(update, context)
+                return self.config.AWAITING_CORRECTION
+        
+        if action.startswith("edit_"):
+            line_number_to_edit = int(action.split('_')[1])
+            context.user_data['line_to_edit'] = line_number_to_edit
+            
+            # Clean up all messages except anchor before showing new menu
+            await self.ui_manager.cleanup_all_except_anchor(update, context)
+            
+            await self._send_edit_menu(update, context)
+            return self.config.AWAITING_FIELD_EDIT
+        
+        if action.startswith("field_"):
+            # Handle field selection for editing
+            parts = action.split('_')
+            line_number = int(parts[1])
+            field_name = parts[2]
+            
+            context.user_data['line_to_edit'] = line_number
+            context.user_data['field_to_edit'] = field_name
+            
+            # Clean up all messages except anchor before showing new menu
+            await self.ui_manager.cleanup_all_except_anchor(update, context)
+            
+            data: ReceiptData = context.user_data['receipt_data']
+            item_to_edit = data.get_item(line_number)
+            
+            field_labels = {
+                'name': 'название товара',
+                'quantity': 'количество',
+                'price': 'цену за единицу',
+                'total': 'сумму'
+            }
+            
+            current_value = getattr(item_to_edit, field_name, '')
+            if field_name in ['quantity', 'price', 'total'] and isinstance(current_value, (int, float)):
+                current_value = self.number_formatter.format_number_with_spaces(current_value)
+            
+            await self.ui_manager.send_temp(
+                update, context,
+                f"Редактируете строку {line_number}\n"
+                f"Текущее {field_labels[field_name]}: **{current_value}**\n\n"
+                f"Введите новое {field_labels[field_name]}:",
+                duration=10
+            )
+            return self.config.AWAITING_FIELD_EDIT
+        
+        if action.startswith("apply_"):
+            line_number = int(action.split('_')[1])
+            
+            # Automatically update item status before applying
+            data: ReceiptData = context.user_data.get('receipt_data', {})
+            item_to_apply = data.get_item(line_number)
+            if item_to_apply:
+                item_to_apply = self.processor.auto_update_item_status(item_to_apply)
+            
+            # Clean up all messages except anchor before showing new menu
+            await self.ui_manager.cleanup_all_except_anchor(update, context)
+            
+            # Show message about applying changes
+            await self.ui_manager.send_temp(
+                update, context, "✅ Изменения применены! Обновляю таблицу...", duration=2
+            )
+            
+            # Apply changes and return to updated report
+            await self._show_final_report_with_edit_button_callback(update, context)
+            
+            return self.config.AWAITING_CORRECTION
+        
+        # Handle old format for compatibility
+        line_number_to_edit = int(action.split('_')[1])
+        context.user_data['line_to_edit'] = line_number_to_edit
+        
+        # Clean up all messages except anchor before showing new menu
+        await self.ui_manager.cleanup_all_except_anchor(update, context)
+        
+        data: ReceiptData = context.user_data['receipt_data']
+        item_to_edit = data.get_item(line_number_to_edit)
+        
+        await self.ui_manager.send_temp(
+            update, context,
+            f"Вы исправляете строку: **{item_to_edit.name}**.\n\n"
+            "Введите правильные данные в формате:\n"
+            "`Название, Количество, Цена за единицу, Сумма`\n\n"
+            "Пример: `Udang Kupas, 4, 150000, 600000`",
+            duration=10
+        )
+        
+        return self.config.AWAITING_INPUT
+    
+    async def _add_new_row(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
+        """Add new row to table"""
+        data: ReceiptData = context.user_data.get('receipt_data')
+        
+        # Find maximum line number
+        max_line_number = data.get_max_line_number()
+        new_line_number = max_line_number + 1
+        
+        # Create new row with empty data
+        new_item = ReceiptItem(
+            line_number=new_line_number,
+            name='Новый товар',
+            quantity=1.0,
+            price=0.0,
+            total=0.0,
+            status='needs_review',
+            auto_calculated=False
+        )
+        
+        # Add new row to data
+        data.add_item(new_item)
+        
+        # Update original_data to reflect the changes
+        if context.user_data.get('original_data'):
+            context.user_data['original_data'].add_item(new_item)
+        
+        # Automatically match ingredient for the new item
+        await self._auto_match_ingredient_for_new_item(update, context, new_item, data)
+        
+        # Set new row for editing
+        context.user_data['line_to_edit'] = new_line_number
+        
+        # Show edit menu for new row
+        await self._send_edit_menu(update, context)
+    
+    async def _show_total_edit_menu(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
+        """Show total edit menu"""
+        data: ReceiptData = context.user_data.get('receipt_data', {})
+        current_total = data.grand_total_text
+        formatted_total = self.number_formatter.format_number_with_spaces(self.text_parser.parse_number_from_text(current_total))
+        
+        # Calculate automatic sum
+        calculated_total = self.formatter.calculate_total_sum(data)
+        formatted_calculated_total = self.number_formatter.format_number_with_spaces(calculated_total)
+        
+        text = f"**Редактирование итого:**\n\n"
+        text += f"💰 **Текущая итоговая сумма:** {formatted_total}\n"
+        text += f"🧮 **Автоматически рассчитанная сумма:** {formatted_calculated_total}\n\n"
+        text += "Выберите действие:"
+        
+        keyboard = [
+            [
+                InlineKeyboardButton("🧮 Рассчитать автоматически", callback_data="auto_calculate_total"),
+                InlineKeyboardButton("✏️ Ввести вручную", callback_data="manual_edit_total")
+            ],
+            [
+                InlineKeyboardButton("❌ Отмена", callback_data="cancel")
+            ]
+        ]
+        
+        reply_markup = InlineKeyboardMarkup(keyboard)
+        
+        # Determine chat_id and message sending method
+        if hasattr(update, 'callback_query') and update.callback_query:
+            chat_id = update.callback_query.message.chat_id
+            reply_method = update.callback_query.message.reply_text
+        elif hasattr(update, 'message') and update.message:
+            chat_id = update.message.chat_id
+            reply_method = update.message.reply_text
+        else:
+            return
+        
+        message = await self.ui_manager.send_menu(
+            update, context, text, reply_markup, 'Markdown'
+        )
+        
+        # Save message ID for subsequent deletion
+        context.user_data['total_edit_menu_message_id'] = message.message_id
+    
+    async def _auto_calculate_total(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
+        """Automatically calculate total based on all line sums"""
+        data: ReceiptData = context.user_data.get('receipt_data', {})
+        
+        # Calculate total sum of all positions
+        calculated_total = self.formatter.calculate_total_sum(data)
+        
+        # Update total sum in data
+        data.grand_total_text = str(int(calculated_total)) if calculated_total == int(calculated_total) else str(calculated_total)
+        
+        # Update original_data to reflect the changes
+        if context.user_data.get('original_data'):
+            context.user_data['original_data'].grand_total_text = data.grand_total_text
+        
+        # Update ingredient matching after total change
+        await self._update_ingredient_matching_after_data_change(update, context, data, "total_change")
+        
+        # Delete total edit menu message
+        try:
+            await context.bot.delete_message(
+                chat_id=update.callback_query.message.chat_id,
+                message_id=context.user_data.get('total_edit_menu_message_id')
+            )
+        except Exception as e:
+            print(f"Не удалось удалить сообщение с меню редактирования итого: {e}")
+        
+        # Show success message
+        formatted_total = self.number_formatter.format_number_with_spaces(calculated_total)
+        await self.ui_manager.send_temp(
+            update, context, f"✅ Итого автоматически рассчитано: **{formatted_total}**", duration=2
+        )
+        
+        # Return to updated report
+        await self._show_final_report_with_edit_button_callback(update, context)
+    
+    async def _send_edit_menu(self, update: Update, context: ContextTypes.DEFAULT_TYPE, message_id_to_edit: int = None):
+        """Send edit menu for specific line"""
+        line_number = context.user_data.get('line_to_edit')
+        data: ReceiptData = context.user_data['receipt_data']
+        item_to_edit = data.get_item(line_number)
+        
+        if not item_to_edit:
+            if hasattr(update, 'callback_query') and update.callback_query:
+                await update.callback_query.message.reply_text("Ошибка: строка не найдена")
+            return
+        
+        # Automatically calculate sum and update status before display
+        item_to_edit = self.processor.auto_calculate_total_if_needed(item_to_edit)
+        item_to_edit = self.processor.auto_update_item_status(item_to_edit)
+        
+        # Format current values
+        name = item_to_edit.name
+        quantity = self.number_formatter.format_number_with_spaces(item_to_edit.quantity)
+        price = self.number_formatter.format_number_with_spaces(item_to_edit.price)
+        total = self.number_formatter.format_number_with_spaces(item_to_edit.total)
+        
+        # Check if sum was automatically calculated
+        is_auto_calculated = item_to_edit.auto_calculated
+        
+        # Determine current status (flag)
+        status = item_to_edit.status
+        if status == 'confirmed':
+            status_icon = "✅"
+        elif status == 'error':
+            status_icon = "🔴"
+        else:
+            status_icon = "⚠️"
+        
+        text = f"**Редактирование строки {line_number}:** {status_icon}\n\n"
+        text += f"📝 **Название:** {name}\n"
+        text += f"🔢 **Количество:** {quantity}\n"
+        text += f"💰 **Цена:** {price}\n"
+        
+        # Show sum with note about whether it was automatically calculated
+        if is_auto_calculated:
+            text += f"💵 **Сумма:** {total} *(автоматически рассчитана)*\n\n"
+        else:
+            text += f"💵 **Сумма:** {total}\n\n"
+        
+        text += "Выберите поле для редактирования:"
+        
+        keyboard = [
+            [
+                InlineKeyboardButton("📝 Название", callback_data=f"field_{line_number}_name"),
+                InlineKeyboardButton("🔢 Количество", callback_data=f"field_{line_number}_quantity"),
+                InlineKeyboardButton("💰 Цена", callback_data=f"field_{line_number}_price")
+            ],
+            [
+                InlineKeyboardButton("💵 Сумма", callback_data=f"field_{line_number}_total"),
+                InlineKeyboardButton("✅ Применить", callback_data=f"apply_{line_number}"),
+                InlineKeyboardButton("◀️ Назад", callback_data="back_to_receipt")
+            ]
+        ]
+        
+        reply_markup = InlineKeyboardMarkup(keyboard)
+        
+        # Determine chat_id and message sending method
+        if hasattr(update, 'callback_query') and update.callback_query:
+            chat_id = update.callback_query.message.chat_id
+            reply_method = update.callback_query.message.reply_text
+        elif hasattr(update, 'message') and update.message:
+            chat_id = update.message.chat_id
+            reply_method = update.message.reply_text
+        else:
+            return
+        
+        if message_id_to_edit:
+            # Edit existing message
+            success = await self.ui_manager.edit_menu(
+                update, context, message_id_to_edit, text, reply_markup, 'Markdown'
+            )
+            if not success:
+                # If couldn't edit, send new message
+                message = await self.ui_manager.send_menu(
+                    update, context, text, reply_markup, 'Markdown'
+                )
+                context.user_data['edit_menu_message_id'] = message.message_id
+        else:
+            # Create new message
+            message = await self.ui_manager.send_menu(
+                update, context, text, reply_markup, 'Markdown'
+            )
+            # Save message ID for subsequent editing
+            context.user_data['edit_menu_message_id'] = message.message_id
+    
+    async def _show_final_report_with_edit_button_callback(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
+        """Show final report with edit buttons (for callback query)"""
+        final_data: ReceiptData = context.user_data.get('receipt_data')
+        
+        if not final_data:
+            if hasattr(update, 'callback_query') and update.callback_query:
+                await self.ui_manager.send_temp(
+                    update, context,
+                    "❌ **Данные чека не найдены**\n\n"
+                    "Попробуйте загрузить чек заново.",
+                    duration=5
+                )
+            return
+
+        try:
+            # Automatically update statuses of all elements
+            final_data = self.processor.auto_update_all_statuses(final_data)
+            context.user_data['receipt_data'] = final_data
+            
+            # Check if there are errors
+            has_errors = not self.processor.check_all_items_confirmed(final_data)
+            
+            # Create aligned table programmatically
+            aligned_table = self.formatter.format_aligned_table(final_data)
+            
+            # Calculate total sum
+            calculated_total = self.formatter.calculate_total_sum(final_data)
+            receipt_total = self.text_parser.parse_number_from_text(final_data.grand_total_text)
+            
+            # Form final report
+            final_report = ""
+            
+            # Add red marker if there are errors
+            if has_errors:
+                final_report += "🔴 **Обнаружены ошибки в данных чека**\n\n"
+            
+            final_report += f"```\n{aligned_table}\n```\n\n"
+            
+            if abs(calculated_total - receipt_total) < 0.01:
+                final_report += "✅ **Итоговая сумма соответствует!**\n"
+            else:
+                difference = abs(calculated_total - receipt_total)
+                final_report += f"❗ **Несоответствие итоговой суммы! Разница: {self.number_formatter.format_number_with_spaces(difference)}**\n"
+            
+            # Save report in cache for quick access
+            context.user_data['cached_final_report'] = final_report
+            
+            # Create buttons
+            keyboard = []
+            
+            # If there are errors, add buttons for fixing problematic lines
+            if has_errors:
+                fix_buttons = []
+                for item in final_data.items:
+                    status = item.status
+                    
+                    # Check calculation mismatch
+                    quantity = item.quantity
+                    price = item.price
+                    total = item.total
+                    has_calculation_error = False
+                    
+                    if quantity is not None and price is not None and total is not None and quantity > 0 and price > 0 and total > 0:
+                        expected_total = quantity * price
+                        has_calculation_error = abs(expected_total - total) > 0.01
+                    
+                    # Check if name is unreadable
+                    item_name = item.name
+                    is_unreadable = item_name == "???" or item_name == "**не распознано**"
+                    
+                    # If there are calculation errors, unreadable data or status not confirmed
+                    if status != 'confirmed' or has_calculation_error or is_unreadable:
+                        fix_buttons.append(InlineKeyboardButton(
+                            f"Исправить строку {item.line_number}",
+                            callback_data=f"edit_{item.line_number}"
+                        ))
+                
+                # Distribute fix buttons across 1-3 columns based on quantity
+                if fix_buttons:
+                    if len(fix_buttons) <= 3:
+                        # 1 column for 1-3 buttons
+                        for button in fix_buttons:
+                            keyboard.append([button])
+                    elif len(fix_buttons) <= 6:
+                        # 2 columns for 4-6 buttons
+                        for i in range(0, len(fix_buttons), 2):
+                            row = fix_buttons[i:i+2]
+                            if len(row) == 1:
+                                row.append(InlineKeyboardButton("", callback_data="noop"))  # Empty button for alignment
+                            keyboard.append(row)
+                    else:
+                        # 3 columns for 7+ buttons
+                        for i in range(0, len(fix_buttons), 3):
+                            row = fix_buttons[i:i+3]
+                            while len(row) < 3:
+                                row.append(InlineKeyboardButton("", callback_data="noop"))  # Empty buttons for alignment
+                            keyboard.append(row)
+            
+            # Add line management buttons
+            keyboard.append([
+                InlineKeyboardButton("➕ Добавить строку", callback_data="add_row"),
+                InlineKeyboardButton("➖ Удалить строку", callback_data="delete_row")
+            ])
+            
+            # Add edit line by number button under add/delete buttons
+            keyboard.append([InlineKeyboardButton("🔢 Редактировать строку по номеру", callback_data="edit_line_number")])
+            
+            # Add total edit and reanalysis buttons in one row
+            keyboard.append([
+                InlineKeyboardButton("💰 Редактировать Итого", callback_data="edit_total"),
+                InlineKeyboardButton("🔄 Проанализировать заново", callback_data="reanalyze")
+            ])
+            
+            # Add Google Sheets upload button
+            keyboard.append([InlineKeyboardButton("📊 Загрузить в Google Таблицы", callback_data="upload_to_google_sheets")])
+            
+            # Add file generation button
+            keyboard.append([InlineKeyboardButton("📄 Получить файл для загрузки в постер", callback_data="generate_supply_file")])
+            
+            # Add back button (required in every menu)
+            keyboard.append([InlineKeyboardButton("◀️ Вернуться к чеку", callback_data="back_to_receipt")])
+            
+            reply_markup = InlineKeyboardMarkup(keyboard)
+            
+            # Use UI manager to send/update the single working menu
+            working_menu_id = self.ui_manager.get_working_menu_id(context)
+            
+            if working_menu_id:
+                # Try to edit existing working menu message
+                success = await self.ui_manager.edit_menu(
+                    update, context, working_menu_id, final_report, reply_markup
+                )
+                if not success:
+                    # If couldn't edit, send new message (replaces working menu)
+                    message = await self.ui_manager.send_menu(update, context, final_report, reply_markup)
+            else:
+                # If no working menu, send new message (becomes working menu)
+                message = await self.ui_manager.send_menu(update, context, final_report, reply_markup)
+        
+        except Exception as e:
+            print(f"Ошибка при формировании отчета: {e}")
+            if hasattr(update, 'callback_query') and update.callback_query:
+                await update.callback_query.message.reply_text(f"Произошла ошибка при формировании отчета: {e}")
+    
+    async def _send_long_message_with_keyboard_callback(self, message, text: str, reply_markup):
+        """Send long message with keyboard (for callback query)"""
+        if len(text) <= self.config.MAX_MESSAGE_LENGTH:
+            await message.reply_text(text, reply_markup=reply_markup, parse_mode='Markdown')
+            return
+        
+        # Split into parts
+        parts = [text[i:i + self.config.MAX_MESSAGE_LENGTH] for i in range(0, len(text), self.config.MAX_MESSAGE_LENGTH)]
+        
+        # Send all parts except last
+        for part in parts[:-1]:
+            await message.reply_text(part, parse_mode='Markdown')
+            await asyncio.sleep(self.config.MESSAGE_DELAY)
+        
+        # Send last part with keyboard
+        await message.reply_text(parts[-1], reply_markup=reply_markup, parse_mode='Markdown')
+    
+    async def _cancel(self, update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
+        """Handle cancellation"""
+        # Handle both regular message and callback query
+        if hasattr(update, 'message') and update.message:
+            await update.message.reply_text("Операция отменена.")
+        elif hasattr(update, 'callback_query') and update.callback_query:
+            await update.callback_query.message.edit_text("Операция отменена.")
+        
+        context.user_data.clear()
+        return self.config.AWAITING_CORRECTION
+    
+    def _save_ingredient_matching_data(self, user_id: int, context: ContextTypes.DEFAULT_TYPE) -> None:
+        """Save ingredient matching data to persistent storage"""
+        matching_result = context.user_data.get('ingredient_matching_result')
+        changed_indices = context.user_data.get('changed_ingredient_indices', set())
+        receipt_data = context.user_data.get('receipt_data')
+        
+        if matching_result and receipt_data:
+            receipt_hash = receipt_data.get_receipt_hash()
+            success = self.ingredient_storage.save_matching_result(user_id, matching_result, changed_indices, receipt_hash)
+            print(f"DEBUG: Saved matching data for user {user_id}, receipt {receipt_hash}, success: {success}")
+            print(f"DEBUG: Saved {len(matching_result.matches)} matches, {len(changed_indices)} changed indices")
+        else:
+            print(f"DEBUG: Cannot save matching data - matching_result: {matching_result is not None}, receipt_data: {receipt_data is not None}")
+    
+    def _clear_receipt_data(self, context: ContextTypes.DEFAULT_TYPE) -> None:
+        """Clear all receipt-related data from context"""
+        keys_to_clear = [
+            'receipt_data', 'original_data', 'line_to_edit', 'field_to_edit',
+            'cached_final_report', 'table_message_id', 'edit_menu_message_id',
+            'instruction_message_id', 'line_number_instruction_message_id',
+            'delete_line_number_instruction_message_id', 'total_edit_instruction_message_id',
+            'total_edit_menu_message_id', 'ingredient_matching_result', 'current_match_index',
+            'changed_ingredient_indices', 'search_results', 'position_search_results',
+            'awaiting_search', 'awaiting_position_search', 'in_position_selection_mode',
+            'selected_line_number', 'position_match_search_results', 'awaiting_ingredient_name_for_position'
+        ]
+        for key in keys_to_clear:
+            context.user_data.pop(key, None)
+    
+    async def _show_ingredient_matching_results(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
+        """Show ingredient matching results"""
+        # Always load from persistent storage to ensure we have the correct data for this receipt
+        user_id = update.effective_user.id
+        receipt_data = context.user_data.get('receipt_data')
+        
+        if not receipt_data:
+            if hasattr(update, 'callback_query') and update.callback_query:
+                await update.callback_query.message.reply_text("Ошибка: данные чека не найдены.")
+            return
+        
+        # Get current receipt hash
+        current_receipt_hash = receipt_data.get_receipt_hash()
+        
+        # Try to load from persistent storage for current receipt
+        saved_data = self.ingredient_storage.load_matching_result(user_id, current_receipt_hash)
+        
+        if saved_data:
+            # Load existing matching data for current receipt
+            matching_result, changed_indices = saved_data
+            context.user_data['ingredient_matching_result'] = matching_result
+            context.user_data['changed_ingredient_indices'] = changed_indices
+            print(f"DEBUG: Loaded matching data from storage for current receipt with {len(matching_result.matches)} matches, {len(changed_indices)} changed indices")
+        else:
+            print(f"DEBUG: No saved data for current receipt")
+            if hasattr(update, 'callback_query') and update.callback_query:
+                await update.callback_query.message.reply_text("Ошибка: результаты сопоставления не найдены.")
+            return
+        
+        # Format results
+        print(f"DEBUG: Formatting table with changed_indices: {changed_indices}")
+        results_text = self.ingredient_formatter.format_matching_table(matching_result, changed_indices)
+        
+        # Create action buttons
+        keyboard = []
+        
+        # Manual matching button is now always available as "Сопоставить вручную"
+        
+        # Check if all items are matched
+        all_matched = all(
+            match.match_status.value == 'exact' 
+            for match in matching_result.matches
+        )
+        
+        # Check if there are any changes made
+        has_changes = len(changed_indices) > 0
+        
+        if all_matched:
+            # All items are matched, show Apply button only if there are changes
+            if has_changes:
+                keyboard.extend([
+                    [InlineKeyboardButton("✋ Сопоставить вручную", callback_data="manual_match_ingredients")],
+                    [InlineKeyboardButton("🔄 Сопоставить заново", callback_data="rematch_ingredients")],
+                    [InlineKeyboardButton("✅ Применить", callback_data="apply_matching_changes")],
+                    [InlineKeyboardButton("◀️ Назад", callback_data="back_to_receipt")]
+                ])
+            else:
+                keyboard.extend([
+                    [InlineKeyboardButton("✋ Сопоставить вручную", callback_data="manual_match_ingredients")],
+                    [InlineKeyboardButton("🔄 Сопоставить заново", callback_data="rematch_ingredients")],
+                    [InlineKeyboardButton("◀️ Назад", callback_data="back_to_receipt")]
+                ])
+        else:
+            # Some items need matching, show regular buttons
+            keyboard.extend([
+                [InlineKeyboardButton("✋ Сопоставить вручную", callback_data="manual_match_ingredients")],
+                [InlineKeyboardButton("🔄 Сопоставить заново", callback_data="rematch_ingredients")],
+                [InlineKeyboardButton("◀️ Назад", callback_data="back_to_receipt")]
+            ])
+        
+        reply_markup = InlineKeyboardMarkup(keyboard)
+        
+        if hasattr(update, 'callback_query') and update.callback_query:
+            await self.ui_manager.send_menu(
+                update, context, results_text, reply_markup, 'Markdown'
+            )
+    
+    async def _show_manual_matching_overview(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
+        """Show manual matching overview with all items that need matching"""
+        # First check if we have data in context
+        matching_result = context.user_data.get('ingredient_matching_result')
+        changed_indices = context.user_data.get('changed_ingredient_indices', set())
+        
+        if not matching_result:
+            # Try to load from persistent storage
+            user_id = update.effective_user.id
+            receipt_data = context.user_data.get('receipt_data')
+            
+            if receipt_data:
+                receipt_hash = receipt_data.get_receipt_hash()
+                saved_data = self.ingredient_storage.load_matching_result(user_id, receipt_hash)
+                if saved_data:
+                    matching_result, changed_indices = saved_data
+                    # Update context with loaded data
+                    context.user_data['ingredient_matching_result'] = matching_result
+                    context.user_data['changed_ingredient_indices'] = changed_indices
+                    # Reset current match index when loading from storage
+                    context.user_data['current_match_index'] = 0
+        
+        if not matching_result:
+            if hasattr(update, 'callback_query') and update.callback_query:
+                await update.callback_query.message.reply_text("Ошибка: данные сопоставления не найдены.")
+            return
+        
+        # Delete previous menu messages if they exist
+        await self._cleanup_previous_menus(update, context)
+        
+        # Show the same table as before, but with manual matching interface
+        # Format results
+        print(f"DEBUG: Formatting table with changed_indices: {changed_indices}")
+        results_text = self.ingredient_formatter.format_matching_table(matching_result, changed_indices)
+        
+        # Find items that need manual matching (yellow/red status)
+        items_needing_matching = []
+        for i, match in enumerate(matching_result.matches):
+            if match.match_status.value in ['partial', 'no_match']:
+                items_needing_matching.append((i, match))
+        
+        # Create action buttons
+        keyboard = []
+        
+        # Add buttons for items that need matching (max 2 per row)
+        for i, (index, match) in enumerate(items_needing_matching):
+            # Check if this item was manually changed
+            is_changed = index in changed_indices
+            if is_changed:
+                status_emoji = "✏️"
+            else:
+                status_emoji = self.ingredient_formatter._get_status_emoji(match.match_status)
+            button_text = f"{status_emoji} {self.ingredient_formatter._truncate_name(match.receipt_item_name, 15)}"
+            
+            if i % 2 == 0:
+                # Start new row
+                keyboard.append([InlineKeyboardButton(button_text, callback_data=f"select_item_{index}")])
+            else:
+                # Add to existing row
+                keyboard[-1].append(InlineKeyboardButton(button_text, callback_data=f"select_item_{index}"))
+        
+        # Add control buttons
+        keyboard.extend([
+            [InlineKeyboardButton("🔍 Выбрать позицию для сопоставления", callback_data="select_position_for_matching")],
+            [InlineKeyboardButton("✅ Применить", callback_data="apply_matching_changes")],
+            [InlineKeyboardButton("◀️ Назад", callback_data="back_to_receipt")]
+        ])
+        
+        reply_markup = InlineKeyboardMarkup(keyboard)
+        
+        if hasattr(update, 'callback_query') and update.callback_query:
+            await self.ui_manager.send_menu(
+                update, context, results_text, reply_markup, 'Markdown'
+            )
+    
+    async def _show_position_selection_interface(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
+        """Show position selection interface with the same table as before"""
+        # First check if we have data in context
+        matching_result = context.user_data.get('ingredient_matching_result')
+        changed_indices = context.user_data.get('changed_ingredient_indices', set())
+        
+        if not matching_result:
+            # Try to load from persistent storage
+            user_id = update.effective_user.id
+            receipt_data = context.user_data.get('receipt_data')
+            
+            if receipt_data:
+                receipt_hash = receipt_data.get_receipt_hash()
+                saved_data = self.ingredient_storage.load_matching_result(user_id, receipt_hash)
+                if saved_data:
+                    matching_result, changed_indices = saved_data
+                    # Update context with loaded data
+                    context.user_data['ingredient_matching_result'] = matching_result
+                    context.user_data['changed_ingredient_indices'] = changed_indices
+                    # Reset current match index when loading from storage
+                    context.user_data['current_match_index'] = 0
+        
+        if not matching_result:
+            if hasattr(update, 'callback_query') and update.callback_query:
+                await update.callback_query.message.reply_text("Ошибка: данные сопоставления не найдены.")
+            return
+        
+        # Show the same table as before
+        # Format results
+        print(f"DEBUG: Formatting table with changed_indices: {changed_indices}")
+        results_text = self.ingredient_formatter.format_matching_table(matching_result, changed_indices)
+        
+        # Add instruction text
+        results_text += "\n\n**Введите номер строки элемента для сопоставления:**"
+        
+        # Set position selection mode flag
+        context.user_data['in_position_selection_mode'] = True
+        
+        # Create action buttons
+        keyboard = [
+            [InlineKeyboardButton("◀️ Назад", callback_data="back_to_matching_overview")]
+        ]
+        
+        reply_markup = InlineKeyboardMarkup(keyboard)
+        
+        if hasattr(update, 'callback_query') and update.callback_query:
+            await self.ui_manager.send_menu(
+                update, context, results_text, reply_markup, 'Markdown'
+            )
+    
+    async def _handle_item_selection_for_matching(self, update: Update, context: ContextTypes.DEFAULT_TYPE, item_index: int):
+        """Handle selection of specific item for manual matching"""
+        # First check if we have data in context
+        matching_result = context.user_data.get('ingredient_matching_result')
+        changed_indices = context.user_data.get('changed_ingredient_indices', set())
+        
+        if not matching_result:
+            # Try to load from persistent storage
+            user_id = update.effective_user.id
+            receipt_data = context.user_data.get('receipt_data')
+            
+            if receipt_data:
+                receipt_hash = receipt_data.get_receipt_hash()
+                saved_data = self.ingredient_storage.load_matching_result(user_id, receipt_hash)
+                if saved_data:
+                    matching_result, changed_indices = saved_data
+                    # Update context with loaded data
+                    context.user_data['ingredient_matching_result'] = matching_result
+                    context.user_data['changed_ingredient_indices'] = changed_indices
+                    # Reset current match index when loading from storage
+                    context.user_data['current_match_index'] = 0
+        poster_ingredients = context.bot_data.get('poster_ingredients', {})
+        
+        if not matching_result or item_index >= len(matching_result.matches):
+            await update.callback_query.answer("Ошибка: элемент не найден")
+            return
+        
+        current_match = matching_result.matches[item_index]
+        
+        # Show current match info
+        progress_text = f"**Сопоставление ингредиента**\n\n"
+        progress_text += f"**Товар:** {current_match.receipt_item_name}\n\n"
+        
+        # Get filtered suggestions (score >= 50%)
+        filtered_suggestions = self.ingredient_formatter.format_suggestions_for_manual_matching(current_match, min_score=0.5)
+        
+        if filtered_suggestions:
+            progress_text += "**Выберите подходящий ингредиент:**\n"
+            
+            # Create horizontal buttons for suggestions (max 2 per row)
+            keyboard = []
+            for i, suggestion in enumerate(filtered_suggestions[:6], 1):  # Show up to 6 suggestions
+                name = self.ingredient_formatter._truncate_name(suggestion['name'], 15)
+                score = int(suggestion['score'] * 100)
+                button_text = f"{name} ({score}%)"
+                
+                if i % 2 == 1:
+                    # Start new row
+                    keyboard.append([InlineKeyboardButton(button_text, callback_data=f"select_ingredient_{i}")])
+                else:
+                    # Add to existing row
+                    keyboard[-1].append(InlineKeyboardButton(button_text, callback_data=f"select_ingredient_{i}"))
+            
+            # Add control buttons
+            keyboard.extend([
+                [InlineKeyboardButton("🔍 Поиск", callback_data="search_ingredient")],
+                [InlineKeyboardButton("⏭️ Пропустить", callback_data="skip_ingredient")],
+                [InlineKeyboardButton("📋 Назад к обзору", callback_data="back_to_matching_overview")],
+                [InlineKeyboardButton("◀️ Назад", callback_data="back_to_receipt")]
+            ])
+        else:
+            progress_text += "❌ **Подходящих вариантов не найдено**\n\n"
+            progress_text += "Попробуйте поиск или пропустите этот товар."
+            
+            keyboard = [
+                [InlineKeyboardButton("🔍 Поиск", callback_data="search_ingredient")],
+                [InlineKeyboardButton("⏭️ Пропустить", callback_data="skip_ingredient")],
+                [InlineKeyboardButton("📋 Назад к обзору", callback_data="back_to_matching_overview")],
+                [InlineKeyboardButton("◀️ Назад", callback_data="back_to_receipt")]
+            ]
+        
+        reply_markup = InlineKeyboardMarkup(keyboard)
+        
+        # Save current item index for later processing
+        context.user_data['current_match_index'] = item_index
+        
+        await self.ui_manager.send_menu(
+            update, context, progress_text, reply_markup, 'Markdown'
+        )
+    
+    async def _handle_position_selection(self, update: Update, context: ContextTypes.DEFAULT_TYPE, position_number: int):
+        """Handle position selection from search results"""
+        # First check if we have data in context
+        matching_result = context.user_data.get('ingredient_matching_result')
+        changed_indices = context.user_data.get('changed_ingredient_indices', set())
+        
+        if not matching_result:
+            # Try to load from persistent storage
+            user_id = update.effective_user.id
+            receipt_data = context.user_data.get('receipt_data')
+            
+            if receipt_data:
+                receipt_hash = receipt_data.get_receipt_hash()
+                saved_data = self.ingredient_storage.load_matching_result(user_id, receipt_hash)
+                if saved_data:
+                    matching_result, changed_indices = saved_data
+                    # Update context with loaded data
+                    context.user_data['ingredient_matching_result'] = matching_result
+                    context.user_data['changed_ingredient_indices'] = changed_indices
+                    # Reset current match index when loading from storage
+                    context.user_data['current_match_index'] = 0
+        
+        position_search_results = context.user_data.get('position_search_results', [])
+        matching_result = context.user_data.get('ingredient_matching_result')
+        poster_ingredients = context.bot_data.get('poster_ingredients', {})
+        
+        if not position_search_results or position_number < 1 or position_number > len(position_search_results):
+            await update.callback_query.answer("Ошибка: позиция не найдена")
+            return
+        
+        if not matching_result:
+            await update.callback_query.answer("Ошибка: данные сопоставления не найдены")
+            return
+        
+        # Get selected position
+        selected_position = position_search_results[position_number - 1]
+        
+        # Show all items that can be matched with this position
+        items_text = f"**Выбранный ингредиент:** {selected_position['name']}\n\n"
+        items_text += "**Выберите товар из чека для сопоставления:**\n\n"
+        
+        # Create horizontal buttons for all items (max 2 per row)
+        keyboard = []
+        changed_indices = context.user_data.get('changed_ingredient_indices', set())
+        for i, match in enumerate(matching_result.matches):
+            # Check if this item was manually changed
+            is_changed = i in changed_indices
+            if is_changed:
+                status_emoji = "✏️"
+            else:
+                status_emoji = self.ingredient_formatter._get_status_emoji(match.match_status)
+            button_text = f"{status_emoji} {self.ingredient_formatter._truncate_name(match.receipt_item_name, 15)}"
+            
+            if i % 2 == 0:
+                # Start new row
+                keyboard.append([InlineKeyboardButton(button_text, callback_data=f"match_item_{i}_{selected_position['id']}")])
+            else:
+                # Add to existing row
+                keyboard[-1].append(InlineKeyboardButton(button_text, callback_data=f"match_item_{i}_{selected_position['id']}"))
+        
+        # Add control buttons
+        keyboard.extend([
+            [InlineKeyboardButton("🔍 Выбрать другую позицию", callback_data="select_position_for_matching")],
+            [InlineKeyboardButton("📋 Назад к обзору", callback_data="back_to_matching_overview")],
+            [InlineKeyboardButton("◀️ Назад", callback_data="back_to_receipt")]
+        ])
+        
+        reply_markup = InlineKeyboardMarkup(keyboard)
+        
+        await self.ui_manager.send_menu(
+            update, context, items_text, reply_markup, 'Markdown'
+        )
+    
+    async def _handle_position_match_selection(self, update: Update, context: ContextTypes.DEFAULT_TYPE, position_number: int):
+        """Handle position match selection from search results"""
+        position_match_search_results = context.user_data.get('position_match_search_results', [])
+        matching_result = context.user_data.get('ingredient_matching_result')
+        selected_line_number = context.user_data.get('selected_line_number')
+        
+        if not position_match_search_results or position_number < 1 or position_number > len(position_match_search_results):
+            await update.callback_query.answer("Ошибка: позиция не найдена")
+            return
+        
+        if not matching_result or not selected_line_number or selected_line_number < 1 or selected_line_number > len(matching_result.matches):
+            await update.callback_query.answer("Ошибка: данные сопоставления не найдены")
+            return
+        
+        # Get selected position
+        selected_position = position_match_search_results[position_number - 1]
+        
+        # Get the item to match (convert to 0-based index)
+        item_index = selected_line_number - 1
+        item_to_match = matching_result.matches[item_index]
+        
+        # Create manual match
+        manual_match = self.ingredient_matching_service.manual_match_ingredient(
+            item_to_match.receipt_item_name,
+            selected_position['id'],
+            context.bot_data.get('poster_ingredients', {})
+        )
+        
+        # Update the match in the result
+        matching_result.matches[item_index] = manual_match
+        context.user_data['ingredient_matching_result'] = matching_result
+        
+        # Add this index to changed indices for pencil emoji display
+        if 'changed_ingredient_indices' not in context.user_data:
+            context.user_data['changed_ingredient_indices'] = set()
+        context.user_data['changed_ingredient_indices'].add(item_index)
+        print(f"DEBUG: Added item_index {item_index} to changed_indices. Current changed_indices: {context.user_data['changed_ingredient_indices']}")
+        
+        # Save to persistent storage
+        user_id = update.effective_user.id
+        self._save_ingredient_matching_data(user_id, context)
+        
+        # Clear search results and selected line number
+        context.user_data.pop('position_match_search_results', None)
+        context.user_data.pop('selected_line_number', None)
+        
+        # Show confirmation
+        await update.callback_query.answer(f"✅ Сопоставлено: {item_to_match.receipt_item_name} → {manual_match.matched_ingredient_name}")
+        
+        # Return to main ingredient matching results
+        await self._show_ingredient_matching_results(update, context)
+    
+    async def _handle_item_position_matching(self, update: Update, context: ContextTypes.DEFAULT_TYPE, item_index: int, position_id: str):
+        """Handle matching of item with selected position"""
+        # First check if we have data in context
+        matching_result = context.user_data.get('ingredient_matching_result')
+        changed_indices = context.user_data.get('changed_ingredient_indices', set())
+        
+        if not matching_result:
+            # Try to load from persistent storage
+            user_id = update.effective_user.id
+            receipt_data = context.user_data.get('receipt_data')
+            
+            if receipt_data:
+                receipt_hash = receipt_data.get_receipt_hash()
+                saved_data = self.ingredient_storage.load_matching_result(user_id, receipt_hash)
+                if saved_data:
+                    matching_result, changed_indices = saved_data
+                    # Update context with loaded data
+                    context.user_data['ingredient_matching_result'] = matching_result
+                    context.user_data['changed_ingredient_indices'] = changed_indices
+                    # Reset current match index when loading from storage
+                    context.user_data['current_match_index'] = 0
+        
+        matching_result = context.user_data.get('ingredient_matching_result')
+        
+        if not matching_result or item_index >= len(matching_result.matches):
+            await update.callback_query.answer("Ошибка: элемент не найден")
+            return
+        
+        # Ensure poster ingredients are loaded
+        if not await self._ensure_poster_ingredients_loaded(context):
+            await update.callback_query.answer("❌ Ошибка: не удалось загрузить справочник ингредиентов")
+            return
+        
+        # Get poster ingredients from bot data
+        poster_ingredients = context.bot_data.get('poster_ingredients', {})
+        
+        # Get the item to match
+        item_to_match = matching_result.matches[item_index]
+        
+        # Create manual match
+        manual_match = self.ingredient_matching_service.manual_match_ingredient(
+            item_to_match.receipt_item_name,
+            position_id,
+            poster_ingredients
+        )
+        
+        # Update the match in the result
+        matching_result.matches[item_index] = manual_match
+        context.user_data['ingredient_matching_result'] = matching_result
+        
+        # Add this index to changed indices for pencil emoji display
+        if 'changed_ingredient_indices' not in context.user_data:
+            context.user_data['changed_ingredient_indices'] = set()
+        context.user_data['changed_ingredient_indices'].add(item_index)
+        print(f"DEBUG: Added item_index {item_index} to changed_indices. Current changed_indices: {context.user_data['changed_ingredient_indices']}")
+        
+        # Save to persistent storage
+        user_id = update.effective_user.id
+        self._save_ingredient_matching_data(user_id, context)
+        
+        # Clear search results
+        context.user_data.pop('position_search_results', None)
+        
+        # Show confirmation
+        await update.callback_query.answer(f"✅ Сопоставлено: {item_to_match.receipt_item_name} → {manual_match.matched_ingredient_name}")
+        
+        # Return to main ingredient matching results
+        await self._show_ingredient_matching_results(update, context)
+    
+    async def _cleanup_previous_menus(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
+        """Clean up previous menu messages to avoid clutter"""
+        try:
+            # Get the current message ID
+            current_message_id = None
+            if hasattr(update, 'callback_query') and update.callback_query:
+                current_message_id = update.callback_query.message.message_id
+            elif hasattr(update, 'message') and update.message:
+                current_message_id = update.message.message_id
+            
+            if not current_message_id:
+                return
+            
+            # Get chat ID
+            chat_id = None
+            if hasattr(update, 'callback_query') and update.callback_query:
+                chat_id = update.callback_query.message.chat_id
+            elif hasattr(update, 'message') and update.message:
+                chat_id = update.message.chat_id
+            
+            if not chat_id:
+                return
+            
+            # Get stored menu message IDs to delete
+            menu_message_ids = context.user_data.get('menu_message_ids', [])
+            
+            # Delete previous menu messages (but not the current one)
+            for message_id in menu_message_ids:
+                if message_id != current_message_id:
+                    try:
+                        await context.bot.delete_message(
+                            chat_id=chat_id,
+                            message_id=message_id
+                        )
+                    except Exception as e:
+                        print(f"Не удалось удалить сообщение меню {message_id}: {e}")
+            
+            # Clear the stored message IDs
+            context.user_data['menu_message_ids'] = []
+            
+        except Exception as e:
+            print(f"Ошибка при очистке меню: {e}")
+    
+    async def _show_manual_matching_for_current_item(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
+        """Show manual matching interface for current item"""
+        current_match_index = context.user_data.get('current_match_index', 0)
+        matching_result = context.user_data.get('ingredient_matching_result')
+        
+        if not matching_result or current_match_index >= len(matching_result.matches):
+            if hasattr(update, 'callback_query') and update.callback_query:
+                await update.callback_query.message.reply_text("Ошибка: данные сопоставления не найдены.")
+            return
+        
+        current_match = matching_result.matches[current_match_index]
+        
+        # Show current match info
+        progress_text = f"**Сопоставление ингредиентов** ({current_match_index + 1}/{len(matching_result.matches)})\n\n"
+        progress_text += f"**Текущий товар:** {current_match.receipt_item_name}\n\n"
+        
+        if current_match.match_status.value == "exact":
+            # Already matched, show confirmation
+            progress_text += f"✅ **Автоматически сопоставлено:** {current_match.matched_ingredient_name}\n\n"
+            progress_text += "Нажмите кнопку 'Продолжить' для перехода к следующему товару."
+            
+            keyboard = [
+                [InlineKeyboardButton("➡️ Продолжить", callback_data="next_ingredient_match")],
+                [InlineKeyboardButton("◀️ Назад", callback_data="back_to_receipt")]
+            ]
+        else:
+            # Get filtered suggestions (score >= 50%)
+            filtered_suggestions = self.ingredient_formatter.format_suggestions_for_manual_matching(current_match, min_score=0.5)
+            
+            if filtered_suggestions:
+                progress_text += "**Выберите подходящий ингредиент:**\n"
+                
+                # Create buttons for suggestions (max 4 buttons)
+                keyboard = []
+                for i, suggestion in enumerate(filtered_suggestions[:4], 1):
+                    name = self.ingredient_formatter._truncate_name(suggestion['name'], 20)
+                    score = int(suggestion['score'] * 100)
+                    button_text = f"{name} ({score}%)"
+                    keyboard.append([InlineKeyboardButton(button_text, callback_data=f"select_ingredient_{i}")])
+                
+                # Add control buttons
+                keyboard.append([InlineKeyboardButton("🔍 Поиск", callback_data="search_ingredient")])
+                keyboard.append([InlineKeyboardButton("⏭️ Пропустить", callback_data="skip_ingredient")])
+                keyboard.append([InlineKeyboardButton("◀️ Назад", callback_data="back_to_receipt")])
+            else:
+                progress_text += "❌ **Подходящих вариантов не найдено**\n\n"
+                progress_text += "Попробуйте поиск или пропустите этот товар."
+                
+                keyboard = [
+                    [InlineKeyboardButton("🔍 Поиск", callback_data="search_ingredient")],
+                    [InlineKeyboardButton("⏭️ Пропустить", callback_data="skip_ingredient")],
+                    [InlineKeyboardButton("◀️ Назад", callback_data="back_to_receipt")]
+                ]
+        
+        reply_markup = InlineKeyboardMarkup(keyboard)
+        
+        if hasattr(update, 'callback_query') and update.callback_query:
+            await update.callback_query.message.reply_text(
+                progress_text,
+                reply_markup=reply_markup,
+                parse_mode='Markdown'
+            )
+    
+    async def _show_final_ingredient_matching_result(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
+        """Show final ingredient matching result"""
+        matching_result = context.user_data.get('ingredient_matching_result')
+        
+        if not matching_result:
+            if hasattr(update, 'callback_query') and update.callback_query:
+                await update.callback_query.message.reply_text("Ошибка: данные сопоставления не найдены.")
+            return
+        
+        # Format final result
+        final_text = self.ingredient_formatter.format_matching_table(matching_result)
+        
+        # Add action buttons
+        keyboard = [
+            [InlineKeyboardButton("🔄 Сопоставить заново", callback_data="rematch_ingredients")],
+            [InlineKeyboardButton("◀️ Назад", callback_data="back_to_receipt")]
+        ]
+        
+        reply_markup = InlineKeyboardMarkup(keyboard)
+        
+        if hasattr(update, 'callback_query') and update.callback_query:
+            await update.callback_query.message.reply_text(
+                final_text,
+                reply_markup=reply_markup,
+                parse_mode='Markdown'
+            )
+    
+    async def _handle_ingredient_selection(self, update: Update, context: ContextTypes.DEFAULT_TYPE, suggestion_number: int):
+        """Handle ingredient selection from suggestions"""
+        current_match_index = context.user_data.get('current_match_index', 0)
+        matching_result = context.user_data.get('ingredient_matching_result')
+        poster_ingredients = context.bot_data.get('poster_ingredients', {})
+        
+        if not matching_result or current_match_index >= len(matching_result.matches):
+            if hasattr(update, 'callback_query') and update.callback_query:
+                await update.callback_query.message.reply_text("Ошибка: данные сопоставления не найдены.")
+            return
+        
+        current_match = matching_result.matches[current_match_index]
+        
+        # Get filtered suggestions
+        filtered_suggestions = self.ingredient_formatter.format_suggestions_for_manual_matching(current_match, min_score=0.5)
+        
+        if suggestion_number < 1 or suggestion_number > len(filtered_suggestions):
+            await update.callback_query.answer("Неверный номер предложения")
+            return
+        
+        # Get selected suggestion
+        selected_suggestion = filtered_suggestions[suggestion_number - 1]
+        
+        # Create manual match
+        manual_match = self.ingredient_matching_service.manual_match_ingredient(
+            current_match.receipt_item_name,
+            selected_suggestion['id'],
+            poster_ingredients
+        )
+        
+        # Update the match in the result
+        matching_result.matches[current_match_index] = manual_match
+        context.user_data['ingredient_matching_result'] = matching_result
+        
+        # Add this index to changed indices for pencil emoji display
+        if 'changed_ingredient_indices' not in context.user_data:
+            context.user_data['changed_ingredient_indices'] = set()
+        context.user_data['changed_ingredient_indices'].add(current_match_index)
+        
+        # Save to persistent storage
+        user_id = update.effective_user.id
+        self._save_ingredient_matching_data(user_id, context)
+        
+        # Show confirmation and immediately return to main ingredient matching results
+        await update.callback_query.answer(f"✅ Сопоставлено: {current_match.receipt_item_name} → {selected_suggestion['name']}")
+        
+        # Delete current message and show updated main results
+        try:
+            await context.bot.delete_message(
+                chat_id=update.callback_query.message.chat_id,
+                message_id=update.callback_query.message.message_id
+            )
+        except Exception as e:
+            print(f"Не удалось удалить сообщение: {e}")
+        
+        # Return to main ingredient matching results (not manual overview)
+        await self._show_ingredient_matching_results(update, context)
+    
+    async def _process_next_ingredient_match(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
+        """Process next ingredient match or finish matching"""
+        # Return to matching overview instead of sequential processing
+        await self._show_manual_matching_overview(update, context)
+    
+    async def _handle_search_result_selection(self, update: Update, context: ContextTypes.DEFAULT_TYPE, suggestion_number: int):
+        """Handle search result selection"""
+        current_match_index = context.user_data.get('current_match_index', 0)
+        matching_result = context.user_data.get('ingredient_matching_result')
+        poster_ingredients = context.bot_data.get('poster_ingredients', {})
+        search_results = context.user_data.get('search_results', [])
+        
+        if not matching_result or current_match_index >= len(matching_result.matches):
+            if hasattr(update, 'callback_query') and update.callback_query:
+                await update.callback_query.message.reply_text("Ошибка: данные сопоставления не найдены.")
+            return
+        
+        if suggestion_number < 1 or suggestion_number > len(search_results):
+            await update.callback_query.answer("Неверный номер предложения")
+            return
+        
+        # Get selected search result
+        selected_result = search_results[suggestion_number - 1]
+        
+        # Create manual match
+        manual_match = self.ingredient_matching_service.manual_match_ingredient(
+            matching_result.matches[current_match_index].receipt_item_name,
+            selected_result['id'],
+            poster_ingredients
+        )
+        
+        # Update the match in the result
+        matching_result.matches[current_match_index] = manual_match
+        context.user_data['ingredient_matching_result'] = matching_result
+        
+        # Add this index to changed indices for pencil emoji display
+        if 'changed_ingredient_indices' not in context.user_data:
+            context.user_data['changed_ingredient_indices'] = set()
+        context.user_data['changed_ingredient_indices'].add(current_match_index)
+        
+        # Save to persistent storage
+        user_id = update.effective_user.id
+        self._save_ingredient_matching_data(user_id, context)
+        
+        # Clear search results
+        context.user_data.pop('search_results', None)
+        
+        # Show confirmation
+        await update.callback_query.answer(f"✅ Сопоставлено: {selected_result['name']}")
+        
+        # Return to main ingredient matching results
+        await self._show_ingredient_matching_results(update, context)
+    
+    async def _show_back_confirmation_dialog(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
+        """Show confirmation dialog for going back without saving changes"""
+        changed_indices = context.user_data.get('changed_ingredient_indices', set())
+        
+        text = f"⚠️ **Внимание!**\n\n"
+        text += f"У вас есть несохраненные изменения в сопоставлении ингредиентов.\n"
+        text += f"Количество измененных элементов: **{len(changed_indices)}**\n\n"
+        text += "Вернуться назад без сохранения изменений?"
+        
+        keyboard = [
+            [InlineKeyboardButton("✅ Да", callback_data="confirm_back_without_changes")],
+            [InlineKeyboardButton("❌ Нет", callback_data="cancel_back")]
+        ]
+        
+        reply_markup = InlineKeyboardMarkup(keyboard)
+        
+        if hasattr(update, 'callback_query') and update.callback_query:
+            await self.ui_manager.send_menu(
+                update, context, text, reply_markup, 'Markdown'
+            )
+    
+    async def _generate_and_send_supply_file(self, update: Update, context: ContextTypes.DEFAULT_TYPE, 
+                                           receipt_data: ReceiptData, matching_result: IngredientMatchingResult):
+        """Generate and send supply file to user"""
+        try:
+            # Validate data
+            is_valid, error_message = self.file_generator.validate_data(receipt_data, matching_result)
+            if not is_valid:
+                await update.callback_query.message.reply_text(f"❌ Ошибка валидации: {error_message}")
+                return
+            
+            # Show format selection menu
+            await self._show_file_format_selection(update, context, receipt_data, matching_result)
+            
+        except Exception as e:
+            print(f"Ошибка при генерации файла: {e}")
+            await self.ui_manager.send_menu(
+                update, context,
+                f"❌ **Ошибка при генерации файла**\n\n"
+                f"**Детали ошибки:** {e}\n\n"
+                "Попробуйте начать процесс заново.",
+                InlineKeyboardMarkup([
+                    [InlineKeyboardButton("📄 Попробовать снова", callback_data="generate_supply_file")],
+                    [InlineKeyboardButton("◀️ Назад", callback_data="back_to_receipt")]
+                ]),
+                'Markdown'
+            )
+    
+    def _format_poster_table_preview(self, receipt_data: ReceiptData, matching_result: IngredientMatchingResult) -> str:
+        """Format table preview using the same data as file generation"""
+        if not receipt_data.items or not matching_result.matches:
+            return "Нет данных для отображения"
+        
+        # Use the same algorithm as file generation
+        supply_data = self.file_generator._create_supply_data(receipt_data, matching_result)
+        
+        if not supply_data:
+            return "Нет данных для отображения"
+        
+        # Set fixed column widths (optimized for mobile devices)
+        name_width = 15     # Fixed width 15 characters for ingredient names
+        quantity_width = 8  # Fixed width 8 characters for quantity
+        price_width = 10    # Fixed width 10 characters for price
+        total_width = 10    # Fixed width 10 characters for total
+        
+        # Create header using English column names (same as in file)
+        header = f"{'Name':<{name_width}} | {'Quantity':^{quantity_width}} | {'Price for piece':^{price_width}} | {'Total amount':>{total_width}}"
+        separator = "─" * (name_width + quantity_width + price_width + total_width + 9)  # 9 characters for separators
+        
+        lines = [header, separator]
+        
+        # Add data rows using the same data as file generation
+        for item in supply_data:
+            name = item['Name']
+            quantity = item['Quantity']
+            price = item['Price for piece']
+            total = item['Total amount']
+            
+            # Format numbers
+            quantity_str = self.number_formatter.format_number_with_spaces(quantity) if quantity > 0 else "-"
+            price_str = self.number_formatter.format_number_with_spaces(price) if price > 0 else "-"
+            total_str = self.number_formatter.format_number_with_spaces(total) if total > 0 else "-"
+            
+            # Split long names into multiple lines
+            name_parts = self._split_name_for_width(name, name_width)
+            
+            # Create rows with alignment (can be multiple rows for one product)
+            for i, name_part in enumerate(name_parts):
+                if i == 0:
+                    # First row with full data
+                    line = f"{name_part:<{name_width}} | {quantity_str:^{quantity_width}} | {price_str:^{price_width}} | {total_str:>{total_width}}"
+                else:
+                    # Subsequent rows only with name, but same length
+                    line = f"{name_part:<{name_width}} | {'':^{quantity_width}} | {'':^{price_width}} | {'':>{total_width}}"
+                lines.append(line)
+        
+        return "\n".join(lines)
+    
+    def _split_name_for_width(self, name: str, max_width: int) -> list:
+        """Split name into multiple lines if it's too long for the column width"""
+        if len(name) <= max_width:
+            return [name]
+        
+        # Split by words first
+        words = name.split()
+        lines = []
+        current_line = ""
+        
+        for word in words:
+            # If adding this word would exceed the width
+            if len(current_line) + len(word) + 1 > max_width:
+                if current_line:
+                    lines.append(current_line)
+                    current_line = word
+                else:
+                    # Single word is too long, split it with hyphen
+                    lines.append(word[:max_width-1] + "-")
+                    current_line = word[max_width-1:]
+            else:
+                if current_line:
+                    current_line += " " + word
+                else:
+                    current_line = word
+        
+        if current_line:
+            lines.append(current_line)
+        
+        return lines
+
+    def _extract_volume_from_name(self, name: str) -> float:
+        """Extract volume/weight from product name and convert to base units (kg/l)"""
+        import re
+        
+        if not name:
+            return 0.0
+        
+        # Patterns to match various volume/weight indicators with conversion factors
+        patterns = [
+            # Base units (kg, l) - no conversion needed
+            (r'(\d+[,.]?\d*)\s*kg', 1.0),  # kg (with comma or dot as decimal separator)
+            (r'(\d+[,.]?\d*)\s*кг', 1.0),  # кг (Russian)
+            (r'(\d+[,.]?\d*)\s*l', 1.0),   # liters
+            (r'(\d+[,.]?\d*)\s*л', 1.0),   # литры (Russian)
+            # Small units (g, ml) - convert to base units (multiply by 0.001)
+            (r'(\d+[,.]?\d*)\s*ml', 0.001),  # milliliters -> liters
+            (r'(\d+[,.]?\d*)\s*мл', 0.001),  # миллилитры -> литры (Russian)
+            (r'(\d+[,.]?\d*)\s*g', 0.001),   # grams -> kg
+            (r'(\d+[,.]?\d*)\s*г', 0.001),   # граммы -> кг (Russian)
+        ]
+        
+        for pattern, conversion_factor in patterns:
+            match = re.search(pattern, name, re.IGNORECASE)
+            if match:
+                volume_str = match.group(1)
+                # Replace comma with dot for proper float conversion
+                volume_str = volume_str.replace(',', '.')
+                try:
+                    volume = float(volume_str)
+                    return volume * conversion_factor
+                except ValueError:
+                    continue
+        
+        return 0.0
+
+    def _format_google_sheets_table_preview(self, receipt_data: ReceiptData, matching_result: IngredientMatchingResult) -> str:
+        """Format table preview for Google Sheets upload"""
+        if not receipt_data.items or not matching_result.matches:
+            return "Нет данных для отображения"
+        
+        # Set fixed column widths (total max 58 characters)
+        date_width = 8        # Fixed width for date
+        volume_width = 6      # Fixed width for volume
+        price_width = 10      # Fixed width for price
+        product_width = 22    # Fixed width for product
+        
+        # Create header using the new format
+        header = f"{'Date':<{date_width}} | {'Vol':<{volume_width}} | {'цена':<{price_width}} | {'Product':<{product_width}}"
+        separator = "─" * (date_width + volume_width + price_width + product_width + 12)  # 12 characters for separators
+        
+        lines = [header, separator]
+        
+        # Add data rows using the new format
+        for i, item in enumerate(receipt_data.items):
+            # Get matching result for this item
+            match = None
+            if i < len(matching_result.matches):
+                match = matching_result.matches[i]
+            
+            # Prepare row data
+            current_date = datetime.now().strftime('%d.%m.%Y')
+            quantity = item.quantity if item.quantity is not None else 0
+            price = item.price if item.price is not None else 0
+            matched_product = match.matched_ingredient_name if match and match.matched_ingredient_name else ""
+            
+            # Extract volume from product name and multiply by quantity
+            volume_from_name = self._extract_volume_from_name(item.name)
+            if volume_from_name > 0:
+                # Multiply extracted volume by quantity
+                total_volume = volume_from_name * quantity
+                if total_volume == int(total_volume):
+                    volume_str = str(int(total_volume))
+                else:
+                    # Round to 2 decimal places
+                    volume_str = f"{total_volume:.2f}"
+            elif quantity > 0:
+                # Fallback to original behavior if no volume found in name
+                if quantity == int(quantity):
+                    volume_str = str(int(quantity))
+                else:
+                    # Round to 2 decimal places
+                    volume_str = f"{quantity:.2f}"
+            else:
+                volume_str = "-"
+            
+            # Format price using the same format as other tables (with spaces)
+            if price > 0:
+                if price == int(price):
+                    price_str = f"{int(price):,}".replace(",", " ")
+                else:
+                    price_str = f"{price:,.1f}".replace(",", " ")
+            else:
+                price_str = "-"
+            
+            # Handle long product names with word wrapping
+            matched_product_parts = self._wrap_text(matched_product, product_width)
+            
+            # Create multiple lines if product name is wrapped
+            for line_idx in range(len(matched_product_parts)):
+                current_product = matched_product_parts[line_idx]
+                
+                # Only show date, volume, and price on first line
+                if line_idx == 0:
+                    line = f"{current_date:<{date_width}} | {volume_str:<{volume_width}} | {price_str:<{price_width}} | {current_product:<{product_width}}"
+                else:
+                    line = f"{'':<{date_width}} | {'':<{volume_width}} | {'':<{price_width}} | {current_product:<{product_width}}"
+                
+                lines.append(line)
+        
+        return "\n".join(lines)
+
+    def _wrap_text(self, text: str, max_width: int) -> list[str]:
+        """Wrap text to fit within max_width, breaking on words when possible"""
+        if not text:
+            return [""]
+        
+        if len(text) <= max_width:
+            return [text]
+        
+        words = text.split()
+        lines = []
+        current_line = ""
+        
+        for word in words:
+            # If adding this word would exceed the width
+            if len(current_line) + len(word) + 1 > max_width:
+                if current_line:
+                    lines.append(current_line)
+                    current_line = word
+                else:
+                    # Single word is too long, split it with hyphen
+                    lines.append(word[:max_width-1] + "-")
+                    current_line = word[max_width-1:]
+            else:
+                if current_line:
+                    current_line += " " + word
+                else:
+                    current_line = word
+        
+        if current_line:
+            lines.append(current_line)
+        
+        return lines
+
+    def _format_google_sheets_matching_table(self, matching_result: IngredientMatchingResult) -> str:
+        """Format Google Sheets matching table for editing"""
+        if not matching_result.matches:
+            return "Нет ингредиентов для сопоставления."
+        
+        # Create table header
+        table_lines = []
+        table_lines.append("**Сопоставление с ингредиентами Google Таблиц:**\n")
+        
+        # Add summary
+        summary = f"📊 **Статистика:** Всего: {matching_result.total_items} | "
+        summary += f"🟢 Точных: {matching_result.exact_matches} | "
+        summary += f"🟡 Частичных: {matching_result.partial_matches} | "
+        summary += f"🔴 Не найдено: {matching_result.no_matches}\n"
+        table_lines.append(summary)
+        
+        # Create table
+        table_lines.append("```")
+        table_lines.append(self._create_google_sheets_table_header())
+        table_lines.append(self._create_google_sheets_table_separator())
+        
+        # Add table rows
+        for i, match in enumerate(matching_result.matches, 1):
+            table_lines.append(self._create_google_sheets_table_row(i, match))
+        
+        table_lines.append("```")
+        
+        return "\n".join(table_lines)
+    
+    def _create_google_sheets_table_header(self) -> str:
+        """Create Google Sheets table header"""
+        return f"{'№':<2} | {'Наименование':<20} | {'Google Таблицы':<20} | {'Статус':<4}"
+    
+    def _create_google_sheets_table_separator(self) -> str:
+        """Create Google Sheets table separator"""
+        return "-" * 50
+    
+    def _create_google_sheets_table_row(self, row_number: int, match: IngredientMatch) -> str:
+        """Create a Google Sheets table row for a match"""
+        # Wrap names instead of truncating
+        receipt_name_lines = self._wrap_text(match.receipt_item_name, 20)
+        ingredient_name_lines = self._wrap_text(
+            match.matched_ingredient_name or "—", 
+            20
+        )
+        
+        # Get status emoji
+        status_emoji = self._get_google_sheets_status_emoji(match.match_status)
+        
+        # Create multi-line row
+        max_lines = max(len(receipt_name_lines), len(ingredient_name_lines))
+        row_lines = []
+        
+        for i in range(max_lines):
+            receipt_name = receipt_name_lines[i] if i < len(receipt_name_lines) else ""
+            ingredient_name = ingredient_name_lines[i] if i < len(ingredient_name_lines) else ""
+            
+            # Only show row number and status on first line
+            if i == 0:
+                row_line = f"{row_number:<2} | {receipt_name:<20} | {ingredient_name:<20} | {status_emoji:<4}"
+            else:
+                row_line = f"{'  ':<2} | {receipt_name:<20} | {ingredient_name:<20} | {'  ':<4}"
+            
+            row_lines.append(row_line)
+        
+        return "\n".join(row_lines)
+    
+    def _get_google_sheets_status_emoji(self, status) -> str:
+        """Get emoji for Google Sheets match status"""
+        from models.ingredient_matching import MatchStatus
+        if status == MatchStatus.EXACT_MATCH:
+            return "🟢"
+        elif status == MatchStatus.PARTIAL_MATCH:
+            return "🟡"
+        else:
+            return "🔴"
+    
+    def _truncate_name(self, name: str, max_length: int) -> str:
+        """Truncate name if too long"""
+        if len(name) <= max_length:
+            return name
+        return name[:max_length-3] + "..."
+
+    async def _show_google_sheets_matching_page(self, update: Update, context: ContextTypes.DEFAULT_TYPE,
+                                               receipt_data: ReceiptData, matching_result: IngredientMatchingResult):
+        """Show Google Sheets matching page with the same table as editor"""
+        from telegram import InlineKeyboardButton, InlineKeyboardMarkup
+        
+        # Use the same table formatting as the editor
+        table_text = self._format_google_sheets_matching_table(matching_result)
+        
+        # Add additional text after the table
+        schema_text = table_text + "\n\nВыберите действие для работы с сопоставлением:"
+        
+        # Create action buttons
+        keyboard = [
+            [InlineKeyboardButton("✏️ Редактировать сопоставление", callback_data="edit_google_sheets_matching")],
+            [InlineKeyboardButton("👁️ Предпросмотр", callback_data="preview_google_sheets_upload")],
+            [InlineKeyboardButton("◀️ Вернуться к чеку", callback_data="back_to_receipt")]
+        ]
+        
+        reply_markup = InlineKeyboardMarkup(keyboard)
+        
+        # Save data for future use
+        context.user_data['pending_google_sheets_upload'] = {
+            'receipt_data': receipt_data,
+            'matching_result': matching_result
+        }
+        
+        # Use UI manager to send/update the single working menu
+        working_menu_id = self.ui_manager.get_working_menu_id(context)
+        
+        if working_menu_id:
+            # Try to edit existing working menu message
+            success = await self.ui_manager.edit_menu(
+                update, context, working_menu_id, schema_text, reply_markup, 'Markdown'
+            )
+            if not success:
+                # If couldn't edit, send new message (replaces working menu)
+                await self.ui_manager.send_menu(update, context, schema_text, reply_markup, 'Markdown')
+        else:
+            # If no working menu, send new message (becomes working menu)
+            await self.ui_manager.send_menu(update, context, schema_text, reply_markup, 'Markdown')
+
+    async def _show_google_sheets_preview(self, update: Update, context: ContextTypes.DEFAULT_TYPE,
+                                        receipt_data: ReceiptData, matching_result: IngredientMatchingResult):
+        """Show Google Sheets upload preview with confirmation buttons - this becomes the single working menu"""
+        from telegram import InlineKeyboardButton, InlineKeyboardMarkup
+        
+        # Create table preview with Google Sheets data
+        table_preview = self._format_google_sheets_table_preview(receipt_data, matching_result)
+        
+        # Text with table preview only
+        text = "📊 **Предварительный просмотр загрузки в Google Таблицы**\n\n"
+        text += f"```\n{table_preview}\n```"
+        
+        keyboard = [
+            [InlineKeyboardButton("✅ Загрузить в Google Таблицы", callback_data="confirm_google_sheets_upload")],
+            [InlineKeyboardButton("✏️ Редактировать сопоставление", callback_data="edit_google_sheets_matching")],
+            [InlineKeyboardButton("◀️ Назад", callback_data="upload_to_google_sheets")]
+        ]
+        
+        reply_markup = InlineKeyboardMarkup(keyboard)
+        
+        # Save data for upload
+        context.user_data['pending_google_sheets_upload'] = {
+            'receipt_data': receipt_data,
+            'matching_result': matching_result
+        }
+        
+        # Use UI manager to send/update the single working menu
+        working_menu_id = self.ui_manager.get_working_menu_id(context)
+        
+        if working_menu_id:
+            # Try to edit existing working menu message
+            success = await self.ui_manager.edit_menu(
+                update, context, working_menu_id, text, reply_markup, 'Markdown'
+            )
+            if not success:
+                # If couldn't edit, send new message (replaces working menu)
+                await self.ui_manager.send_menu(update, context, text, reply_markup, 'Markdown')
+        else:
+            # If no working menu, send new message (becomes working menu)
+            await self.ui_manager.send_menu(update, context, text, reply_markup, 'Markdown')
+
+    async def _show_google_sheets_matching_table(self, update: Update, context: ContextTypes.DEFAULT_TYPE,
+                                               receipt_data: ReceiptData, matching_result: IngredientMatchingResult):
+        """Show Google Sheets matching table for editing"""
+        from telegram import InlineKeyboardButton, InlineKeyboardMarkup
+        
+        # Format the matching table for Google Sheets
+        table_text = self._format_google_sheets_matching_table(matching_result)
+        
+        # Create buttons
+        keyboard = []
+        
+        # Add buttons for items that need matching (max 2 per row)
+        items_needing_matching = []
+        for i, match in enumerate(matching_result.matches):
+            if match.match_status.value in ['partial', 'no_match']:
+                items_needing_matching.append((i, match))
+        
+        for i, (index, match) in enumerate(items_needing_matching):
+            # Get status emoji instead of pencil
+            status_emoji = self._get_google_sheets_status_emoji(match.match_status)
+            button_text = f"{status_emoji} {self._truncate_name(match.receipt_item_name, 15)}"
+            
+            if i % 2 == 0:
+                # Start new row
+                keyboard.append([InlineKeyboardButton(button_text, callback_data=f"edit_google_sheets_item_{index}")])
+            else:
+                # Add to existing row
+                keyboard[-1].append(InlineKeyboardButton(button_text, callback_data=f"edit_google_sheets_item_{index}"))
+        
+        # Add control buttons
+        keyboard.extend([
+            [InlineKeyboardButton("🔍 Выбрать позицию для сопоставления", callback_data="select_google_sheets_position")],
+            [InlineKeyboardButton("✅ Применить изменения", callback_data="apply_google_sheets_matching")],
+            [InlineKeyboardButton("◀️ Назад", callback_data="upload_to_google_sheets")]
+        ])
+        
+        reply_markup = InlineKeyboardMarkup(keyboard)
+        
+        await self.ui_manager.send_menu(
+            update, context, table_text, reply_markup, 'Markdown'
+        )
+
+    async def _show_google_sheets_position_selection(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
+        """Show position selection for Google Sheets matching"""
+        from telegram import InlineKeyboardButton, InlineKeyboardMarkup
+        
+        pending_data = context.user_data.get('pending_google_sheets_upload')
+        if not pending_data:
+            await self.ui_manager.send_temp(
+                update, context, "Ошибка: данные для сопоставления не найдены.", duration=5
+            )
+            return
+        
+        matching_result = pending_data['matching_result']
+        
+        # Show instruction
+        text = "**Выберите позицию для сопоставления**\n\n"
+        text += "Введите номер строки, которую хотите сопоставить с ингредиентом из Google Таблиц:"
+        
+        # Create buttons for each item
+        keyboard = []
+        for i, match in enumerate(matching_result.matches, 1):
+            status_emoji = self._get_google_sheets_status_emoji(match.match_status)
+            button_text = f"{i}. {status_emoji} {self._truncate_name(match.receipt_item_name, 20)}"
+            keyboard.append([InlineKeyboardButton(button_text, callback_data=f"select_google_sheets_line_{i}")])
+        
+        # Add back button
+        keyboard.append([InlineKeyboardButton("◀️ Назад", callback_data="back_to_google_sheets_matching")])
+        
+        reply_markup = InlineKeyboardMarkup(keyboard)
+        
+        await self.ui_manager.send_menu(
+            update, context, text, reply_markup, 'Markdown'
+        )
+
+    async def _show_google_sheets_manual_matching_for_item(self, update: Update, context: ContextTypes.DEFAULT_TYPE, item_index: int):
+        """Show manual matching interface for specific Google Sheets item"""
+        from telegram import InlineKeyboardButton, InlineKeyboardMarkup
+        
+        pending_data = context.user_data.get('pending_google_sheets_upload')
+        if not pending_data:
+            await self.ui_manager.send_temp(
+                update, context, "Ошибка: данные для сопоставления не найдены.", duration=5
+            )
+            return
+        
+        matching_result = pending_data['matching_result']
+        
+        if item_index >= len(matching_result.matches):
+            await self.ui_manager.send_temp(
+                update, context, "Ошибка: неверный индекс товара.", duration=5
+            )
+            return
+        
+        current_match = matching_result.matches[item_index]
+        
+        # Show current match info
+        progress_text = f"**Редактор сопоставления для Google Таблиц**\n\n"
+        progress_text += f"**Товар:** {current_match.receipt_item_name}\n\n"
+        progress_text += "**Выберите подходящий ингредиент:**\n\n"
+        
+        # Get Google Sheets ingredients
+        google_sheets_ingredients = context.bot_data.get('google_sheets_ingredients', {})
+        
+        if current_match.suggested_matches:
+            # Show suggested matches
+            suggestions_text = self._format_google_sheets_suggestions(current_match)
+            progress_text += suggestions_text + "\n\n"
+        else:
+            progress_text += "❌ **Подходящих вариантов не найдено**\n\n"
+        
+        # Create buttons
+        keyboard = []
+        
+        # Add suggestion buttons in two columns
+        if current_match.suggested_matches:
+            for i, suggestion in enumerate(current_match.suggested_matches[:6], 1):  # Show max 6 suggestions (3 rows x 2 columns)
+                button_text = f"{i}. {self._truncate_name(suggestion['name'], 15)} ({int(suggestion['score'] * 100)}%)"
+                if i % 2 == 1:
+                    # Start new row
+                    keyboard.append([InlineKeyboardButton(button_text, callback_data=f"select_google_sheets_suggestion_{item_index}_{i-1}")])
+                else:
+                    # Add to existing row
+                    keyboard[-1].append(InlineKeyboardButton(button_text, callback_data=f"select_google_sheets_suggestion_{item_index}_{i-1}"))
+        
+        # Add search and control buttons
+        keyboard.extend([
+            [InlineKeyboardButton("🔍 Поиск", callback_data=f"search_google_sheets_ingredient_{item_index}")],
+            [InlineKeyboardButton("◀️ Назад", callback_data="back_to_google_sheets_matching")]
+        ])
+        
+        reply_markup = InlineKeyboardMarkup(keyboard)
+        
+        await self.ui_manager.send_menu(
+            update, context, progress_text, reply_markup, 'Markdown'
+        )
+
+    def _format_google_sheets_suggestions(self, match) -> str:
+        """Format Google Sheets suggestions for manual matching"""
+        if not match.suggested_matches:
+            return "Нет предложений"
+        
+        lines = []
+        for i, suggestion in enumerate(match.suggested_matches[:5], 1):  # Show max 5 suggestions
+            name = self._truncate_name(suggestion['name'], 25)
+            score = int(suggestion['score'] * 100)
+            lines.append(f"{i}. {name} ({score}%)")
+        
+        return "\n".join(lines)
+
+    async def _handle_google_sheets_suggestion_selection(self, update: Update, context: ContextTypes.DEFAULT_TYPE, 
+                                                       item_index: int, suggestion_index: int):
+        """Handle Google Sheets suggestion selection"""
+        pending_data = context.user_data.get('pending_google_sheets_upload')
+        if not pending_data:
+            await self.ui_manager.send_temp(
+                update, context, "Ошибка: данные для сопоставления не найдены.", duration=5
+            )
+            return
+        
+        matching_result = pending_data['matching_result']
+        
+        if item_index >= len(matching_result.matches):
+            await self.ui_manager.send_temp(
+                update, context, "Ошибка: неверный индекс товара.", duration=5
+            )
+            return
+        
+        current_match = matching_result.matches[item_index]
+        
+        if not current_match.suggested_matches or suggestion_index >= len(current_match.suggested_matches):
+            await self.ui_manager.send_temp(
+                update, context, "Ошибка: неверный индекс предложения.", duration=5
+            )
+            return
+        
+        # Get selected suggestion
+        selected_suggestion = current_match.suggested_matches[suggestion_index]
+        
+        # Update the match
+        current_match.matched_ingredient_name = selected_suggestion['name']
+        current_match.matched_ingredient_id = selected_suggestion['id']
+        from models.ingredient_matching import MatchStatus
+        current_match.match_status = MatchStatus.EXACT_MATCH
+        current_match.similarity_score = selected_suggestion['score']
+        
+        # Show success message
+        await self.ui_manager.send_temp(
+            update, context,
+            f"✅ Сопоставлено: {current_match.receipt_item_name} → {selected_suggestion['name']}",
+            duration=2
+        )
+        
+        # Return to Google Sheets matching table (editor) with updated data
+        await self._show_google_sheets_matching_table(update, context, 
+            pending_data['receipt_data'], matching_result)
+
+    async def _handle_google_sheets_search_selection(self, update: Update, context: ContextTypes.DEFAULT_TYPE, 
+                                                   item_index: int, result_index: int):
+        """Handle Google Sheets search result selection"""
+        pending_data = context.user_data.get('pending_google_sheets_upload')
+        if not pending_data:
+            await self.ui_manager.send_temp(
+                update, context, "Ошибка: данные для сопоставления не найдены.", duration=5
+            )
+            return
+        
+        matching_result = pending_data['matching_result']
+        
+        if item_index >= len(matching_result.matches):
+            await self.ui_manager.send_temp(
+                update, context, "Ошибка: неверный индекс товара.", duration=5
+            )
+            return
+        
+        current_match = matching_result.matches[item_index]
+        
+        # Get search results from user data
+        search_results = context.user_data.get('google_sheets_search_results', [])
+        if not search_results or result_index >= len(search_results):
+            await self.ui_manager.send_temp(
+                update, context, "Ошибка: неверный индекс результата поиска.", duration=5
+            )
+            return
+        
+        # Get selected search result
+        selected_result = search_results[result_index]
+        
+        # Update the match
+        current_match.matched_ingredient_name = selected_result['name']
+        current_match.matched_ingredient_id = selected_result.get('id', '')
+        from models.ingredient_matching import MatchStatus
+        current_match.match_status = MatchStatus.EXACT_MATCH
+        current_match.similarity_score = 1.0  # Exact match from search
+        
+        # Clear search data
+        context.user_data.pop('google_sheets_search_results', None)
+        context.user_data.pop('google_sheets_search_mode', None)
+        context.user_data.pop('google_sheets_search_item_index', None)
+        
+        # Show success message
+        await self.ui_manager.send_temp(
+            update, context,
+            f"✅ Сопоставлено: {current_match.receipt_item_name} → {selected_result['name']}",
+            duration=2
+        )
+        
+        # Return to Google Sheets matching table (editor) with updated data
+        await self._show_google_sheets_matching_table(update, context, 
+            pending_data['receipt_data'], matching_result)
+
+    async def _handle_google_sheets_position_match_selection(self, update: Update, context: ContextTypes.DEFAULT_TYPE, 
+                                                           selected_line: int, result_index: int):
+        """Handle Google Sheets position match selection from search results"""
+        # This would need to be implemented based on how search results are stored
+        # For now, we'll show a placeholder message
+        await self.ui_manager.send_temp(
+            update, context,
+            f"✅ Сопоставление для строки {selected_line} выполнено!",
+            duration=2
+        )
+        
+        # Return to matching table
+        pending_data = context.user_data.get('pending_google_sheets_upload')
+        if pending_data:
+            await self._show_google_sheets_matching_table(update, context, 
+                pending_data['receipt_data'], pending_data['matching_result'])
+
+
+    async def _show_file_format_selection(self, update: Update, context: ContextTypes.DEFAULT_TYPE,
+                                        receipt_data: ReceiptData, matching_result: IngredientMatchingResult):
+        """Show file format selection menu with table preview"""
+        from telegram import InlineKeyboardButton, InlineKeyboardMarkup
+        
+        # Create table preview with Poster data
+        table_preview = self._format_poster_table_preview(receipt_data, matching_result)
+        
+        # Text with table preview
+        text = "**Проверьте содержимое таблицы перед генерацией**\n\n"
+        text += f"```\n{table_preview}\n```"
+        
+        keyboard = [
+            [InlineKeyboardButton("📥 Скачать XLSX", callback_data="generate_file_xlsx")],
+            [InlineKeyboardButton("◀️ Назад", callback_data="back_to_receipt")]
+        ]
+        
+        reply_markup = InlineKeyboardMarkup(keyboard)
+        
+        # Save data for file generation
+        context.user_data['pending_file_generation'] = {
+            'receipt_data': receipt_data,
+            'matching_result': matching_result
+        }
+        
+        await self.ui_manager.send_menu(
+            update, context, text, reply_markup, 'Markdown'
+        )
+    
+    async def _generate_file_in_format(self, update: Update, context: ContextTypes.DEFAULT_TYPE,
+                                     receipt_data: ReceiptData, matching_result: IngredientMatchingResult,
+                                     file_format: str):
+        """Generate file in specified format and send to user"""
+        try:
+            # Generate file
+            file_content = self.file_generator.generate_supply_file(
+                receipt_data=receipt_data,
+                matching_result=matching_result,
+                file_format=file_format,
+                supplier="Supplier",  # Default values, can be made configurable
+                storage_location="Storage 1",
+                comment="Generated by AI Bot"
+            )
+            
+            # Create filename
+            timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+            filename = f"supply_{timestamp}.{file_format}"
+            
+            # Send file
+            from telegram import InputFile
+            file_obj = InputFile(io.BytesIO(file_content), filename=filename)
+            
+            # Send file with caption using UI manager for proper cleanup
+            file_message = await update.callback_query.message.reply_document(
+                document=file_obj,
+                caption=f"📄 **Файл поставки готов!**\n\n"
+                       f"📊 **Формат:** {file_format.upper()}\n"
+                       f"📦 **Товаров:** {len(receipt_data.items)}\n"
+                       f"✅ **Точно сопоставлено:** {matching_result.exact_matches}\n"
+                       f"🟡 **Частично сопоставлено:** {matching_result.partial_matches}\n"
+                       f"❌ **Не сопоставлено:** {matching_result.no_matches}\n\n"
+                       f"📈 **Процент сопоставления:** {((matching_result.exact_matches + matching_result.partial_matches) / len(matching_result.matches) * 100):.1f}%\n\n"
+                       f"Файл содержит товары с наименованиями из Poster и готов для загрузки."
+            )
+            
+            # Add file message to cleanup list
+            if 'messages_to_cleanup' not in context.user_data:
+                context.user_data['messages_to_cleanup'] = []
+            context.user_data['messages_to_cleanup'].append(file_message.message_id)
+            
+            # Send additional message with back button
+            await self.ui_manager.send_menu(
+                update, context,
+                "✅ **Файл успешно сгенерирован и отправлен!**\n\n"
+                "Вы можете скачать файл выше или вернуться к чеку для дальнейшей работы.",
+                InlineKeyboardMarkup([
+                    [InlineKeyboardButton("◀️ Назад к чеку", callback_data="back_to_receipt")],
+                    [InlineKeyboardButton("📄 Создать еще один файл", callback_data="generate_supply_file")]
+                ]),
+                'Markdown'
+            )
+            
+        except Exception as e:
+            print(f"Ошибка при генерации файла {file_format}: {e}")
+            await self.ui_manager.send_menu(
+                update, context,
+                f"❌ **Ошибка при генерации файла**\n\n"
+                f"**Формат:** {file_format.upper()}\n"
+                f"**Детали ошибки:** {e}\n\n"
+                "Попробуйте выбрать другой формат или обратитесь к администратору.",
+                InlineKeyboardMarkup([
+                    [InlineKeyboardButton("📄 Выбрать другой формат", callback_data="generate_supply_file")],
+                    [InlineKeyboardButton("◀️ Назад", callback_data="back_to_receipt")]
+                ]),
+                'Markdown'
+            )
+    
+    async def _update_ingredient_matching_after_data_change(self, update: Update, context: ContextTypes.DEFAULT_TYPE, 
+                                                           receipt_data: ReceiptData, change_type: str = "general") -> None:
+        """Update ingredient matching after any data change"""
+        try:
+            # Get current matching result from context or storage
+            matching_result = context.user_data.get('ingredient_matching_result')
+            changed_indices = context.user_data.get('changed_ingredient_indices', set())
+            
+            if not matching_result:
+                # Try to load from storage using old hash
+                user_id = update.effective_user.id
+                old_receipt_data = context.user_data.get('original_data')
+                if old_receipt_data:
+                    old_receipt_hash = old_receipt_data.get_receipt_hash()
+                    saved_data = self.ingredient_storage.load_matching_result(user_id, old_receipt_hash)
+                    if saved_data:
+                        matching_result, changed_indices = saved_data
+                        # Update context with loaded data
+                        context.user_data['ingredient_matching_result'] = matching_result
+                        context.user_data['changed_ingredient_indices'] = changed_indices
+            
+            if not matching_result:
+                print(f"DEBUG: No matching result found to update after {change_type}")
+                return
+            
+            # For different change types, we need different handling
+            if change_type == "deletion":
+                # This will be handled by the specific deletion function
+                return
+            elif change_type == "addition":
+                # Add a new empty match for the new item
+                from models.ingredient_matching import IngredientMatch, MatchStatus
+                new_match = IngredientMatch(
+                    receipt_item_name="Новый товар",
+                    matched_ingredient_name="",
+                    matched_ingredient_id="",
+                    match_status=MatchStatus.NO_MATCH,
+                    similarity_score=0.0,
+                    suggested_matches=[]
+                )
+                matching_result.matches.append(new_match)
+                
+            elif change_type == "item_edit":
+                # For item edits, we need to regenerate matching for that specific item
+                # This is more complex, so for now we'll just mark that matching needs to be redone
+                # The user will need to redo ingredient matching if they want accurate results
+                print("DEBUG: Item edited - ingredient matching may need to be redone")
+                return
+                
+            # Update context
+            context.user_data['ingredient_matching_result'] = matching_result
+            context.user_data['changed_ingredient_indices'] = changed_indices
+            
+            # Save updated matching result with new receipt hash
+            user_id = update.effective_user.id
+            new_receipt_hash = receipt_data.get_receipt_hash()
+            success = self.ingredient_storage.save_matching_result(user_id, matching_result, changed_indices, new_receipt_hash)
+            
+            # Clear old matching result file if hash changed
+            if context.user_data.get('original_data'):
+                old_receipt_hash = context.user_data['original_data'].get_receipt_hash()
+                if old_receipt_hash != new_receipt_hash:
+                    self.ingredient_storage.clear_matching_result(user_id, old_receipt_hash)
+            
+            print(f"DEBUG: Updated ingredient matching after {change_type}, new hash: {new_receipt_hash}, success: {success}")
+                
+        except Exception as e:
+            print(f"DEBUG: Error updating ingredient matching after {change_type}: {e}")
+    
+    async def _auto_match_ingredient_for_new_item(self, update: Update, context: ContextTypes.DEFAULT_TYPE, 
+                                                new_item: ReceiptItem, receipt_data: ReceiptData) -> None:
+        """Automatically match ingredient for a newly added item and update matching result"""
+        try:
+            print(f"DEBUG: Starting auto-match for new item: '{new_item.name}'")
+            
+            # Get current matching result from context or storage
+            matching_result = context.user_data.get('ingredient_matching_result')
+            changed_indices = context.user_data.get('changed_ingredient_indices', set())
+            
+            print(f"DEBUG: Current matching result in context: {matching_result is not None}")
+            
+            if not matching_result:
+                # Try to load from storage using old hash
+                user_id = update.effective_user.id
+                old_receipt_data = context.user_data.get('original_data')
+                if old_receipt_data:
+                    old_receipt_hash = old_receipt_data.get_receipt_hash()
+                    print(f"DEBUG: Trying to load matching from old hash: {old_receipt_hash}")
+                    saved_data = self.ingredient_storage.load_matching_result(user_id, old_receipt_hash)
+                    if saved_data:
+                        matching_result, changed_indices = saved_data
+                        print(f"DEBUG: Loaded matching with {len(matching_result.matches)} matches")
+                        # Update context with loaded data
+                        context.user_data['ingredient_matching_result'] = matching_result
+                        context.user_data['changed_ingredient_indices'] = changed_indices
+                    else:
+                        print("DEBUG: No saved data found for old hash")
+            
+            if not matching_result:
+                print("DEBUG: No matching result found, creating new one for new item")
+                # Create new matching result if none exists
+                from models.ingredient_matching import IngredientMatchingResult, IngredientMatch
+                matching_result = IngredientMatchingResult()
+                changed_indices = set()
+            
+            # Get poster ingredients from bot data
+            poster_ingredients = context.bot_data.get('poster_ingredients', {})
+            
+            if not poster_ingredients:
+                print("DEBUG: Poster ingredients not loaded, adding empty match for new item")
+                # Add empty match if no poster ingredients available
+                from models.ingredient_matching import IngredientMatch, MatchStatus
+                new_match = IngredientMatch(
+                    receipt_item_name=new_item.name,
+                    matched_ingredient_name="",
+                    matched_ingredient_id="",
+                    match_status=MatchStatus.NO_MATCH,
+                    similarity_score=0.0,
+                    suggested_matches=[]
+                )
+            else:
+                # Perform automatic ingredient matching for the new item
+                from models.receipt import ReceiptData
+                temp_receipt = ReceiptData(items=[new_item])
+                temp_matching_result = self.ingredient_matching_service.match_ingredients(temp_receipt, poster_ingredients)
+                
+                print(f"DEBUG: Matching result for '{new_item.name}': {len(temp_matching_result.matches)} matches")
+                
+                if temp_matching_result.matches:
+                    new_match = temp_matching_result.matches[0]
+                    print(f"DEBUG: Auto-matched '{new_item.name}' with '{new_match.matched_ingredient_name}' (score: {new_match.similarity_score}, status: {new_match.match_status})")
+                else:
+                    # Fallback to empty match
+                    from models.ingredient_matching import IngredientMatch, MatchStatus
+                    new_match = IngredientMatch(
+                        receipt_item_name=new_item.name,
+                        matched_ingredient_name="",
+                        matched_ingredient_id="",
+                        match_status=MatchStatus.NO_MATCH,
+                        similarity_score=0.0,
+                        suggested_matches=[]
+                    )
+                    print(f"DEBUG: No matches found for '{new_item.name}', using empty match")
+            
+            # Add the new match to the existing matching result
+            matching_result.matches.append(new_match)
+            
+            # Update context
+            context.user_data['ingredient_matching_result'] = matching_result
+            context.user_data['changed_ingredient_indices'] = changed_indices
+            
+            # Save updated matching result with new receipt hash
+            user_id = update.effective_user.id
+            new_receipt_hash = receipt_data.get_receipt_hash()
+            success = self.ingredient_storage.save_matching_result(user_id, matching_result, changed_indices, new_receipt_hash)
+            
+            # Clear old matching result file if hash changed
+            if context.user_data.get('original_data'):
+                old_receipt_hash = context.user_data['original_data'].get_receipt_hash()
+                if old_receipt_hash != new_receipt_hash:
+                    self.ingredient_storage.clear_matching_result(user_id, old_receipt_hash)
+            
+            print(f"DEBUG: Auto-matched ingredient for new item, new hash: {new_receipt_hash}, success: {success}")
+                
+        except Exception as e:
+            print(f"DEBUG: Error auto-matching ingredient for new item: {e}")
+    
+    async def _attempt_automatic_matching_for_all_items(self, update: Update, context: ContextTypes.DEFAULT_TYPE, 
+                                                      receipt_data: ReceiptData) -> None:
+        """Attempt to automatically match all items and either generate file or show manual matching menu"""
+        try:
+            print("DEBUG: Starting automatic matching for all items")
+            
+            # Get poster ingredients from bot data
+            poster_ingredients = context.bot_data.get('poster_ingredients', {})
+            
+            if not poster_ingredients:
+                print("DEBUG: No poster ingredients available, showing manual matching menu")
+                await self._show_manual_matching_menu(update, context)
+                return
+            
+            # Perform automatic ingredient matching for all items
+            matching_result = self.ingredient_matching_service.match_ingredients(receipt_data, poster_ingredients)
+            
+            print(f"DEBUG: Automatic matching completed: {len(matching_result.matches)} matches")
+            print(f"DEBUG: Exact matches: {matching_result.exact_matches}")
+            print(f"DEBUG: Partial matches: {matching_result.partial_matches}")
+            print(f"DEBUG: No matches: {matching_result.no_matches}")
+            
+            # Check if we have at least some matches
+            matched_count = sum(1 for match in matching_result.matches 
+                               if match.match_status.value != 'no_match' and match.matched_ingredient_name)
+            
+            if matched_count > 0:
+                print(f"DEBUG: Found {matched_count} matches, proceeding with file generation")
+                
+                # Save the matching result
+                user_id = update.effective_user.id
+                receipt_hash = receipt_data.get_receipt_hash()
+                success = self.ingredient_storage.save_matching_result(user_id, matching_result, set(), receipt_hash)
+                
+                # Update context
+                context.user_data['ingredient_matching_result'] = matching_result
+                context.user_data['changed_ingredient_indices'] = set()
+                
+                # Generate and send file
+                await self._generate_and_send_supply_file(update, context, receipt_data, matching_result)
+            else:
+                print("DEBUG: No matches found, showing manual matching menu")
+                await self._show_manual_matching_menu(update, context)
+                
+        except Exception as e:
+            print(f"DEBUG: Error in automatic matching for all items: {e}")
+            await self._show_manual_matching_menu(update, context)
+    
+    async def _load_poster_ingredients_and_match(self, update: Update, context: ContextTypes.DEFAULT_TYPE, 
+                                               receipt_data: ReceiptData) -> None:
+        """Load poster ingredients and perform matching, then show table with edit button"""
+        try:
+            print("DEBUG: Loading poster ingredients and performing matching")
+            
+            # Load poster ingredients
+            from poster_handler import get_all_poster_ingredients
+            poster_ingredients = get_all_poster_ingredients()
+            
+            if not poster_ingredients:
+                await self.ui_manager.send_menu(
+                    update, context,
+                    "❌ **Ошибка загрузки данных**\n\n"
+                    "Не удалось загрузить справочник ингредиентов из Poster.\n"
+                    "Проверьте подключение к интернету и попробуйте снова.",
+                    InlineKeyboardMarkup([
+                        [InlineKeyboardButton("🔄 Попробовать снова", callback_data="generate_supply_file")],
+                        [InlineKeyboardButton("◀️ Назад", callback_data="back_to_receipt")]
+                    ]),
+                    'Markdown'
+                )
+                return
+            
+            # Save poster ingredients to bot data for future use
+            context.bot_data["poster_ingredients"] = poster_ingredients
+            print(f"DEBUG: Loaded {len(poster_ingredients)} poster ingredients")
+            
+            # Perform automatic ingredient matching for all items
+            matching_result = self.ingredient_matching_service.match_ingredients(receipt_data, poster_ingredients)
+            
+            print(f"DEBUG: Automatic matching completed: {len(matching_result.matches)} matches")
+            print(f"DEBUG: Exact matches: {matching_result.exact_matches}")
+            print(f"DEBUG: Partial matches: {matching_result.partial_matches}")
+            print(f"DEBUG: No matches: {matching_result.no_matches}")
+            
+            # Save the matching result
+            user_id = update.effective_user.id
+            receipt_hash = receipt_data.get_receipt_hash()
+            success = self.ingredient_storage.save_matching_result(user_id, matching_result, set(), receipt_hash)
+            
+            # Update context
+            context.user_data['ingredient_matching_result'] = matching_result
+            context.user_data['changed_ingredient_indices'] = set()
+            
+            # Show table with edit button
+            await self._show_matching_table_with_edit_button(update, context, receipt_data, matching_result)
+                
+        except Exception as e:
+            print(f"DEBUG: Error loading poster ingredients and matching: {e}")
+            await self.ui_manager.send_menu(
+                update, context,
+                "❌ **Ошибка при загрузке данных**\n\n"
+                f"Произошла ошибка: {e}\n\n"
+                "Попробуйте снова или обратитесь к администратору.",
+                InlineKeyboardMarkup([
+                    [InlineKeyboardButton("🔄 Попробовать снова", callback_data="generate_supply_file")],
+                    [InlineKeyboardButton("◀️ Назад", callback_data="back_to_receipt")]
+                ]),
+                'Markdown'
+            )
+    
+    async def _show_matching_table_with_edit_button(self, update: Update, context: ContextTypes.DEFAULT_TYPE, 
+                                                  receipt_data: ReceiptData, matching_result: IngredientMatchingResult) -> None:
+        """Show matching table with edit button"""
+        try:
+            # Create table preview with Poster data
+            table_preview = self._format_poster_table_preview(receipt_data, matching_result)
+            
+            # Text with table preview
+            text = "**Проверьте содержимое таблицы перед генерацией**\n\n"
+            text += f"```\n{table_preview}\n```"
+            
+            # Create keyboard with edit button and file generation
+            keyboard = [
+                [InlineKeyboardButton("✏️ Отредактировать сопоставления", callback_data="match_ingredients")],
+                [InlineKeyboardButton("📄 Сгенерировать файл", callback_data="generate_file_from_table")],
+                [InlineKeyboardButton("◀️ Назад", callback_data="back_to_receipt")]
+            ]
+            
+            reply_markup = InlineKeyboardMarkup(keyboard)
+            
+            await self.ui_manager.send_menu(update, context, text, reply_markup, 'Markdown')
+            
+        except Exception as e:
+            print(f"DEBUG: Error showing matching table: {e}")
+            await self.ui_manager.send_menu(
+                update, context,
+                "❌ **Ошибка отображения таблицы**\n\n"
+                f"Произошла ошибка: {e}\n\n"
+                "Попробуйте снова.",
+                InlineKeyboardMarkup([
+                    [InlineKeyboardButton("🔄 Попробовать снова", callback_data="generate_supply_file")],
+                    [InlineKeyboardButton("◀️ Назад", callback_data="back_to_receipt")]
+                ]),
+                'Markdown'
+            )
+    
+    async def _fix_matching_for_changed_items(self, update: Update, context: ContextTypes.DEFAULT_TYPE, 
+                                            receipt_data: ReceiptData, existing_matching: IngredientMatchingResult) -> None:
+        """Fix matching when item count has changed"""
+        try:
+            print("DEBUG: Fixing matching for changed items")
+            
+            # Get poster ingredients from bot data
+            poster_ingredients = context.bot_data.get('poster_ingredients', {})
+            
+            if not poster_ingredients:
+                print("DEBUG: No poster ingredients available, showing manual matching menu")
+                await self._show_manual_matching_menu(update, context)
+                return
+            
+            # Create new matching result with all current items
+            matching_result = self.ingredient_matching_service.match_ingredients(receipt_data, poster_ingredients)
+            
+            print(f"DEBUG: Fixed matching completed: {len(matching_result.matches)} matches")
+            
+            # Save the updated matching result
+            user_id = update.effective_user.id
+            receipt_hash = receipt_data.get_receipt_hash()
+            success = self.ingredient_storage.save_matching_result(user_id, matching_result, set(), receipt_hash)
+            
+            # Update context
+            context.user_data['ingredient_matching_result'] = matching_result
+            context.user_data['changed_ingredient_indices'] = set()
+            
+            # Check if we have matches and proceed accordingly
+            matched_count = sum(1 for match in matching_result.matches 
+                               if match.match_status.value != 'no_match' and match.matched_ingredient_name)
+            
+            if matched_count > 0:
+                print(f"DEBUG: Fixed matching has {matched_count} matches, proceeding with file generation")
+                await self._generate_and_send_supply_file(update, context, receipt_data, matching_result)
+            else:
+                print("DEBUG: Fixed matching has no matches, showing manual matching menu")
+                await self._show_manual_matching_menu(update, context)
+                
+        except Exception as e:
+            print(f"DEBUG: Error fixing matching for changed items: {e}")
+            await self._show_manual_matching_menu(update, context)
+    
+    async def _show_manual_matching_menu(self, update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+        """Show the manual matching menu when automatic matching fails"""
+        await self.ui_manager.send_menu(
+            update, context,
+            "📄 **Получить файл для загрузки в постер**\n\n"
+            "❌ Необходимо выполнить сопоставление ингредиентов.\n\n"
+            "**Что нужно сделать:**\n"
+            "1️⃣ Нажмите кнопку '✏️ Отредактировать сопоставления' ниже\n"
+            "2️⃣ Выполните сопоставление всех товаров с ингредиентами Poster\n"
+            "3️⃣ Нажмите '✅ Применить' для сохранения\n"
+            "4️⃣ Затем вернитесь к этой кнопке для получения файла\n\n"
+            "Файл будет содержать товары с сопоставленными наименованиями из Poster.",
+            InlineKeyboardMarkup([
+                [InlineKeyboardButton("✏️ Отредактировать сопоставления", callback_data="match_ingredients")],
+                [InlineKeyboardButton("◀️ Назад", callback_data="back_to_receipt")]
+            ]),
+            'Markdown'
+        )
+    
+    async def _upload_to_google_sheets(self, update: Update, context: ContextTypes.DEFAULT_TYPE,
+                                     receipt_data: ReceiptData, matching_result: IngredientMatchingResult):
+        """Show Google Sheets upload preview before actual upload"""
+        try:
+            # Check if Google Sheets service is available
+            if not self.google_sheets_service.is_available():
+                await self.ui_manager.send_menu(
+                    update, context,
+                    "❌ **Google Sheets недоступен**\n\n"
+                    "Сервис Google Sheets не настроен или недоступен.\n"
+                    "Обратитесь к администратору для настройки.",
+                    InlineKeyboardMarkup([
+                        [InlineKeyboardButton("◀️ Назад", callback_data="back_to_receipt")]
+                    ]),
+                    'Markdown'
+                )
+                return
+            
+            # Ensure Google Sheets ingredients are loaded
+            if not await self._ensure_google_sheets_ingredients_loaded(context):
+                await self.ui_manager.send_menu(
+                    update, context,
+                    "❌ **Ошибка загрузки в Google Sheets**\n\n"
+                    "Не удалось загрузить справочник ингредиентов для Google Sheets.\n"
+                    "Проверьте настройки конфигурации.",
+                    InlineKeyboardMarkup([
+                        [InlineKeyboardButton("📊 Загрузить в Google Sheets", callback_data="upload_to_google_sheets")],
+                        [InlineKeyboardButton("◀️ Назад", callback_data="back_to_receipt")]
+                    ]),
+                    'Markdown'
+                )
+                return
+            
+            # Get Google Sheets ingredients from bot data
+            google_sheets_ingredients = context.bot_data.get('google_sheets_ingredients', {})
+            
+            # Convert format from {id: {'name': name}} to {name: id} for matching service
+            google_sheets_ingredients_for_matching = {}
+            for ingredient_id, ingredient_data in google_sheets_ingredients.items():
+                ingredient_name = ingredient_data.get('name', '')
+                if ingredient_name:
+                    google_sheets_ingredients_for_matching[ingredient_name] = ingredient_id
+            
+            # Perform matching with Google Sheets ingredients
+            print(f"DEBUG: Performing matching with Google Sheets ingredients for {len(receipt_data.items)} items")
+            google_sheets_matching_result = self.ingredient_matching_service.match_ingredients(receipt_data, google_sheets_ingredients_for_matching)
+            
+            # Save Google Sheets matching result to context for Excel generation
+            context.user_data['google_sheets_matching_result'] = google_sheets_matching_result
+            
+            # Show Google Sheets matching page
+            await self._show_google_sheets_matching_page(update, context, receipt_data, google_sheets_matching_result)
+            
+        except Exception as e:
+            print(f"Ошибка при подготовке загрузки в Google Sheets: {e}")
+            await self.ui_manager.send_menu(
+                update, context,
+                f"❌ **Ошибка при подготовке загрузки**\n\n"
+                f"**Детали ошибки:** {e}\n\n"
+                "Попробуйте начать процесс заново.",
+                InlineKeyboardMarkup([
+                    [InlineKeyboardButton("🔄 Попробовать снова", callback_data="upload_to_google_sheets")],
+                    [InlineKeyboardButton("◀️ Назад", callback_data="back_to_receipt")]
+                ]),
+                'Markdown'
+            )
+    
+    async def _execute_google_sheets_upload(self, update: Update, context: ContextTypes.DEFAULT_TYPE,
+                                          receipt_data: ReceiptData, matching_result: IngredientMatchingResult):
+        """Execute actual Google Sheets upload"""
+        try:
+            # Save Google Sheets matching result to context for Excel generation
+            context.user_data['google_sheets_matching_result'] = matching_result
+            
+            # Show upload summary
+            summary = self.google_sheets_service.get_upload_summary(receipt_data, matching_result)
+            
+            # Upload data
+            success, message = self.google_sheets_service.upload_receipt_data(
+                receipt_data, 
+                matching_result,
+                self.config.GOOGLE_SHEETS_WORKSHEET_NAME
+            )
+            
+            if success:
+                # Save upload data for potential undo
+                context.user_data['last_google_sheets_upload'] = {
+                    'worksheet_name': self.config.GOOGLE_SHEETS_WORKSHEET_NAME,
+                    'row_count': len(receipt_data.items),
+                    'timestamp': datetime.now().isoformat()
+                }
+                
+                # Show new success page interface
+                await self._show_upload_success_page(update, context, summary, message)
+            else:
+                # Show error message
+                error_text = f"❌ **Ошибка загрузки в Google Sheets**\n\n{message}\n\n{summary}"
+                await self.ui_manager.send_menu(
+                    update, context,
+                    error_text,
+                    InlineKeyboardMarkup([
+                        [InlineKeyboardButton("🔄 Попробовать снова", callback_data="upload_to_google_sheets")],
+                        [InlineKeyboardButton("📄 Сгенерировать файл", callback_data="generate_file_from_table")],
+                        [InlineKeyboardButton("◀️ Назад", callback_data="back_to_receipt")]
+                    ]),
+                    'Markdown'
+                )
+                
+        except Exception as e:
+            print(f"DEBUG: Error uploading to Google Sheets: {e}")
+            await self.ui_manager.send_menu(
+                update, context,
+                f"❌ **Критическая ошибка**\n\nПроизошла неожиданная ошибка при загрузке в Google Sheets:\n`{str(e)}`",
+                InlineKeyboardMarkup([
+                    [InlineKeyboardButton("◀️ Назад", callback_data="back_to_receipt")]
+                ]),
+                'Markdown'
+            )
+    
+    async def _show_upload_success_page(self, update: Update, context: ContextTypes.DEFAULT_TYPE, 
+                                      summary: str, message: str):
+        """Show the new upload success page interface"""
+        # Clean up all messages except anchor first
+        await self.ui_manager.cleanup_all_except_anchor(update, context)
+        
+        # Create success message with only the header
+        success_text = "✅ **Данные успешно загружены в Google Sheets!**"
+        
+        # Create new button layout
+        keyboard = [
+            [InlineKeyboardButton("↩️ Отменить загрузку", callback_data="undo_google_sheets_upload")],
+            [InlineKeyboardButton("📄 Сгенерировать файл", callback_data="generate_excel_file")],
+            [InlineKeyboardButton("📋 Вернуться к чеку", callback_data="back_to_receipt")],
+            [InlineKeyboardButton("📸 Загрузить новый чек", callback_data="start_new_receipt")]
+        ]
+        
+        reply_markup = InlineKeyboardMarkup(keyboard)
+        
+        await self.ui_manager.send_menu(
+            update, context,
+            success_text,
+            reply_markup,
+            'Markdown'
+        )
+    
+    
+    async def _undo_google_sheets_upload(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
+        """Undo the last Google Sheets upload by deleting the last added rows"""
+        try:
+            # Get the last upload data from context
+            last_upload_data = context.user_data.get('last_google_sheets_upload')
+            
+            if not last_upload_data:
+                await self.ui_manager.send_temp(
+                    update, context, "❌ Нет данных о последней загрузке для отмены.", duration=5
+                )
+                return
+            
+            # Delete the last uploaded rows from Google Sheets
+            success, message = self.google_sheets_service.delete_last_uploaded_rows(
+                last_upload_data['worksheet_name'],
+                last_upload_data['row_count']
+            )
+            
+            if success:
+                # Clear the last upload data
+                context.user_data.pop('last_google_sheets_upload', None)
+                
+                # Show success message and return to receipt
+                await self.ui_manager.send_temp(
+                    update, context, f"✅ {message}", duration=3
+                )
+                
+                # Return to receipt view
+                await self.ui_manager.cleanup_all_except_anchor(update, context)
+                self.ui_manager._clear_temporary_data(context)
+                await self._show_final_report_with_edit_button_callback(update, context)
+            else:
+                await self.ui_manager.send_temp(
+                    update, context, f"❌ Ошибка отмены загрузки: {message}", duration=5
+                )
+                
+        except Exception as e:
+            print(f"Error undoing Google Sheets upload: {e}")
+            await self.ui_manager.send_temp(
+                update, context, f"❌ Произошла ошибка при отмене загрузки: {str(e)}", duration=5
+            )
+    
+    async def _generate_excel_file(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
+        """Generate Excel file with the same data that was uploaded to Google Sheets"""
+        try:
+            # Clean up all messages except anchor before generating file
+            await self.ui_manager.cleanup_all_except_anchor(update, context)
+            
+            # Get receipt data and Google Sheets matching result
+            receipt_data = context.user_data.get('receipt_data')
+            matching_result = context.user_data.get('google_sheets_matching_result')
+            
+            if not receipt_data:
+                await self.ui_manager.send_temp(
+                    update, context, "❌ Нет данных чека для генерации файла.", duration=5
+                )
+                return
+            
+            if not matching_result:
+                await self.ui_manager.send_temp(
+                    update, context, "❌ Нет данных сопоставления Google Sheets для генерации файла.", duration=5
+                )
+                return
+            
+            # Generate Excel file
+            file_path = self.file_generator.generate_excel_file(receipt_data, matching_result)
+            
+            if file_path:
+                # Create button layout for navigation
+                keyboard = [
+                    [InlineKeyboardButton("📋 Вернуться к чеку", callback_data="back_to_receipt")],
+                    [InlineKeyboardButton("📸 Загрузить новый чек", callback_data="start_new_receipt")]
+                ]
+                reply_markup = InlineKeyboardMarkup(keyboard)
+                
+                # Send the file with caption and buttons in one message
+                with open(file_path, 'rb') as file:
+                    file_message = await update.callback_query.message.reply_document(
+                        document=file,
+                        filename=f"receipt_data_{datetime.now().strftime('%Y%m%d_%H%M%S')}.xlsx",
+                        caption="📄 **Скачать Excel-файл с данными чека**",
+                        reply_markup=reply_markup
+                    )
+                    
+                    # Save file message ID for cleanup
+                    if 'messages_to_cleanup' not in context.user_data:
+                        context.user_data['messages_to_cleanup'] = []
+                    context.user_data['messages_to_cleanup'].append(file_message.message_id)
+                
+                # Clean up the file
+                import os
+                try:
+                    os.remove(file_path)
+                except:
+                    pass
+            else:
+                await self.ui_manager.send_temp(
+                    update, context, "❌ Ошибка генерации Excel файла.", duration=5
+                )
+                
+        except Exception as e:
+            print(f"Error generating Excel file: {e}")
+            await self.ui_manager.send_temp(
+                update, context, f"❌ Произошла ошибка при генерации файла: {str(e)}", duration=5
+            )
+    
+    async def _start_new_receipt(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
+        """Start new receipt analysis by clearing all data and showing start menu"""
+        try:
+            # Clear all messages
+            await self.ui_manager.clear_all_messages(update, context)
+            
+            # Clear all data
+            context.user_data.clear()
+            
+            # Show start menu
+            keyboard = [
+                [InlineKeyboardButton("📸 Анализировать чек", callback_data="analyze_receipt")],
+                [InlineKeyboardButton("📄 Получить файл для загрузки в постер", callback_data="generate_supply_file")]
+            ]
+            reply_markup = InlineKeyboardMarkup(keyboard)
+            
+            await self.ui_manager.send_menu(
+                update, context,
+                "🏠 **Главное меню**\n\nВыберите действие:",
+                reply_markup,
+                'Markdown'
+            )
+            
+        except Exception as e:
+            print(f"Error starting new receipt: {e}")
+            await self.ui_manager.send_temp(
+                update, context, f"❌ Произошла ошибка при запуске нового анализа: {str(e)}", duration=5
+            )

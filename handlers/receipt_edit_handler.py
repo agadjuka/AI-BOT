@@ -366,7 +366,9 @@ class ReceiptEditHandler:
                 InlineKeyboardButton("💰 Редактировать Итого", callback_data="edit_total"),
                 InlineKeyboardButton("🔄 Проанализировать заново", callback_data="reanalyze")
             ])
+            # Add Google Sheets upload button
             keyboard.append([InlineKeyboardButton("📊 Загрузить в Google Таблицы", callback_data="upload_to_google_sheets")])
+            
             keyboard.append([InlineKeyboardButton("📄 Получить файл для загрузки в постер", callback_data="generate_supply_file")])
             keyboard.append([InlineKeyboardButton("◀️ Вернуться к чеку", callback_data="back_to_receipt")])
             
