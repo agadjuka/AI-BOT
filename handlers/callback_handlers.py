@@ -263,9 +263,15 @@ class CallbackHandlers(BaseCallbackHandler):
                 context.user_data['messages_to_cleanup'].append(temp_message.message_id)
                 return self.config.AWAITING_FIELD_EDIT
         elif action.startswith("apply_"):
-            # Handle apply changes - show receipt menu
+            # Handle apply changes - save changes to original_data and show receipt menu
             line_number = int(action.split("_")[-1])
             context.user_data['applying_changes'] = line_number
+            
+            # Save current changes to original_data (this makes changes permanent)
+            current_data = context.user_data.get('receipt_data')
+            if current_data:
+                context.user_data['original_data'] = ReceiptData.from_dict(current_data.to_dict())
+                print(f"DEBUG: Applied changes for line {line_number}, updated original_data")
             
             # Clear field editing context
             context.user_data.pop('field_to_edit', None)

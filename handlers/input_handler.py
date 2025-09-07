@@ -159,19 +159,14 @@ class InputHandler(BaseMessageHandler):
             
         except Exception as e:
             print(f"Ошибка при редактировании поля: {e}")
-            # Delete old edit menu message before showing new one
+            # Update the existing edit menu message even on error
             edit_menu_message_id = context.user_data.get('edit_menu_message_id')
             if edit_menu_message_id:
-                try:
-                    await context.bot.delete_message(
-                        chat_id=update.message.chat_id,
-                        message_id=edit_menu_message_id
-                    )
-                except Exception as e:
-                    print(f"DEBUG: Error deleting old edit menu: {e}")
-            
-            # Show updated edit menu even on error
-            await self._send_edit_menu(update, context)
+                # Edit existing message instead of creating new one
+                await self._send_edit_menu(update, context, edit_menu_message_id)
+            else:
+                # Create new message if no ID found
+                await self._send_edit_menu(update, context)
             return self.config.AWAITING_FIELD_EDIT
     
     
