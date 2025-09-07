@@ -568,12 +568,23 @@ class CallbackHandlers(BaseCallbackHandler):
             # User wants to search for Google Sheets ingredient
             item_index = int(action.split("_")[4])
             await query.answer("🔍 Введите поисковый запрос...")
-            await update.callback_query.edit_message_text(
-                f"🔍 **Поиск ингредиента для позиции {item_index + 1}**\n\n"
-                "Введите поисковый запрос:"
+            
+            print(f"DEBUG: search_google_sheets_ingredient_{item_index} button pressed")
+            print(f"DEBUG: Setting google_sheets_search_mode = True for item_index = {item_index}")
+            
+            # Set search mode - use the correct flag for ingredient search
+            context.user_data['google_sheets_search_mode'] = True
+            context.user_data['google_sheets_search_item_index'] = item_index
+            
+            print(f"DEBUG: Flags set - google_sheets_search_mode: {context.user_data.get('google_sheets_search_mode')}")
+            print(f"DEBUG: Flags set - google_sheets_search_item_index: {context.user_data.get('google_sheets_search_item_index')}")
+            
+            await self.ui_manager.send_temp(
+                update, context, 
+                "Введите наименование ингредиента для поиска в Google Таблицах:", 
+                duration=10
             )
-            context.user_data['current_gs_matching_item'] = item_index
-            return self.config.AWAITING_MANUAL_MATCH
+            return self.config.AWAITING_CORRECTION
         elif action.startswith("select_google_sheets_search_"):
             # User selected a search result for Google Sheets matching
             parts = action.split("_")

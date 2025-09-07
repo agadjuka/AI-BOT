@@ -6,10 +6,15 @@ from telegram.ext import ContextTypes
 
 from models.receipt import ReceiptData
 from handlers.base_message_handler import BaseMessageHandler
+from handlers.google_sheets_input_handler import GoogleSheetsInputHandler
 
 
 class InputHandler(BaseMessageHandler):
     """Handler for user text input processing"""
+    
+    def __init__(self, config, analysis_service):
+        super().__init__(config, analysis_service)
+        self.google_sheets_input_handler = GoogleSheetsInputHandler(config, analysis_service)
     
     async def handle_user_input(self, update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
         """Handle user text input"""
@@ -39,7 +44,7 @@ class InputHandler(BaseMessageHandler):
         # Check for Google Sheets search mode
         if context.user_data.get('google_sheets_search_mode'):
             print(f"DEBUG: Google Sheets search mode detected for input: '{user_input}'")
-            return await self._handle_google_sheets_search(update, context, user_input)
+            return await self.google_sheets_input_handler._handle_google_sheets_search(update, context, user_input)
         
         if field_to_edit:
             # Edit specific field
