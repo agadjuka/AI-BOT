@@ -65,6 +65,13 @@ class ReceiptEditHandler:
         elif action == "reanalyze":
             await query.answer("🔄 Анализирую фото заново...")
             
+            # Send processing message
+            await self.ui_manager.send_temp(
+                update, context,
+                "🔄 Обрабатываю квитанцию...",
+                duration=10
+            )
+            
             await self.ui_manager.cleanup_all_except_anchor(update, context)
             self._clear_receipt_data(context)
             

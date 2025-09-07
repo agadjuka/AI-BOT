@@ -1,6 +1,7 @@
 """
 Refactored callback handlers for Telegram bot
 """
+import json
 from datetime import datetime
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import ContextTypes
@@ -43,9 +44,9 @@ class CallbackHandlers(BaseCallbackHandler):
         print(f"DEBUG: Callback action: {action}")
         
         # Route to appropriate handler based on action
-        if action in ["add_row", "edit_total", "auto_calculate_total", "edit_item_", "delete_item_", 
-                     "finish_editing", "edit_receipt", "back_to_edit", "delete_row", "edit_line_number",
-                     "manual_edit_total", "reanalyze", "back_to_receipt", "back_to_main_menu"] or action.startswith("field_") or action.startswith("apply_"):
+        if action in ["add_row", "edit_total", "auto_calculate_total", "finish_editing", "edit_receipt", 
+                     "back_to_edit", "delete_row", "edit_line_number", "manual_edit_total", "reanalyze", 
+                     "back_to_receipt", "back_to_main_menu"] or action.startswith("field_") or action.startswith("apply_") or action.startswith("edit_item_") or action.startswith("delete_item_"):
             return await self._handle_receipt_edit_actions(update, context, action)
         
         elif action in ["ingredient_matching", "manual_matching", "position_selection", "match_item_", 
@@ -153,12 +154,53 @@ class CallbackHandlers(BaseCallbackHandler):
             )
             return self.config.AWAITING_TOTAL_EDIT
         elif action == "reanalyze":
-            # Handle reanalysis - delegate to message handlers
-            await update.callback_query.edit_message_text(
-                "🔄 Повторный анализ чека\n\n"
-                "Отправьте фото чека для повторного анализа:"
+            # Handle reanalysis - reanalyze the same photo
+            await update.callback_query.answer("🔄 Анализирую фото заново...")
+            
+            print(f"DEBUG: Starting reanalysis")
+            print(f"DEBUG: Anchor message ID: {context.user_data.get('anchor_message_id')}")
+            
+            # Send processing message
+            await self.ui_manager.send_temp(
+                update, context,
+                "🔄 Обрабатываю квитанцию...",
+                duration=10
             )
-            return self.config.AWAITING_CORRECTION
+            
+            # Clean up all messages except anchor before showing new menu
+            await self.ui_manager.cleanup_all_except_anchor(update, context)
+            
+            # Clear all old data
+            self._clear_receipt_data(context)
+            
+            # Send photo to Gemini again
+            try:
+                analysis_data = self.analysis_service.analyze_receipt(self.config.PHOTO_FILE_NAME)
+                
+                # Convert to ReceiptData model
+                receipt_data = ReceiptData.from_dict(analysis_data)
+                
+                # Validate and correct data
+                is_valid, message = self.validator.validate_receipt_data(receipt_data)
+                if not is_valid:
+                    print(f"Предупреждение валидации: {message}")
+                
+                context.user_data['receipt_data'] = receipt_data
+                # Save original data for change tracking
+                context.user_data['original_data'] = ReceiptData.from_dict(receipt_data.to_dict())  # Deep copy
+                
+                # Show new report using the same method as primary analysis
+                print(f"DEBUG: Analysis completed, showing new report")
+                from handlers.photo_handler import PhotoHandler
+                photo_handler = PhotoHandler(self.config, self.analysis_service)
+                await photo_handler.show_final_report_with_edit_button(update, context)
+                print(f"DEBUG: New report shown")
+                return self.config.AWAITING_CORRECTION
+                
+            except (json.JSONDecodeError, KeyError, IndexError, ValueError) as e:
+                print(f"Ошибка парсинга JSON или структуры данных от Gemini: {e}")
+                await update.callback_query.message.reply_text("Не удалось распознать структуру чека. Попробуйте сделать фото более четким.")
+                return self.config.AWAITING_CORRECTION
         elif action == "back_to_receipt":
             # Handle back to receipt - restore original data and show fresh root menu
             # Delete the current message before showing receipt

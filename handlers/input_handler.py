@@ -63,11 +63,28 @@ class InputHandler(BaseMessageHandler):
                                 user_input: str, line_number: int, field_to_edit: str) -> int:
         """Handle field-specific editing"""
         try:
-            # Clean up temporary messages immediately when user responds
-            await self.ui_manager.cleanup_all_except_anchor(update, context)
-            
-            # Clear the cleanup list after cleaning up
-            context.user_data['messages_to_cleanup'] = []
+            # Clean up the input request message
+            try:
+                # Find and delete the message that asked for input
+                if hasattr(update, 'message') and update.message:
+                    # Delete the user's input message
+                    await context.bot.delete_message(
+                        chat_id=update.message.chat_id,
+                        message_id=update.message.message_id
+                    )
+                
+                # Try to delete the input request message (the one with "Введите новое значение:")
+                # This is usually the last message from the bot
+                if context.user_data.get('last_bot_message_id'):
+                    try:
+                        await context.bot.delete_message(
+                            chat_id=update.message.chat_id,
+                            message_id=context.user_data['last_bot_message_id']
+                        )
+                    except:
+                        pass  # Message might already be deleted
+            except Exception as e:
+                print(f"DEBUG: Error cleaning up messages: {e}")
             
             data: ReceiptData = context.user_data['receipt_data']
             item_to_edit = data.get_item(line_number)
@@ -127,17 +144,34 @@ class InputHandler(BaseMessageHandler):
             if field_to_edit in ['quantity', 'price', 'total'] and isinstance(new_value, (int, float)):
                 new_value = self.number_formatter.format_number_with_spaces(new_value)
             
-            # Show updated edit menu with new data (no success message needed)
+            # Update the existing edit menu message with new data
             edit_menu_message_id = context.user_data.get('edit_menu_message_id')
-            await self._send_edit_menu(update, context, edit_menu_message_id)
+            print(f"DEBUG: edit_menu_message_id = {edit_menu_message_id}")
+            if edit_menu_message_id:
+                # Edit existing message instead of creating new one
+                await self._send_edit_menu(update, context, edit_menu_message_id)
+            else:
+                print("DEBUG: No edit_menu_message_id found, creating new message")
+                # Create new message if no ID found
+                await self._send_edit_menu(update, context)
             
             return self.config.AWAITING_FIELD_EDIT
             
         except Exception as e:
             print(f"Ошибка при редактировании поля: {e}")
-            # Show updated edit menu even on error
+            # Delete old edit menu message before showing new one
             edit_menu_message_id = context.user_data.get('edit_menu_message_id')
-            await self._send_edit_menu(update, context, edit_menu_message_id)
+            if edit_menu_message_id:
+                try:
+                    await context.bot.delete_message(
+                        chat_id=update.message.chat_id,
+                        message_id=edit_menu_message_id
+                    )
+                except Exception as e:
+                    print(f"DEBUG: Error deleting old edit menu: {e}")
+            
+            # Show updated edit menu even on error
+            await self._send_edit_menu(update, context)
             return self.config.AWAITING_FIELD_EDIT
     
     
@@ -343,7 +377,7 @@ class InputHandler(BaseMessageHandler):
             [
                 InlineKeyboardButton("💵 Сумма", callback_data=f"field_{line_number}_total"),
                 InlineKeyboardButton("✅ Применить", callback_data=f"apply_{line_number}"),
-                InlineKeyboardButton("◀️ Вернуться к чеку", callback_data="back_to_receipt")
+                InlineKeyboardButton("◀️ Назад", callback_data="back_to_receipt")
             ]
         ]
         

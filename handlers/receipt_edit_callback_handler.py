@@ -49,6 +49,12 @@ class ReceiptEditCallbackHandler(BaseCallbackHandler):
         # Set new row for editing
         context.user_data['line_to_edit'] = new_line_number
         
+        # Delete the receipt message before showing edit menu
+        try:
+            await query.delete_message()
+        except Exception as e:
+            print(f"DEBUG: Error deleting receipt message: {e}")
+        
         # Show edit menu for new row
         await self._send_edit_menu(update, context)
     
@@ -213,12 +219,14 @@ class ReceiptEditCallbackHandler(BaseCallbackHandler):
                     text, reply_markup=reply_markup, parse_mode='Markdown'
                 )
                 context.user_data['edit_menu_message_id'] = message.message_id
+                print(f"DEBUG: Saved edit_menu_message_id = {message.message_id}")
         elif hasattr(update, 'message') and update.message:
             # For regular messages, create new message
             message = await self.ui_manager.send_menu(
                 update, context, text, reply_markup, 'Markdown'
             )
             context.user_data['edit_menu_message_id'] = message.message_id
+            print(f"DEBUG: Saved edit_menu_message_id = {message.message_id}")
         else:
             return
     
@@ -342,7 +350,7 @@ class ReceiptEditCallbackHandler(BaseCallbackHandler):
             keyboard.append([InlineKeyboardButton("📄 Получить файл для загрузки в постер", callback_data="generate_supply_file")])
             
             # Add back button (required in every menu)
-            keyboard.append([InlineKeyboardButton("◀️ Вернуться к чеку", callback_data="back_to_receipt")])
+            keyboard.append([InlineKeyboardButton("◀️ Назад", callback_data="back_to_receipt")])
             
             reply_markup = InlineKeyboardMarkup(keyboard)
             

@@ -147,6 +147,13 @@ class CallbackHandlers:
             # Delete old report
             await query.answer("🔄 Анализирую фото заново...")
             
+            # Send processing message
+            await self.ui_manager.send_temp(
+                update, context,
+                "🔄 Обрабатываю квитанцию...",
+                duration=10
+            )
+            
             # Clean up all messages except anchor before showing new menu
             await self.ui_manager.cleanup_all_except_anchor(update, context)
             

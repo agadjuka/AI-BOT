@@ -98,6 +98,9 @@ class PhotoHandler(BaseMessageHandler):
     
     async def show_final_report_with_edit_button(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         """Show final report with edit buttons - this is the root menu"""
+        print(f"DEBUG: show_final_report_with_edit_button called")
+        print(f"DEBUG: Anchor message ID: {context.user_data.get('anchor_message_id')}")
+        
         # Clean up all messages except anchor before showing final report
         await self.ui_manager.cleanup_all_except_anchor(update, context)
         
@@ -220,9 +223,11 @@ class PhotoHandler(BaseMessageHandler):
             reply_markup = InlineKeyboardMarkup(keyboard)
             
             # Send report with buttons using UI manager (this becomes the single working menu)
+            print(f"DEBUG: Sending final report with buttons")
             message = await self.ui_manager.send_menu(update, context, final_report, reply_markup)
             # Save table message ID for subsequent editing
             context.user_data['table_message_id'] = message.message_id
+            print(f"DEBUG: Final report sent, message ID: {message.message_id}")
         
         except Exception as e:
             print(f"Ошибка при формировании отчета: {e}")
