@@ -2,6 +2,7 @@
 Main entry point for the AI Bot application with webhook support for Cloud Run
 """
 import os
+import json
 import logging
 import asyncio
 import time
@@ -199,9 +200,15 @@ def health_check():
 def webhook():
     """Webhook endpoint for Telegram updates"""
     try:
-        # Get the update from Telegram
-        update_data = request.get_json(force=True)
+        # Получаем сырые данные для логирования
+        data = request.get_data(as_text=True)
+        print("Raw payload:", data)  # ЛОГИРУЕМ СЫРОЕ ТЕЛО
+        
+        # Парсим JSON и создаем Update объект
+        update_data = json.loads(data)
         update = Update.de_json(update_data, application.bot)
+        
+        print(f"📨 Получено обновление: {update.update_id if update else 'None'}")
         
         # Process the update asynchronously
         loop = asyncio.new_event_loop()
@@ -209,9 +216,12 @@ def webhook():
         loop.run_until_complete(application.process_update(update))
         loop.close()
         
+        print("✅ Обновление обработано успешно")
         return "ok", 200
     except Exception as e:
         print(f"❌ Ошибка при обработке webhook: {e}")
+        import traceback
+        print(f"📋 Traceback: {traceback.format_exc()}")
         return "error", 500
 
 def main() -> None:
