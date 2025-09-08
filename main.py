@@ -22,6 +22,16 @@ from telegram.ext import (
 )
 from telegram.error import Conflict, NetworkError
 
+# Проверяем совместимость numpy/pandas перед импортом других модулей
+try:
+    import numpy as np
+    import pandas as pd
+    print(f"✅ numpy версия: {np.__version__}")
+    print(f"✅ pandas версия: {pd.__version__}")
+except ImportError as e:
+    print(f"❌ Ошибка импорта numpy/pandas: {e}")
+    raise
+
 from config.settings import BotConfig
 from config.prompts import PromptManager
 from services.ai_service import AIService, ReceiptAnalysisService

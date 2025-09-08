@@ -10,16 +10,18 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1 \
     PYTHONPATH=/app \
-    PORT=8080
+    PORT=8080 \
+    NUMPY_DISABLE_THREADING=1
 
 # Устанавливаем рабочую директорию
 WORKDIR /app
 
-# Копируем файл зависимостей
-COPY requirements.txt .
+# Копируем файлы зависимостей
+COPY requirements.txt requirements-stable.txt ./
 
-# Устанавливаем Python зависимости
-RUN pip install --upgrade pip && pip install --no-cache-dir -r requirements.txt
+# Устанавливаем Python зависимости с правильным порядком
+RUN pip install --upgrade pip setuptools wheel && \
+    pip install --no-cache-dir -r requirements-stable.txt
 
 # Копируем весь проект
 COPY . .
