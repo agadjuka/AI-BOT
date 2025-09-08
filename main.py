@@ -200,29 +200,16 @@ def health_check():
 def webhook():
     """Webhook endpoint for Telegram updates"""
     try:
-        # Получаем сырые данные для логирования
-        data = request.get_data(as_text=True)
-        print("Raw payload:", data)  # ЛОГИРУЕМ СЫРОЕ ТЕЛО
-        
-        # Парсим JSON и создаем Update объект
-        update_data = json.loads(data)
-        update = Update.de_json(update_data, application.bot)
-        
-        print(f"📨 Получено обновление: {update.update_id if update else 'None'}")
-        
-        # Process the update asynchronously
-        loop = asyncio.new_event_loop()
-        asyncio.set_event_loop(loop)
-        loop.run_until_complete(application.process_update(update))
-        loop.close()
-        
-        print("✅ Обновление обработано успешно")
-        return "ok", 200
+        raw_data = request.get_data(as_text=True)   # Чистое тело
+        print("RAW PAYLOAD:", raw_data)             # ЛОГИРУЕМ В ЛОГИ
+
+        if raw_data:
+            json_data = json.loads(raw_data)
+            update = Update.de_json(json_data, application.bot)
+            application.process_update(update)
     except Exception as e:
-        print(f"❌ Ошибка при обработке webhook: {e}")
-        import traceback
-        print(f"📋 Traceback: {traceback.format_exc()}")
-        return "error", 500
+        print("Ошибка в webhook:", str(e))
+    return "ok"
 
 def main() -> None:
     """Main function to start the Flask app for Cloud Run"""
