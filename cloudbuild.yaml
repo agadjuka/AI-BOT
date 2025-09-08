@@ -1,0 +1,48 @@
+steps:
+  # Сборка Docker образа
+  - name: 'gcr.io/cloud-builders/docker'
+    args: ['build', '-t', 'gcr.io/$PROJECT_ID/ai-bot:$COMMIT_SHA', '.']
+  
+  # Отправка образа в Container Registry
+  - name: 'gcr.io/cloud-builders/docker'
+    args: ['push', 'gcr.io/$PROJECT_ID/ai-bot:$COMMIT_SHA']
+  
+  # Деплой в Cloud Run
+  - name: 'gcr.io/google.com/cloudsdktool/cloud-sdk'
+    entrypoint: 'gcloud'
+    args:
+      - 'run'
+      - 'deploy'
+      - 'ai-bot'
+      - '--image'
+      - 'gcr.io/$PROJECT_ID/ai-bot:$COMMIT_SHA'
+      - '--region'
+      - 'us-central1'
+      - '--platform'
+      - 'managed'
+      - '--allow-unauthenticated'
+      - '--port'
+      - '8080'
+      - '--memory'
+      - '1Gi'
+      - '--cpu'
+      - '1'
+      - '--max-instances'
+      - '10'
+      - '--min-instances'
+      - '0'
+      - '--timeout'
+      - '300'
+      - '--set-env-vars'
+      - 'BOT_TOKEN=${_BOT_TOKEN},POSTER_TOKEN=${_POSTER_TOKEN},PROJECT_ID=${_PROJECT_ID}'
+
+# Переменные для подстановки
+substitutions:
+  _BOT_TOKEN: '8291213805:AAEHDlkDCHLQ3RFtrB5HLMeU-nGzF1hOZYE'
+  _POSTER_TOKEN: '853931:71424838d41a70ee724e07ef6c6f0774'
+  _PROJECT_ID: 'just-advice-470905-a3'
+
+# Опции сборки
+options:
+  logging: CLOUD_LOGGING_ONLY
+  machineType: 'E2_HIGHCPU_8'

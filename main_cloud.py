@@ -1,0 +1,249 @@
+"""
+Main entry point for the AI Bot application - Cloud Run version
+"""
+import logging
+import asyncio
+import time
+import threading
+import os
+from http.server import HTTPServer, BaseHTTPRequestHandler
+from telegram.ext import (
+    Application,
+    CommandHandler,
+    MessageHandler,
+    filters,
+    ContextTypes,
+    ConversationHandler,
+    CallbackQueryHandler,
+)
+from telegram.error import Conflict, NetworkError
+
+from config.settings import BotConfig
+from config.prompts import PromptManager
+from services.ai_service import AIService, ReceiptAnalysisService
+from handlers.message_handlers import MessageHandlers
+from handlers.callback_handlers import CallbackHandlers
+from utils.ingredient_storage import IngredientStorage
+from utils.message_sender import MessageSender
+from google_sheets_handler import get_google_sheets_ingredients
+
+
+class HealthCheckHandler(BaseHTTPRequestHandler):
+    """HTTP handler for health checks"""
+    
+    def do_GET(self):
+        if self.path == '/health':
+            self.send_response(200)
+            self.send_header('Content-type', 'text/plain')
+            self.end_headers()
+            self.wfile.write(b'OK')
+        else:
+            self.send_response(404)
+            self.end_headers()
+    
+    def do_POST(self):
+        if self.path == '/webhook':
+            # Forward to Telegram webhook handler
+            content_length = int(self.headers['Content-Length'])
+            post_data = self.rfile.read(content_length)
+            
+            # Process webhook data here
+            # For now, just return 200
+            self.send_response(200)
+            self.send_header('Content-type', 'text/plain')
+            self.end_headers()
+            self.wfile.write(b'OK')
+        else:
+            self.send_response(404)
+            self.end_headers()
+    
+    def log_message(self, format, *args):
+        # Suppress default logging
+        pass
+
+
+def start_http_server(port: int) -> HTTPServer:
+    """Start HTTP server for health checks and webhook"""
+    server = HTTPServer(('0.0.0.0', port), HealthCheckHandler)
+    return server
+
+
+def safe_start_bot(application: Application, ingredient_storage: IngredientStorage, max_retries: int = 3) -> None:
+    """Безопасный запуск бота с обработкой конфликтов"""
+    for attempt in range(max_retries):
+        try:
+            print(f"Попытка запуска бота #{attempt + 1}...")
+            
+            # Сброс webhook перед каждым запуском
+            try:
+                import asyncio
+                loop = asyncio.new_event_loop()
+                asyncio.set_event_loop(loop)
+                loop.run_until_complete(application.bot.delete_webhook(drop_pending_updates=True))
+                print("✅ Webhook сброшен успешно")
+            except Exception as e:
+                print(f"⚠️ Предупреждение при сбросе webhook: {e}")
+            
+            # Небольшая задержка перед запуском
+            time.sleep(2)
+            
+            # Запуск бота в polling режиме (для Cloud Run)
+            application.run_polling()
+            break
+            
+        except Conflict as e:
+            print(f"❌ Конфликт обнаружен (попытка {attempt + 1}/{max_retries}): {e}")
+            if attempt < max_retries - 1:
+                wait_time = (attempt + 1) * 5  # Увеличиваем время ожидания с каждой попыткой
+                print(f"⏳ Ожидание {wait_time} секунд перед следующей попыткой...")
+                time.sleep(wait_time)
+            else:
+                print("❌ Максимальное количество попыток исчерпано. Проверьте, что не запущено других экземпляров бота.")
+                raise
+                
+        except NetworkError as e:
+            print(f"🌐 Ошибка сети (попытка {attempt + 1}/{max_retries}): {e}")
+            if attempt < max_retries - 1:
+                wait_time = 3
+                print(f"⏳ Ожидание {wait_time} секунд перед повторной попыткой...")
+                time.sleep(wait_time)
+            else:
+                raise
+                
+        except Exception as e:
+            print(f"❌ Неожиданная ошибка: {e}")
+            raise
+
+
+def cleanup_old_files_periodically(ingredient_storage: IngredientStorage) -> None:
+    """Background task to clean up old files every 30 minutes"""
+    while True:
+        try:
+            time.sleep(1800)  # 30 minutes = 1800 seconds
+            ingredient_storage.cleanup_old_files()
+            print("🧹 Выполнена очистка старых файлов сопоставления")
+        except Exception as e:
+            print(f"Ошибка при очистке файлов: {e}")
+
+
+def main() -> None:
+    """Main function to start the bot"""
+    # Get port from environment variable
+    port = int(os.environ.get('PORT', 8080))
+    
+    # Initialize configuration
+    config = BotConfig()
+    prompt_manager = PromptManager()
+    
+    # Initialize services
+    ai_service = AIService(config, prompt_manager)
+    analysis_service = ReceiptAnalysisService(ai_service)
+    
+    # Initialize handlers
+    message_handlers = MessageHandlers(config, analysis_service)
+    callback_handlers = CallbackHandlers(config, analysis_service)
+    
+    # Initialize message sender for centralized message sending
+    # Example usage:
+    # message_sender = MessageSender(config)
+    # await message_sender.send_success_message(update, context, "Операция выполнена успешно!")
+    # await message_sender.send_error_message(update, context, "Произошла ошибка при обработке")
+    # await message_sender.send_temp_message(update, context, "Временное сообщение", duration=5)
+    
+    # Initialize ingredient storage with 1 hour cleanup
+    ingredient_storage = IngredientStorage(max_age_hours=1)
+    
+    # Create application
+    application = Application.builder().token(config.BOT_TOKEN).concurrent_updates(True).build()
+    
+    # Initialize empty poster ingredients - will be loaded on demand
+    application.bot_data["poster_ingredients"] = {}
+    
+    # Initialize empty Google Sheets ingredients - will be loaded on demand
+    application.bot_data["google_sheets_ingredients"] = {}
+    print("✅ Google Sheets ингредиенты будут загружены по требованию")
+
+    # Create conversation handler
+    conv_handler = ConversationHandler(
+        entry_points=[MessageHandler(filters.PHOTO, message_handlers.handle_photo)],
+        states={
+            config.AWAITING_CORRECTION: [
+                CallbackQueryHandler(callback_handlers.handle_correction_choice),
+                MessageHandler(filters.TEXT & ~filters.COMMAND, message_handlers.handle_user_input),  # Add text handler for search
+                MessageHandler(filters.PHOTO, message_handlers.handle_photo)  # Add photo handler
+            ],
+            config.AWAITING_INPUT: [
+                MessageHandler(filters.TEXT & ~filters.COMMAND, message_handlers.handle_user_input),
+                MessageHandler(filters.PHOTO, message_handlers.handle_photo)  # Add photo handler
+            ],
+            config.AWAITING_LINE_NUMBER: [
+                MessageHandler(filters.TEXT & ~filters.COMMAND, message_handlers.handle_line_number_input),
+                MessageHandler(filters.PHOTO, message_handlers.handle_photo)  # Add photo handler
+            ],
+            config.AWAITING_FIELD_EDIT: [
+                CallbackQueryHandler(callback_handlers.handle_correction_choice), 
+                MessageHandler(filters.TEXT & ~filters.COMMAND, message_handlers.handle_user_input),
+                MessageHandler(filters.PHOTO, message_handlers.handle_photo)  # Add photo handler
+            ],
+            config.AWAITING_DELETE_LINE_NUMBER: [
+                MessageHandler(filters.TEXT & ~filters.COMMAND, message_handlers.handle_delete_line_number_input),
+                MessageHandler(filters.PHOTO, message_handlers.handle_photo)  # Add photo handler
+            ],
+            config.AWAITING_TOTAL_EDIT: [
+                MessageHandler(filters.TEXT & ~filters.COMMAND, message_handlers.handle_total_edit_input),
+                MessageHandler(filters.PHOTO, message_handlers.handle_photo)  # Add photo handler
+            ],
+            config.AWAITING_INGREDIENT_MATCHING: [
+                CallbackQueryHandler(callback_handlers.handle_correction_choice),
+                MessageHandler(filters.PHOTO, message_handlers.handle_photo)  # Add photo handler
+            ],
+            config.AWAITING_MANUAL_MATCH: [
+                MessageHandler(filters.TEXT & ~filters.COMMAND, message_handlers.handle_ingredient_matching_input),
+                CallbackQueryHandler(callback_handlers.handle_correction_choice),
+                MessageHandler(filters.PHOTO, message_handlers.handle_photo)  # Add photo handler
+            ],
+        },
+        fallbacks=[CommandHandler("cancel", message_handlers.start)],  # Use start as cancel fallback
+        per_message=False
+    )
+
+    # Add handlers
+    application.add_handler(CommandHandler("start", message_handlers.start))
+    application.add_handler(conv_handler)
+
+    # Start HTTP server for health checks
+    print(f"🌐 Запуск HTTP сервера на порту {port}...")
+    http_server = start_http_server(port)
+    
+    # Start HTTP server in background thread
+    http_thread = threading.Thread(target=http_server.serve_forever, daemon=True)
+    http_thread.start()
+    print("✅ HTTP сервер запущен")
+
+    # 4. Запускаем бота с улучшенной обработкой ошибок и автоочисткой
+    print("🚀 Бот запускается...")
+    print("🧹 Автоочистка файлов сопоставления: каждые 30 минут, файлы старше 1 часа")
+    
+    # Запускаем фоновый поток для очистки
+    cleanup_thread = threading.Thread(target=cleanup_old_files_periodically, args=(ingredient_storage,), daemon=True)
+    cleanup_thread.start()
+    print("✅ Фоновый поток очистки запущен")
+    
+    try:
+        safe_start_bot(application, ingredient_storage)
+    except KeyboardInterrupt:
+        print("\n⏹️ Бот остановлен пользователем")
+    except Exception as e:
+        print(f"❌ Критическая ошибка: {e}")
+        print("💡 Попробуйте:")
+        print("   1. Убедиться, что не запущено других экземпляров бота")
+        print("   2. Проверить интернет-соединение")
+        print("   3. Перезапустить через несколько минут")
+    finally:
+        # Cleanup
+        http_server.shutdown()
+        print("🛑 HTTP сервер остановлен")
+
+
+if __name__ == "__main__":
+    main()

@@ -1,0 +1,37 @@
+runtime: custom
+env: flex
+
+# Конфигурация для Cloud Run
+service: ai-bot
+
+# Ресурсы
+resources:
+  cpu: 1
+  memory_gb: 1
+
+# Автоматическое масштабирование
+automatic_scaling:
+  min_num_instances: 0
+  max_num_instances: 10
+  cool_down_period: 60s
+  cpu_utilization:
+    target_utilization: 0.6
+
+# Сетевые настройки
+network:
+  forwarded_ports:
+    - 8080
+
+# Переменные окружения
+env_variables:
+  PORT: 8080
+  PYTHONPATH: /app
+
+# Настройки здоровья
+health_check:
+  enable_health_check: true
+  check_interval_sec: 30
+  timeout_sec: 4
+  unhealthy_threshold: 2
+  healthy_threshold: 2
+  restart_threshold: 60
