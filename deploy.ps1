@@ -61,3 +61,4 @@ Write-Host $url -ForegroundColor White
 Write-Host ""
 Write-Host "📊 Для просмотра логов используйте:" -ForegroundColor Yellow
 Write-Host "gcloud logs tail --follow --service=$SERVICE_NAME --region=$REGION" -ForegroundColor White
+

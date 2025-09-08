@@ -52,3 +52,4 @@ gcloud config set project just-advice-470905-a3
 3. Проверьте авторизацию: `gcloud auth list`
 
 **Готово к деплою! 🎉**
+

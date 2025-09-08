@@ -61,3 +61,4 @@ gcloud run services describe $SERVICE_NAME --region=$REGION --format="value(stat
 echo ""
 echo "📊 Для просмотра логов используйте:"
 echo "gcloud logs tail --follow --service=$SERVICE_NAME --region=$REGION"
+

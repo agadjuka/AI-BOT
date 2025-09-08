@@ -35,3 +35,4 @@ health_check:
   unhealthy_threshold: 2
   healthy_threshold: 2
   restart_threshold: 60
+
