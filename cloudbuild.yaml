@@ -1,101 +1,42 @@
-# Этот файл определяет шаги для сборки и развертывания ваших сервисов на Google Cloud Run.
-# Он предназначен для использования с Google Cloud Build.
+steps:
+  # Build the container image
+  - name: 'gcr.io/cloud-builders/docker'
+    args: ['build', '-t', 'gcr.io/$PROJECT_ID/aibot:$COMMIT_SHA', '.']
+  
+  # Push the container image to Container Registry
+  - name: 'gcr.io/cloud-builders/docker'
+    args: ['push', 'gcr.io/$PROJECT_ID/aibot:$COMMIT_SHA']
+  
+  # Deploy container image to Cloud Run
+  - name: 'gcr.io/google.com/cloudsdktool/cloud-sdk'
+    entrypoint: gcloud
+    args:
+      - 'run'
+      - 'deploy'
+      - 'aibot'
+      - '--image'
+      - 'gcr.io/$PROJECT_ID/aibot:$COMMIT_SHA'
+      - '--region'
+      - 'asia-southeast1'
+      - '--platform'
+      - 'managed'
+      - '--allow-unauthenticated'
+      - '--set-env-vars'
+      - 'WEBHOOK_URL=https://aibot-366461711404.asia-southeast1.run.app'
+      - '--memory'
+      - '1Gi'
+      - '--cpu'
+      - '1'
+      - '--timeout'
+      - '300'
+      - '--max-instances'
+      - '10'
 
-# Общие опции для всех шагов сборки
+# Configure logging to avoid the service account error
 options:
-  # Настройка логирования: логи будут отправляться только в Cloud Logging (Logs Explorer).
-  # Это решает проблему "Failed to trigger build: if 'build.service_account' is specified, the build must either..."
   logging: CLOUD_LOGGING_ONLY
-  # Время ожидания для всей сборки. Увеличьте, если ваши сборки занимают много времени.
-  timeout: 3600s # 1 час
+  defaultLogsBucketBehavior: REGIONAL_USER_OWNED_BUCKET
 
-# Шаги сборки (steps)
-# Каждый шаг представляет собой команду или операцию, которую выполняет Cloud Build.
-
-# Шаг 1: Сборка и отправка Docker-образа для сервиса приема данных (Ingestion Service)
-- id: 'Build and Push Ingestion Service'
-  name: 'gcr.io/cloud-builders/docker'
-  args:
-    - 'build'
-    - '-t'
-    - 'us-central1-docker.pkg.dev/$PROJECT_ID/your-artifact-registry/document-ingestion-service:$COMMIT_SHA'
-    - '.'
-  dir: 'service-ingestion' # Указывает Cloud Build выполнять команду в этой директории
-  # Примечание: $PROJECT_ID и $COMMIT_SHA - это встроенные переменные Cloud Build.
-  # 'your-artifact-registry' - замените на имя вашего репозитория в Artifact Registry.
-
-# Шаг 2: Развертывание сервиса приема данных (Ingestion Service) на Cloud Run
-- id: 'Deploy Ingestion Service to Cloud Run'
-  name: 'gcr.io/cloud-builders/gcloud'
-  args:
-    - 'run'
-    - 'deploy'
-    - 'document-ingestion-service' # Имя сервиса Cloud Run
-    - '--image'
-    - 'us-central1-docker.pkg.dev/$PROJECT_ID/your-artifact-registry/document-ingestion-service:$COMMIT_SHA'
-    - '--region'
-    - 'us-central1' # Регион развертывания
-    - '--platform'
-    - 'managed'
-    - '--allow-unauthenticated' # Разрешить неаутентифицированный доступ (для Telegram бота)
-    # Если вы хотите использовать конкретный сервисный аккаунт для Cloud Run сервиса,
-    # добавьте следующую строку. Убедитесь, что этот сервисный аккаунт существует и имеет нужные разрешения.
-    # - '--service-account=your-ingestion-service-account@$PROJECT_ID.iam.gserviceaccount.com'
-  # Зависит от успешного выполнения предыдущего шага
-  waitFor: ['Build and Push Ingestion Service']
-
-# Шаг 3: Сборка и отправка Docker-образа для сервиса обработки данных (Processor Service)
-- id: 'Build and Push Processor Service'
-  name: 'gcr.io/cloud-builders/docker'
-  args:
-    - 'build'
-    - '-t'
-    - 'us-central1-docker.pkg.dev/$PROJECT_ID/your-artifact-registry/document-processor-service:$COMMIT_SHA'
-    - '.'
-  dir: 'service-processor' # Указывает Cloud Build выполнять команду в этой директории
-  # Примечание: 'your-artifact-registry' - замените на имя вашего репозитория в Artifact Registry.
-
-# Шаг 4: Развертывание сервиса обработки данных (Processor Service) на Cloud Run
-- id: 'Deploy Processor Service to Cloud Run'
-  name: 'gcr.io/cloud-builders/gcloud'
-  args:
-    - 'run'
-    - 'deploy'
-    - 'document-processor-service' # Имя сервиса Cloud Run
-    - '--image'
-    - 'us-central1-docker.pkg.dev/$PROJECT_ID/your-artifact-registry/document-processor-service:$COMMIT_SHA'
-    - '--region'
-    - 'us-central1' # Регион развертывания
-    - '--platform'
-    - 'managed'
-    - '--no-allow-unauthenticated' # Обычно для Processor Service не требуется публичный доступ
-    # Здесь также можно указать сервисный аккаунт, который будет взаимодействовать с Vertex AI, Cloud Storage, Cloud SQL.
-    # - '--service-account=your-processor-service-account@$PROJECT_ID.iam.gserviceaccount.com'
-  # Зависит от успешного выполнения предыдущего шага
-  waitFor: ['Build and Push Processor Service']
-
-# Шаг 5 (Опционально): Применение миграций базы данных (если применимо)
-# Этот шаг зависит от того, как вы управляете миграциями базы данных.
-# Это может быть отдельный Cloud Run Job или просто скрипт.
-# Пример:
-# - id: 'Apply Database Migrations'
-#   name: 'gcr.io/cloud-builders/gcloud'
-#   entrypoint: 'bash'
-#   args:
-#     - '-c'
-#     - |
-#       gcloud sql connect document-analysis-db --user=postgres --database=your_db_name --quiet -- \
-#       < path/to/your/migrations.sql
-#   waitFor: ['Deploy Processor Service to Cloud Run']
-#   # Убедитесь, что сервисный аккаунт Cloud Build имеет роль Cloud SQL Client
-
-# Шаг 6 (Опционально): Установка политик Pub/Sub для Processor Service
-# Этот шаг может быть нужен, если Processor Service должен быть вызван Pub/Sub триггером.
-# Это делается либо вручную, либо как часть развертывания Cloud Run.
-# Cloud Run автоматически создает необходимую подписку и связывает ее с сервисом,
-# если вы настраиваете его как Pub/Sub подписчика.
-
-# В итоге, этот файл `cloudbuild.yaml` позволит вам автоматизировать процесс:
-# 1. Сборки Docker-образов для ваших сервисов.
-# 2. Отправки этих образов в Artifact Registry.
-# 3. Развертывания (или обновления) ваших сервисов на Cloud Run.
+# Store images in Container Registry
+images:
+  - 'gcr.io/$PROJECT_ID/aibot:$COMMIT_SHA'
