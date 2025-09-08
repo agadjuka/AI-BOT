@@ -1,4 +1,5 @@
 steps:
+<<<<<<< HEAD
   # Сборка Docker образа
   - name: 'gcr.io/cloud-builders/docker'
     args: ['build', '-t', 'gcr.io/$PROJECT_ID/ai-bot:$COMMIT_SHA', '.']
@@ -23,10 +24,37 @@ steps:
       - '--allow-unauthenticated'
       - '--port'
       - '8080'
+=======
+  # Build the container image
+  - name: 'gcr.io/cloud-builders/docker'
+    args: ['build', '-t', 'gcr.io/$PROJECT_ID/aibot:$COMMIT_SHA', '.']
+  
+  # Push the container image to Container Registry
+  - name: 'gcr.io/cloud-builders/docker'
+    args: ['push', 'gcr.io/$PROJECT_ID/aibot:$COMMIT_SHA']
+  
+  # Deploy container image to Cloud Run
+  - name: 'gcr.io/google.com/cloudsdktool/cloud-sdk'
+    entrypoint: gcloud
+    args:
+      - 'run'
+      - 'deploy'
+      - 'aibot'
+      - '--image'
+      - 'gcr.io/$PROJECT_ID/aibot:$COMMIT_SHA'
+      - '--region'
+      - 'asia-southeast1'
+      - '--platform'
+      - 'managed'
+      - '--allow-unauthenticated'
+      - '--set-env-vars'
+      - 'WEBHOOK_URL=https://aibot-366461711404.asia-southeast1.run.app'
+>>>>>>> 562d10c69e6e854963bf134dc1a919227ef51d4d
       - '--memory'
       - '1Gi'
       - '--cpu'
       - '1'
+<<<<<<< HEAD
       - '--max-instances'
       - '10'
       - '--min-instances'
@@ -47,3 +75,18 @@ options:
   logging: CLOUD_LOGGING_ONLY
   machineType: 'E2_HIGHCPU_8'
 
+=======
+      - '--timeout'
+      - '300'
+      - '--max-instances'
+      - '10'
+
+# Configure logging to avoid the service account error
+options:
+  logging: CLOUD_LOGGING_ONLY
+  defaultLogsBucketBehavior: REGIONAL_USER_OWNED_BUCKET
+
+# Store images in Container Registry
+images:
+  - 'gcr.io/$PROJECT_ID/aibot:$COMMIT_SHA'
+>>>>>>> 562d10c69e6e854963bf134dc1a919227ef51d4d

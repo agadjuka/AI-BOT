@@ -1,10 +1,16 @@
 """
-Main entry point for the AI Bot application
+Main entry point for the AI Bot application with webhook support for Cloud Run
+Using FastAPI for better performance and modern async support
 """
-import logging
+import os
 import asyncio
 import time
 import threading
+from typing import Optional
+from fastapi import FastAPI, Request, HTTPException
+from fastapi.responses import JSONResponse
+import httpx
+from telegram import Update
 from telegram.ext import (
     Application,
     CommandHandler,
@@ -25,53 +31,16 @@ from utils.ingredient_storage import IngredientStorage
 from utils.message_sender import MessageSender
 from google_sheets_handler import get_google_sheets_ingredients
 
+# Bot configuration
+TOKEN = os.getenv("BOT_TOKEN", "8291213805:AAEHDlkDCHLQ3RFtrB5HLMeU-nGzF1hOZYE")
+TELEGRAM_API = f"https://api.telegram.org/bot{TOKEN}"
 
-def safe_start_bot(application: Application, ingredient_storage: IngredientStorage, max_retries: int = 3) -> None:
-    """Безопасный запуск бота с обработкой конфликтов"""
-    for attempt in range(max_retries):
-        try:
-            print(f"Попытка запуска бота #{attempt + 1}...")
-            
-            # Сброс webhook перед каждым запуском
-            try:
-                import asyncio
-                loop = asyncio.new_event_loop()
-                asyncio.set_event_loop(loop)
-                loop.run_until_complete(application.bot.delete_webhook(drop_pending_updates=True))
-                print("✅ Webhook сброшен успешно")
-            except Exception as e:
-                print(f"⚠️ Предупреждение при сбросе webhook: {e}")
-            
-            # Небольшая задержка перед запуском
-            time.sleep(2)
-            
-            # Запуск бота
-            application.run_polling()
-            break
-            
-        except Conflict as e:
-            print(f"❌ Конфликт обнаружен (попытка {attempt + 1}/{max_retries}): {e}")
-            if attempt < max_retries - 1:
-                wait_time = (attempt + 1) * 5  # Увеличиваем время ожидания с каждой попыткой
-                print(f"⏳ Ожидание {wait_time} секунд перед следующей попыткой...")
-                time.sleep(wait_time)
-            else:
-                print("❌ Максимальное количество попыток исчерпано. Проверьте, что не запущено других экземпляров бота.")
-                raise
-                
-        except NetworkError as e:
-            print(f"🌐 Ошибка сети (попытка {attempt + 1}/{max_retries}): {e}")
-            if attempt < max_retries - 1:
-                wait_time = 3
-                print(f"⏳ Ожидание {wait_time} секунд перед повторной попыткой...")
-                time.sleep(wait_time)
-            else:
-                raise
-                
-        except Exception as e:
-            print(f"❌ Неожиданная ошибка: {e}")
-            raise
+# FastAPI app
+app = FastAPI(title="AI Bot", description="Telegram Bot for receipt processing")
 
+# Global variables
+application: Optional[Application] = None
+ingredient_storage: Optional[IngredientStorage] = None
 
 def cleanup_old_files_periodically(ingredient_storage: IngredientStorage) -> None:
     """Background task to clean up old files every 30 minutes"""
@@ -83,8 +52,8 @@ def cleanup_old_files_periodically(ingredient_storage: IngredientStorage) -> Non
         except Exception as e:
             print(f"Ошибка при очистке файлов: {e}")
 
-def main() -> None:
-    """Main function to start the bot"""
+def create_application() -> Application:
+    """Create and configure the Telegram application"""
     # Initialize configuration
     config = BotConfig()
     prompt_manager = PromptManager()
@@ -96,13 +65,6 @@ def main() -> None:
     # Initialize handlers
     message_handlers = MessageHandlers(config, analysis_service)
     callback_handlers = CallbackHandlers(config, analysis_service)
-    
-    # Initialize message sender for centralized message sending
-    # Example usage:
-    # message_sender = MessageSender(config)
-    # await message_sender.send_success_message(update, context, "Операция выполнена успешно!")
-    # await message_sender.send_error_message(update, context, "Произошла ошибка при обработке")
-    # await message_sender.send_temp_message(update, context, "Временное сообщение", duration=5)
     
     # Initialize ingredient storage with 1 hour cleanup
     ingredient_storage = IngredientStorage(max_age_hours=1)
@@ -123,68 +85,179 @@ def main() -> None:
         states={
             config.AWAITING_CORRECTION: [
                 CallbackQueryHandler(callback_handlers.handle_correction_choice),
-                MessageHandler(filters.TEXT & ~filters.COMMAND, message_handlers.handle_user_input),  # Add text handler for search
-                MessageHandler(filters.PHOTO, message_handlers.handle_photo)  # Add photo handler
+                MessageHandler(filters.TEXT & ~filters.COMMAND, message_handlers.handle_user_input),
+                MessageHandler(filters.PHOTO, message_handlers.handle_photo)
             ],
             config.AWAITING_INPUT: [
                 MessageHandler(filters.TEXT & ~filters.COMMAND, message_handlers.handle_user_input),
-                MessageHandler(filters.PHOTO, message_handlers.handle_photo)  # Add photo handler
+                MessageHandler(filters.PHOTO, message_handlers.handle_photo)
             ],
             config.AWAITING_LINE_NUMBER: [
                 MessageHandler(filters.TEXT & ~filters.COMMAND, message_handlers.handle_line_number_input),
-                MessageHandler(filters.PHOTO, message_handlers.handle_photo)  # Add photo handler
+                MessageHandler(filters.PHOTO, message_handlers.handle_photo)
             ],
             config.AWAITING_FIELD_EDIT: [
                 CallbackQueryHandler(callback_handlers.handle_correction_choice), 
                 MessageHandler(filters.TEXT & ~filters.COMMAND, message_handlers.handle_user_input),
-                MessageHandler(filters.PHOTO, message_handlers.handle_photo)  # Add photo handler
+                MessageHandler(filters.PHOTO, message_handlers.handle_photo)
             ],
             config.AWAITING_DELETE_LINE_NUMBER: [
                 MessageHandler(filters.TEXT & ~filters.COMMAND, message_handlers.handle_delete_line_number_input),
-                MessageHandler(filters.PHOTO, message_handlers.handle_photo)  # Add photo handler
+                MessageHandler(filters.PHOTO, message_handlers.handle_photo)
             ],
             config.AWAITING_TOTAL_EDIT: [
                 MessageHandler(filters.TEXT & ~filters.COMMAND, message_handlers.handle_total_edit_input),
-                MessageHandler(filters.PHOTO, message_handlers.handle_photo)  # Add photo handler
+                MessageHandler(filters.PHOTO, message_handlers.handle_photo)
             ],
             config.AWAITING_INGREDIENT_MATCHING: [
                 CallbackQueryHandler(callback_handlers.handle_correction_choice),
-                MessageHandler(filters.PHOTO, message_handlers.handle_photo)  # Add photo handler
+                MessageHandler(filters.PHOTO, message_handlers.handle_photo)
             ],
             config.AWAITING_MANUAL_MATCH: [
                 MessageHandler(filters.TEXT & ~filters.COMMAND, message_handlers.handle_ingredient_matching_input),
                 CallbackQueryHandler(callback_handlers.handle_correction_choice),
-                MessageHandler(filters.PHOTO, message_handlers.handle_photo)  # Add photo handler
+                MessageHandler(filters.PHOTO, message_handlers.handle_photo)
             ],
         },
-        fallbacks=[CommandHandler("cancel", message_handlers.start)],  # Use start as cancel fallback
+        fallbacks=[CommandHandler("cancel", message_handlers.start)],
         per_message=False
     )
 
     # Add handlers
     application.add_handler(CommandHandler("start", message_handlers.start))
     application.add_handler(conv_handler)
-
-    # 4. Запускаем бота с улучшенной обработкой ошибок и автоочисткой
-    print("🚀 Бот запускается...")
-    print("🧹 Автоочистка файлов сопоставления: каждые 30 минут, файлы старше 1 часа")
     
-    # Запускаем фоновый поток для очистки
+    return application
+
+async def initialize_bot():
+    """Initialize the bot application and start background tasks"""
+    global application, ingredient_storage
+    
+    print("🚀 Инициализация бота...")
+    
+    # Create application
+    application = create_application()
+    
+    # Initialize ingredient storage with 1 hour cleanup
+    ingredient_storage = IngredientStorage(max_age_hours=1)
+    
+    # Start background cleanup thread
     cleanup_thread = threading.Thread(target=cleanup_old_files_periodically, args=(ingredient_storage,), daemon=True)
     cleanup_thread.start()
     print("✅ Фоновый поток очистки запущен")
     
-    try:
-        safe_start_bot(application, ingredient_storage)
-    except KeyboardInterrupt:
-        print("\n⏹️ Бот остановлен пользователем")
-    except Exception as e:
-        print(f"❌ Критическая ошибка: {e}")
-        print("💡 Попробуйте:")
-        print("   1. Убедиться, что не запущено других экземпляров бота")
-        print("   2. Проверить интернет-соединение")
-        print("   3. Перезапустить через несколько минут")
+    # Initialize the application
+    await application.initialize()
+    
+    # Set webhook URL for Cloud Run
+    webhook_url = os.environ.get("WEBHOOK_URL")
+    if webhook_url:
+        try:
+            await application.bot.set_webhook(
+                url=f"{webhook_url}/webhook",
+                drop_pending_updates=True
+            )
+            print(f"✅ Webhook установлен: {webhook_url}/webhook")
+        except Exception as e:
+            print(f"❌ Ошибка при установке webhook: {e}")
+    else:
+        print("⚠️ WEBHOOK_URL не установлен в переменных окружения")
+    
+    print("🚀 Бот инициализирован для webhook режима")
 
+@app.on_event("startup")
+async def startup_event():
+    """Initialize bot on startup"""
+    await initialize_bot()
+
+@app.get("/")
+async def health_check():
+    """Health check endpoint for Cloud Run"""
+    return {"status": "ok", "message": "AI Bot is running"}
+
+@app.post("/set_webhook")
+async def set_webhook(request: Request):
+    """Manual webhook setup endpoint"""
+    try:
+        data = await request.json()
+        webhook_url = data.get("webhook_url")
+        if not webhook_url:
+            raise HTTPException(status_code=400, detail="webhook_url is required")
+        
+        if not application:
+            raise HTTPException(status_code=500, detail="Bot not initialized")
+        
+        result = await application.bot.set_webhook(
+            url=f"{webhook_url}/webhook",
+            drop_pending_updates=True
+        )
+        
+        return {
+            "status": "success", 
+            "webhook_url": f"{webhook_url}/webhook",
+            "result": result
+        }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.get("/get_webhook")
+async def get_webhook():
+    """Get current webhook info"""
+    try:
+        if not application:
+            raise HTTPException(status_code=500, detail="Bot not initialized")
+        
+        webhook_info = await application.bot.get_webhook_info()
+        
+        return {
+            "webhook_info": webhook_info.to_dict()
+        }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.post("/webhook")
+async def webhook(request: Request):
+    """Webhook endpoint for Telegram updates"""
+    try:
+        print("📨 Получен webhook запрос")
+        
+        # Get headers info
+        headers = dict(request.headers)
+        print(f"📊 Headers: {headers}")
+        print(f"📊 Content-Type: {headers.get('content-type', 'unknown')}")
+        
+        # Get the update from Telegram
+        update_data = await request.json()
+        print(f"📊 Update data: {update_data}")
+        
+        if not update_data:
+            print("❌ Пустые данные от Telegram")
+            return {"ok": True}
+        
+        if not application:
+            print("❌ Бот не инициализирован")
+            return {"ok": True}
+        
+        update = Update.de_json(update_data, application.bot)
+        print(f"📊 Parsed update: {update}")
+        
+        if not update:
+            print("❌ Не удалось распарсить update")
+            return {"ok": True}
+        
+        # Process the update
+        await application.process_update(update)
+        
+        print("✅ Update обработан успешно")
+        return {"ok": True}
+        
+    except Exception as e:
+        print(f"❌ Ошибка при обработке webhook: {e}")
+        import traceback
+        traceback.print_exc()
+        raise HTTPException(status_code=500, detail=str(e))
 
 if __name__ == "__main__":
-    main()
+    import uvicorn
+    port = int(os.environ.get("PORT", 8080))
+    uvicorn.run(app, host="0.0.0.0", port=port)
