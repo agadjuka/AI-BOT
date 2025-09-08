@@ -187,6 +187,21 @@ def initialize_bot():
     loop = asyncio.new_event_loop()
     asyncio.set_event_loop(loop)
     loop.run_until_complete(application.initialize())
+    
+    # Set webhook URL for Cloud Run
+    webhook_url = os.environ.get("WEBHOOK_URL")
+    if webhook_url:
+        try:
+            loop.run_until_complete(application.bot.set_webhook(
+                url=f"{webhook_url}/webhook",
+                drop_pending_updates=True
+            ))
+            print(f"✅ Webhook установлен: {webhook_url}/webhook")
+        except Exception as e:
+            print(f"❌ Ошибка при установке webhook: {e}")
+    else:
+        print("⚠️ WEBHOOK_URL не установлен в переменных окружения")
+    
     loop.close()
     print("🚀 Бот инициализирован для webhook режима")
 
@@ -195,13 +210,72 @@ def health_check():
     """Health check endpoint for Cloud Run"""
     return jsonify({"status": "ok", "message": "AI Bot is running"})
 
+@app.route("/set_webhook", methods=["POST"])
+def set_webhook():
+    """Manual webhook setup endpoint"""
+    try:
+        webhook_url = request.json.get("webhook_url")
+        if not webhook_url:
+            return jsonify({"error": "webhook_url is required"}), 400
+        
+        loop = asyncio.new_event_loop()
+        asyncio.set_event_loop(loop)
+        
+        result = loop.run_until_complete(application.bot.set_webhook(
+            url=f"{webhook_url}/webhook",
+            drop_pending_updates=True
+        ))
+        
+        loop.close()
+        
+        return jsonify({
+            "status": "success", 
+            "webhook_url": f"{webhook_url}/webhook",
+            "result": result
+        })
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+@app.route("/get_webhook", methods=["GET"])
+def get_webhook():
+    """Get current webhook info"""
+    try:
+        loop = asyncio.new_event_loop()
+        asyncio.set_event_loop(loop)
+        
+        webhook_info = loop.run_until_complete(application.bot.get_webhook_info())
+        
+        loop.close()
+        
+        return jsonify({
+            "webhook_info": webhook_info.to_dict()
+        })
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
 @app.route("/webhook", methods=["POST"])
 def webhook():
     """Webhook endpoint for Telegram updates"""
     try:
+        print("📨 Получен webhook запрос")
+        print(f"📊 Headers: {dict(request.headers)}")
+        print(f"📊 Content-Type: {request.content_type}")
+        print(f"📊 Content-Length: {request.content_length}")
+        
         # Get the update from Telegram
         update_data = request.get_json(force=True)
+        print(f"📊 Update data: {update_data}")
+        
+        if not update_data:
+            print("❌ Пустые данные от Telegram")
+            return "ok", 200
+        
         update = Update.de_json(update_data, application.bot)
+        print(f"📊 Parsed update: {update}")
+        
+        if not update:
+            print("❌ Не удалось распарсить update")
+            return "ok", 200
         
         # Process the update asynchronously
         loop = asyncio.new_event_loop()
@@ -209,9 +283,12 @@ def webhook():
         loop.run_until_complete(application.process_update(update))
         loop.close()
         
+        print("✅ Update обработан успешно")
         return "ok", 200
     except Exception as e:
         print(f"❌ Ошибка при обработке webhook: {e}")
+        import traceback
+        traceback.print_exc()
         return "error", 500
 
 def main() -> None:
