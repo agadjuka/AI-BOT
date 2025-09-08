@@ -32,7 +32,9 @@ from utils.message_sender import MessageSender
 from google_sheets_handler import get_google_sheets_ingredients
 
 # Bot configuration
-TOKEN = os.getenv("BOT_TOKEN", "8291213805:AAEHDlkDCHLQ3RFtrB5HLMeU-nGzF1hOZYE")
+TOKEN = os.getenv("BOT_TOKEN")
+if not TOKEN:
+    raise ValueError("BOT_TOKEN environment variable is required")
 TELEGRAM_API = f"https://api.telegram.org/bot{TOKEN}"
 
 # FastAPI app

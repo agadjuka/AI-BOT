@@ -45,4 +45,4 @@ jobs:
           --memory 1Gi \
           --cpu 1 \
           --max-instances 10 \
-          --set-env-vars PORT=8080
+          --set-env-vars PORT=8080,BOT_TOKEN=${{ secrets.BOT_TOKEN }},POSTER_TOKEN=${{ secrets.POSTER_TOKEN }},PROJECT_ID=${{ secrets.GCP_PROJECT_ID }}

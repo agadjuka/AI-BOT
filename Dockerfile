@@ -31,4 +31,4 @@ RUN mkdir -p data
 EXPOSE 8080
 
 # Команда запуска
-CMD ["python", "main_cloud.py"]
+CMD ["python", "main.py"]

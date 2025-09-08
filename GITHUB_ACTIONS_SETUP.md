@@ -33,6 +33,8 @@
 ```
 GCP_PROJECT_ID = just-advice-470905-a3
 GCP_SA_KEY = <содержимое скачанного JSON файла>
+BOT_TOKEN = 8291213805:AAEHDlkDCHLQ3RFtrB5HLMeU-nGzF1hOZYE
+POSTER_TOKEN = 853931:71424838d41a70ee724e07ef6c6f0774
 ```
 
 ### 3. Активация API
