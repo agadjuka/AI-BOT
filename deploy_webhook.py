@@ -190,6 +190,18 @@ def main():
     except Exception as e:
         print(f"❌ Ошибка при тестировании webhook: {e}")
     
+    # 6. Тестирование FastAPI docs
+    print("\n🔄 Тестирование FastAPI документации...")
+    docs_url = f"{webhook_url}/docs"
+    try:
+        response = requests.get(docs_url, timeout=30)
+        if response.status_code == 200:
+            print(f"✅ FastAPI docs доступны: {docs_url}")
+        else:
+            print(f"⚠️ FastAPI docs недоступны: {response.status_code}")
+    except Exception as e:
+        print(f"⚠️ Ошибка при проверке docs: {e}")
+    
     print("\n" + "="*50)
     print("✅ Развертывание завершено!")
     print("="*50)
