@@ -1,10 +1,13 @@
 """
-Main entry point for the AI Bot application
+Main entry point for the AI Bot application with webhook support for Cloud Run
 """
+import os
 import logging
 import asyncio
 import time
 import threading
+from flask import Flask, request, jsonify
+from telegram import Update
 from telegram.ext import (
     Application,
     CommandHandler,
@@ -83,8 +86,8 @@ def cleanup_old_files_periodically(ingredient_storage: IngredientStorage) -> Non
         except Exception as e:
             print(f"Ошибка при очистке файлов: {e}")
 
-def main() -> None:
-    """Main function to start the bot"""
+def create_application() -> Application:
+    """Create and configure the Telegram application"""
     # Initialize configuration
     config = BotConfig()
     prompt_manager = PromptManager()
@@ -96,13 +99,6 @@ def main() -> None:
     # Initialize handlers
     message_handlers = MessageHandlers(config, analysis_service)
     callback_handlers = CallbackHandlers(config, analysis_service)
-    
-    # Initialize message sender for centralized message sending
-    # Example usage:
-    # message_sender = MessageSender(config)
-    # await message_sender.send_success_message(update, context, "Операция выполнена успешно!")
-    # await message_sender.send_error_message(update, context, "Произошла ошибка при обработке")
-    # await message_sender.send_temp_message(update, context, "Временное сообщение", duration=5)
     
     # Initialize ingredient storage with 1 hour cleanup
     ingredient_storage = IngredientStorage(max_age_hours=1)
@@ -164,26 +160,79 @@ def main() -> None:
     # Add handlers
     application.add_handler(CommandHandler("start", message_handlers.start))
     application.add_handler(conv_handler)
-
-    # 4. Запускаем бота с улучшенной обработкой ошибок и автоочисткой
-    print("🚀 Бот запускается...")
-    print("🧹 Автоочистка файлов сопоставления: каждые 30 минут, файлы старше 1 часа")
     
-    # Запускаем фоновый поток для очистки
+    return application
+
+# Global variables for Flask app
+app = Flask(__name__)
+application = None
+ingredient_storage = None
+
+def initialize_bot():
+    """Initialize the bot application and start background tasks"""
+    global application, ingredient_storage
+    
+    # Create application
+    application = create_application()
+    
+    # Initialize ingredient storage with 1 hour cleanup
+    ingredient_storage = IngredientStorage(max_age_hours=1)
+    
+    # Start background cleanup thread
     cleanup_thread = threading.Thread(target=cleanup_old_files_periodically, args=(ingredient_storage,), daemon=True)
     cleanup_thread.start()
     print("✅ Фоновый поток очистки запущен")
     
+    # Initialize the application
+    loop = asyncio.new_event_loop()
+    asyncio.set_event_loop(loop)
+    loop.run_until_complete(application.initialize())
+    loop.close()
+    print("🚀 Бот инициализирован для webhook режима")
+
+@app.route("/", methods=["GET"])
+def health_check():
+    """Health check endpoint for Cloud Run"""
+    return jsonify({"status": "ok", "message": "AI Bot is running"})
+
+@app.route("/webhook", methods=["POST"])
+def webhook():
+    """Webhook endpoint for Telegram updates"""
     try:
-        safe_start_bot(application, ingredient_storage)
-    except KeyboardInterrupt:
-        print("\n⏹️ Бот остановлен пользователем")
+        # Get the update from Telegram
+        update_data = request.get_json(force=True)
+        update = Update.de_json(update_data, application.bot)
+        
+        # Process the update asynchronously
+        loop = asyncio.new_event_loop()
+        asyncio.set_event_loop(loop)
+        loop.run_until_complete(application.process_update(update))
+        loop.close()
+        
+        return "ok", 200
     except Exception as e:
-        print(f"❌ Критическая ошибка: {e}")
-        print("💡 Попробуйте:")
-        print("   1. Убедиться, что не запущено других экземпляров бота")
-        print("   2. Проверить интернет-соединение")
-        print("   3. Перезапустить через несколько минут")
+        print(f"❌ Ошибка при обработке webhook: {e}")
+        return "error", 500
+
+def main() -> None:
+    """Main function to start the Flask app for Cloud Run"""
+    global application, ingredient_storage
+    
+    print("🚀 Запуск AI Bot в webhook режиме для Cloud Run...")
+    print("🧹 Автоочистка файлов сопоставления: каждые 30 минут, файлы старше 1 часа")
+    
+    # Initialize the bot
+    initialize_bot()
+    
+    # Get port from environment (Cloud Run sets this)
+    port = int(os.environ.get("PORT", 8080))
+    
+    print(f"🌐 Запуск веб-сервера на порту {port}")
+    print("📡 Webhook endpoint: /webhook")
+    print("❤️ Health check endpoint: /")
+    
+    # Start Flask app
+    app.run(host="0.0.0.0", port=port, debug=False)
 
 
 if __name__ == "__main__":

@@ -20,5 +20,5 @@ RUN pip install --upgrade pip && pip install --no-cache-dir -r requirements.txt
 # 6) Код
 COPY . .
 
-# 7) Старт
-CMD ["python", "main.py"]
+# 7) Старт с gunicorn для production
+CMD ["gunicorn", "--bind", "0.0.0.0:$PORT", "--workers", "1", "--threads", "2", "--timeout", "120", "main:app"]
