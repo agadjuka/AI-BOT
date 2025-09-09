@@ -102,7 +102,7 @@ class AIService:
             return data
         except json.JSONDecodeError as e:
             print(f"Ошибка парсинга JSON от Gemini: {e}")
-            н ValueError(f"Не удалось распарсить JSON ответ от AI: {e}")
+            raise ValueError(f"Не удалось распарсить JSON ответ от AI: {e}")
 
 
 class ReceiptAnalysisService:
