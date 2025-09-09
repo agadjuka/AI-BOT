@@ -167,10 +167,17 @@ async def initialize_bot():
     
     print("🚀 Инициализация бота...")
     
+    # Debug: Print all environment variables
+    print("🔍 Debug: Environment variables:")
+    for key, value in os.environ.items():
+        if "TOKEN" in key or "PROJECT" in key or "WEBHOOK" in key:
+            print(f"  {key}: {'*' * len(value) if value else 'NOT SET'}")
+    
     # Check if BOT_TOKEN is available
     TOKEN = os.getenv("BOT_TOKEN")
     if not TOKEN:
         print("❌ BOT_TOKEN не найден в переменных окружения")
+        print("🔍 Available env vars with 'BOT':", [k for k in os.environ.keys() if 'BOT' in k])
         return
     
     TELEGRAM_API = f"https://api.telegram.org/bot{TOKEN}"

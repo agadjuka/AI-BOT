@@ -23,6 +23,15 @@ jobs:
     - name: Checkout code
       uses: actions/checkout@v4
 
+    - name: Check secrets
+      run: |
+        echo "🔍 Checking GitHub Secrets..."
+        echo "BOT_TOKEN: ${{ secrets.BOT_TOKEN != '' && 'SET' || 'NOT SET' }}"
+        echo "POSTER_TOKEN: ${{ secrets.POSTER_TOKEN != '' && 'SET' || 'NOT SET' }}"
+        echo "GCP_PROJECT_ID: ${{ secrets.GCP_PROJECT_ID != '' && 'SET' || 'NOT SET' }}"
+        echo "WEBHOOK_URL: ${{ secrets.WEBHOOK_URL != '' && 'SET' || 'NOT SET' }}"
+        echo "GCP_SA_KEY: ${{ secrets.GCP_SA_KEY != '' && 'SET' || 'NOT SET' }}"
+
     - name: Google Auth
       id: auth
       uses: google-github-actions/auth@v2
@@ -45,6 +54,12 @@ jobs:
 
     - name: Deploy to Cloud Run
       run: |
+        echo "🔍 Debug: Checking secrets..."
+        echo "BOT_TOKEN length: ${#BOT_TOKEN}"
+        echo "POSTER_TOKEN length: ${#POSTER_TOKEN}"
+        echo "PROJECT_ID: $PROJECT_ID"
+        echo "WEBHOOK_URL: $WEBHOOK_URL"
+        
         gcloud run deploy $SERVICE_NAME \
           --image gcr.io/$PROJECT_ID/$SERVICE_NAME:$GITHUB_SHA \
           --platform managed \
