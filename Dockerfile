@@ -5,14 +5,14 @@ FROM python:3.11-slim
 WORKDIR /app
 
 # Устанавливаем зависимости
-COPY requirements_telegram.txt .
-RUN pip install --no-cache-dir -r requirements_telegram.txt
+COPY requirements_full.txt .
+RUN pip install --no-cache-dir -r requirements_full.txt
 
 # Копируем файл
-COPY main_telegram.py .
+COPY main_full.py .
 
 # Cloud Run передает порт в переменной $PORT
 ENV PORT=8080
 
-# Запускаем Telegram версию
-CMD ["python", "main_telegram.py"]
+# Запускаем полную версию
+CMD ["python", "main_full.py"]
