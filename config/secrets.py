@@ -10,23 +10,14 @@ class SecretsConfig:
     """Конфигурация секретных данных"""
     
     def __init__(self):
-        # Bot Token - токен Telegram бота
-        self.BOT_TOKEN: str = self._get_env_var(
-            "BOT_TOKEN", 
-            "8291213805:AAEHDlkDCHLQ3RFtrB5HLMeU-nGzF1hOZYE"
-        )
+        # Bot Token - токен Telegram бота (только из переменных окружения)
+        self.BOT_TOKEN: str = os.getenv("BOT_TOKEN", "")
         
-        # Poster Token - токен для API Poster
-        self.POSTER_TOKEN: str = self._get_env_var(
-            "POSTER_TOKEN", 
-            "853931:71424838d41a70ee724e07ef6c6f0774"
-        )
+        # Poster Token - токен для API Poster (только из переменных окружения)
+        self.POSTER_TOKEN: str = os.getenv("POSTER_TOKEN", "")
         
-        # Google Cloud Project ID
-        self.PROJECT_ID: str = self._get_env_var(
-            "PROJECT_ID", 
-            "just-advice-470905-a3"
-        )
+        # Google Cloud Project ID (только из переменных окружения)
+        self.PROJECT_ID: str = os.getenv("PROJECT_ID", "")
     
     def _get_env_var(self, env_name: str, default_value: str) -> str:
         """
