@@ -50,7 +50,7 @@ class CallbackHandlers(BaseCallbackHandler):
         # Route to appropriate handler based on action
         if action in ["add_row", "edit_total", "auto_calculate_total", "finish_editing", "edit_receipt", 
                      "back_to_edit", "delete_row", "edit_line_number", "manual_edit_total", "reanalyze", 
-                     "back_to_receipt", "back_to_main_menu"] or action.startswith("field_") or action.startswith("apply_") or action.startswith("edit_item_") or action.startswith("delete_item_"):
+                     "back_to_receipt", "back_to_main_menu"] or action.startswith("field_") or action.startswith("apply_") or action.startswith("edit_item_") or action.startswith("edit_") or action.startswith("delete_item_"):
             return await self.receipt_edit_dispatcher._handle_receipt_edit_actions(update, context, action)
         
         elif action in ["ingredient_matching", "manual_matching", "position_selection", "match_item_", 

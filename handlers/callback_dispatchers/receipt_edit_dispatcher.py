@@ -36,8 +36,13 @@ class ReceiptEditDispatcher(BaseCallbackHandler):
             await self.receipt_edit_handler._send_edit_menu(update, context)
         elif action == "back_to_edit":
             await self.receipt_edit_handler._send_edit_menu(update, context)
-        elif action.startswith("edit_item_"):
-            item_number = int(action.split("_")[-1])
+        elif action.startswith("edit_item_") or action.startswith("edit_"):
+            # Handle both "edit_item_X" and "edit_X" patterns
+            if action.startswith("edit_item_"):
+                item_number = int(action.split("_")[-1])
+            else:  # action.startswith("edit_")
+                item_number = int(action.split("_")[-1])
+            
             context.user_data['line_to_edit'] = item_number
             await self.ui_manager.cleanup_all_except_anchor(update, context)
             await self.receipt_edit_handler._send_edit_menu(update, context)
