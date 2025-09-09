@@ -17,7 +17,8 @@ ARG GOOGLE_APPLICATION_CREDENTIALS_JSON
 # Создаем файл credentials из build argument
 RUN if [ -n "$GOOGLE_APPLICATION_CREDENTIALS_JSON" ]; then \
         echo "$GOOGLE_APPLICATION_CREDENTIALS_JSON" > /app/gcp_credentials.json; \
-        echo "✅ Создан файл credentials"; \
+        echo "$GOOGLE_APPLICATION_CREDENTIALS_JSON" > /app/google_sheets_credentials.json; \
+        echo "✅ Созданы файлы credentials для всех сервисов"; \
     else \
         echo "❌ GOOGLE_APPLICATION_CREDENTIALS_JSON не передан"; \
     fi

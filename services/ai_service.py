@@ -43,8 +43,12 @@ class AIService:
         
         # Use default credentials (will use GOOGLE_APPLICATION_CREDENTIALS if set)
         from google.auth import default
-        credentials, project = default()
-        print(f"✅ Используем credentials для проекта: {project}")
+        try:
+            credentials, project = default()
+            print(f"✅ Используем credentials для проекта: {project}")
+        except Exception as e:
+            print(f"❌ Ошибка аутентификации: {e}")
+            raise
         
         vertexai.init(project=self.config.PROJECT_ID, location=self.config.LOCATION, credentials=credentials)
         model = GenerativeModel(self.config.MODEL_NAME)
