@@ -21,7 +21,21 @@ class AIService:
         """
         Phase 1: Analyze receipt image and extract data
         """
-        vertexai.init(project=self.config.PROJECT_ID, location=self.config.LOCATION)
+        import os
+        import json
+        from google.oauth2 import service_account
+        
+        # Set up authentication
+        if os.getenv("GOOGLE_APPLICATION_CREDENTIALS_JSON"):
+            # Use JSON credentials from environment variable
+            credentials_info = json.loads(os.getenv("GOOGLE_APPLICATION_CREDENTIALS_JSON"))
+            credentials = service_account.Credentials.from_service_account_info(credentials_info)
+        else:
+            # Use default credentials
+            from google.auth import default
+            credentials, project = default()
+        
+        vertexai.init(project=self.config.PROJECT_ID, location=self.config.LOCATION, credentials=credentials)
         model = GenerativeModel(self.config.MODEL_NAME)
         
         with open(image_path, "rb") as f:
