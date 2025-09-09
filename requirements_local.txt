@@ -1,0 +1,19 @@
+# Локальная версия зависимостей для разработки
+# Стабильные версии для Python 3.10+
+python-telegram-bot==20.7
+google-cloud-aiplatform==1.71.1
+vertexai==1.71.1
+
+# Фиксированные версии numpy и pandas для совместимости
+numpy==1.24.3
+pandas==2.0.3
+
+# Остальные зависимости
+openpyxl==3.1.2
+google-auth==2.23.4
+google-auth-oauthlib==1.1.0
+google-auth-httplib2==0.1.1
+google-api-python-client==2.108.0
+
+# Для локальной разработки (не нужны для production)
+python-dotenv==1.0.0

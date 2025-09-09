@@ -6,67 +6,62 @@ on:
   pull_request:
     branches: [ main ]
 
-env:
-  PROJECT_ID: ${{ secrets.GCP_PROJECT_ID }}
-  SERVICE_NAME: ai-bot
-  REGION: asia-southeast1
-
 jobs:
   deploy:
     runs-on: ubuntu-latest
     
-    permissions:
-      contents: read
-      id-token: write
-
     steps:
     - name: Checkout code
       uses: actions/checkout@v4
-
-    - name: Check secrets
+      
+    - name: Set up Python
+      uses: actions/setup-python@v4
+      with:
+        python-version: '3.11'
+        
+    - name: Install dependencies
       run: |
-        echo "🔍 Checking GitHub Secrets..."
-        echo "BOT_TOKEN: ${{ secrets.BOT_TOKEN != '' && 'SET' || 'NOT SET' }}"
-        echo "POSTER_TOKEN: ${{ secrets.POSTER_TOKEN != '' && 'SET' || 'NOT SET' }}"
-        echo "GCP_PROJECT_ID: ${{ secrets.GCP_PROJECT_ID != '' && 'SET' || 'NOT SET' }}"
-        echo "WEBHOOK_URL: ${{ secrets.WEBHOOK_URL != '' && 'SET' || 'NOT SET' }}"
-        echo "GCP_SA_KEY: ${{ secrets.GCP_SA_KEY != '' && 'SET' || 'NOT SET' }}"
-
-    - name: Google Auth
-      id: auth
-      uses: google-github-actions/auth@v2
+        python -m pip install --upgrade pip
+        pip install -r requirements.txt
+        
+    - name: Lint with flake8
+      run: |
+        pip install flake8
+        # Stop the build if there are Python syntax errors or undefined names
+        flake8 . --count --select=E9,F63,F7,F82 --show-source --statistics
+        # Exit-zero treats all errors as warnings. The GitHub editor is 127 chars wide
+        flake8 . --count --exit-zero --max-complexity=10 --max-line-length=127 --statistics
+        
+    - name: Test Python syntax
+      run: |
+        python -m py_compile main.py
+        python -m py_compile main_local.py
+        
+    - name: Authenticate to Google Cloud
+      uses: google-github-actions/auth@v1
       with:
         credentials_json: ${{ secrets.GCP_SA_KEY }}
-
+        
     - name: Set up Cloud SDK
-      uses: google-github-actions/setup-gcloud@v2
-
+      uses: google-github-actions/setup-gcloud@v1
+      
     - name: Configure Docker
       run: gcloud auth configure-docker
-
+      
     - name: Build and push Docker image
       run: |
-        # Build the Docker image with credentials
-        echo "Building with credentials..."
-        docker build \
-          --build-arg GOOGLE_APPLICATION_CREDENTIALS_JSON='${{ secrets.GCP_SA_KEY }}' \
-          -t gcr.io/$PROJECT_ID/$SERVICE_NAME:$GITHUB_SHA .
+        # Build the Docker image
+        docker build -t gcr.io/${{ secrets.PROJECT_ID }}/ai-bot:${{ github.sha }} .
         
         # Push the image to Google Container Registry
-        docker push gcr.io/$PROJECT_ID/$SERVICE_NAME:$GITHUB_SHA
-
+        docker push gcr.io/${{ secrets.PROJECT_ID }}/ai-bot:${{ github.sha }}
+        
     - name: Deploy to Cloud Run
       run: |
-        echo "🔍 Debug: Checking secrets..."
-        echo "BOT_TOKEN length: ${#BOT_TOKEN}"
-        echo "POSTER_TOKEN length: ${#POSTER_TOKEN}"
-        echo "PROJECT_ID: $PROJECT_ID"
-        echo "WEBHOOK_URL: $WEBHOOK_URL"
-        
-        gcloud run deploy $SERVICE_NAME \
-          --image gcr.io/$PROJECT_ID/$SERVICE_NAME:$GITHUB_SHA \
+        gcloud run deploy ai-bot \
+          --image gcr.io/${{ secrets.PROJECT_ID }}/ai-bot:${{ github.sha }} \
+          --region europe-west1 \
           --platform managed \
-          --region $REGION \
           --allow-unauthenticated \
           --port 8080 \
           --memory 1Gi \
@@ -74,22 +69,9 @@ jobs:
           --max-instances 10 \
           --min-instances 0 \
           --timeout 300 \
-          --concurrency 80 \
-          --set-env-vars "BOT_TOKEN=${{ secrets.BOT_TOKEN }}" \
-          --set-env-vars "POSTER_TOKEN=${{ secrets.POSTER_TOKEN }}" \
-          --set-env-vars "PROJECT_ID=${{ secrets.GCP_PROJECT_ID }}" \
-          --set-env-vars "WEBHOOK_URL=${{ secrets.WEBHOOK_URL }}" \
-          --set-env-vars "GOOGLE_APPLICATION_CREDENTIALS_JSON=${{ secrets.GCP_SA_KEY }}"
-
-    - name: Get service URL
+          --set-env-vars BOT_TOKEN=${{ secrets.BOT_TOKEN }},POSTER_TOKEN=${{ secrets.POSTER_TOKEN }},PROJECT_ID=${{ secrets.PROJECT_ID }}
+          
+    - name: Show deployment URL
       run: |
-        SERVICE_URL=$(gcloud run services describe $SERVICE_NAME --region=$REGION --format='value(status.url)')
-        echo "Service deployed at: $SERVICE_URL"
-        echo "SERVICE_URL=$SERVICE_URL" >> $GITHUB_ENV
-
-    - name: Update webhook
-      run: |
-        SERVICE_URL=$(gcloud run services describe $SERVICE_NAME --region=$REGION --format='value(status.url)')
-        curl -X POST "$SERVICE_URL/set_webhook" \
-          -H "Content-Type: application/json" \
-          -d "{\"webhook_url\": \"$SERVICE_URL\"}"
+        echo "🚀 Deployment completed!"
+        echo "Service URL: https://ai-bot-$(echo ${{ secrets.PROJECT_ID }} | cut -d'-' -f4)-uc.a.run.app"

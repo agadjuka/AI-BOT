@@ -1,4 +1,3 @@
-<<<<<<< HEAD
 # Byte-compiled / optimized / DLL files
 __pycache__/
 *.py[cod]
@@ -142,6 +141,7 @@ receipt_data_*.xlsx
 google_sheets_credentials.json
 *.json
 !requirements.txt
+!requirements_local.txt
 
 # IDE
 .vscode/
@@ -162,6 +162,5 @@ Thumbs.db
 # Logs
 *.log
 
-=======
-venv/
->>>>>>> bed72345f4cca2278a731ad56c2134ad2393eaa8
+# Local development files
+AI Bot Локал версия/
