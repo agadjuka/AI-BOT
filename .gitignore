@@ -139,9 +139,12 @@ receipt_data_*.xlsx
 
 # Google Cloud credentials
 google_sheets_credentials.json
+
+# JSON files (except requirements)
 *.json
 !requirements.txt
 !requirements_local.txt
+!env.example
 
 # IDE
 .vscode/
@@ -163,4 +166,4 @@ Thumbs.db
 *.log
 
 # Local development files
-AI Bot Локал версия/
+# (Add any local development folders here)
