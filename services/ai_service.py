@@ -16,14 +16,13 @@ class AIService:
     def __init__(self, config: BotConfig, prompt_manager: PromptManager):
         self.config = config
         self.prompt_manager = prompt_manager
+        self._initialize_vertex_ai()
     
-    def analyze_receipt_phase1(self, image_path: str) -> str:
-        """
-        Phase 1: Analyze receipt image and extract data
-        """
+    def _initialize_vertex_ai(self):
+        """Initialize Vertex AI once at startup"""
         import os
         import json
-        from google.oauth2 import service_account
+        from google.auth import default
         
         # Set up authentication
         print(f"🔍 Debug: GOOGLE_APPLICATION_CREDENTIALS = {os.getenv('GOOGLE_APPLICATION_CREDENTIALS')}")
@@ -42,15 +41,34 @@ class AIService:
                 print(f"❌ Ошибка при создании файла credentials: {e}")
         
         # Use default credentials (will use GOOGLE_APPLICATION_CREDENTIALS if set)
-        from google.auth import default
         try:
             credentials, project = default()
             print(f"✅ Используем credentials для проекта: {project}")
+            print(f"🔍 Debug: Credentials type: {type(credentials)}")
+            print(f"🔍 Debug: Credentials service_account_email: {getattr(credentials, 'service_account_email', 'N/A')}")
         except Exception as e:
             print(f"❌ Ошибка аутентификации: {e}")
             raise
         
-        vertexai.init(project=self.config.PROJECT_ID, location=self.config.LOCATION, credentials=credentials)
+        # Initialize Vertex AI once
+        try:
+            vertexai.init(project=self.config.PROJECT_ID, location=self.config.LOCATION, credentials=credentials)
+            print("✅ Vertex AI инициализирован с credentials")
+        except Exception as e:
+            print(f"❌ Ошибка инициализации Vertex AI с credentials: {e}")
+            # Try without explicit credentials (use ADC)
+            try:
+                vertexai.init(project=self.config.PROJECT_ID, location=self.config.LOCATION)
+                print("✅ Vertex AI инициализирован с ADC")
+            except Exception as e2:
+                print(f"❌ Ошибка инициализации Vertex AI с ADC: {e2}")
+                raise
+    
+    def analyze_receipt_phase1(self, image_path: str) -> str:
+        """
+        Phase 1: Analyze receipt image and extract data
+        """
+        # Vertex AI already initialized in __init__
         model = GenerativeModel(self.config.MODEL_NAME)
         
         with open(image_path, "rb") as f:
@@ -68,7 +86,7 @@ class AIService:
         """
         Phase 2: Format the analyzed data
         """
-        vertexai.init(project=self.config.PROJECT_ID, location=self.config.LOCATION)
+        # Vertex AI already initialized in __init__
         model = GenerativeModel(self.config.MODEL_NAME)
         
         print("Отправка запроса в Gemini (Фаза 2: Форматирование)...")
