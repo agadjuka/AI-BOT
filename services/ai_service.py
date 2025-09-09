@@ -26,27 +26,42 @@ class AIService:
         print(f"🔍 Debug: GOOGLE_APPLICATION_CREDENTIALS = {os.getenv('GOOGLE_APPLICATION_CREDENTIALS')}")
         print(f"🔍 Debug: GOOGLE_APPLICATION_CREDENTIALS_JSON exists: {bool(os.getenv('GOOGLE_APPLICATION_CREDENTIALS_JSON'))}")
         
+        # Clear any cached credentials to force refresh
+        os.environ.pop('GOOGLE_APPLICATION_CREDENTIALS', None)
+        
         # Initialize Vertex AI using ADC (recommended approach for Cloud Run)
         try:
             vertexai.init(project=self.config.PROJECT_ID, location=self.config.LOCATION)
             print("✅ Vertex AI инициализирован с Application Default Credentials (ADC)")
+            
+            # Create model instance once during initialization
+            self.model = GenerativeModel(self.config.MODEL_NAME)
+            print(f"✅ Модель {self.config.MODEL_NAME} создана")
+            
         except Exception as e:
             print(f"❌ Ошибка инициализации Vertex AI с ADC: {e}")
-            raise
+            # Try fallback to us-central1 if asia-southeast1 fails
+            try:
+                print("🔄 Пробуем fallback на us-central1...")
+                vertexai.init(project=self.config.PROJECT_ID, location="us-central1")
+                self.model = GenerativeModel(self.config.MODEL_NAME)
+                print("✅ Vertex AI инициализирован с fallback на us-central1")
+            except Exception as e2:
+                print(f"❌ Ошибка инициализации Vertex AI с fallback: {e2}")
+                raise
     
     def analyze_receipt_phase1(self, image_path: str) -> str:
         """
         Phase 1: Analyze receipt image and extract data
         """
-        # Vertex AI already initialized in __init__
-        model = GenerativeModel(self.config.MODEL_NAME)
+        # Use pre-initialized model from __init__
         
         with open(image_path, "rb") as f:
             image_data = f.read()
         image_part = Part.from_data(data=image_data, mime_type="image/jpeg")
         
         print("Отправка запроса в Gemini (Фаза 1: Анализ)...")
-        response = model.generate_content([image_part, self.prompt_manager.get_analyze_prompt()])
+        response = self.model.generate_content([image_part, self.prompt_manager.get_analyze_prompt()])
         
         clean_response = response.text.strip().replace("```json", "").replace("```", "")
         print("Ответ от Gemini (Фаза 1):", clean_response)
@@ -56,11 +71,10 @@ class AIService:
         """
         Phase 2: Format the analyzed data
         """
-        # Vertex AI already initialized in __init__
-        model = GenerativeModel(self.config.MODEL_NAME)
+        # Use pre-initialized model from __init__
         
         print("Отправка запроса в Gemini (Фаза 2: Форматирование)...")
-        response = model.generate_content(self.prompt_manager.get_format_prompt() + final_data)
+        response = self.model.generate_content(self.prompt_manager.get_format_prompt() + final_data)
         print("Ответ от Gemini (Фаза 2):", response.text)
         return response.text
     
