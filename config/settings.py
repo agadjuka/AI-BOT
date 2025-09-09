@@ -29,7 +29,7 @@ class BotConfig:
         # Google Cloud settings
         self.PROJECT_ID: str = secrets.PROJECT_ID
         self.LOCATION: str = "asia-southeast1"  # Изменено на регион Cloud Run
-        self.MODEL_NAME: str = "gemini-1.0-pro-vision"  # Более стабильная модель
+        self.MODEL_NAME: str = "gemini-2.5-flash"
         
         # Conversation states
         self.AWAITING_CORRECTION = 0
