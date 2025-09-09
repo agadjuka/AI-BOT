@@ -19,50 +19,20 @@ class AIService:
         self._initialize_vertex_ai()
     
     def _initialize_vertex_ai(self):
-        """Initialize Vertex AI once at startup"""
+        """Initialize Vertex AI once at startup using Application Default Credentials (ADC)"""
         import os
-        import json
-        from google.auth import default
         
-        # Set up authentication
+        # Debug information
         print(f"🔍 Debug: GOOGLE_APPLICATION_CREDENTIALS = {os.getenv('GOOGLE_APPLICATION_CREDENTIALS')}")
         print(f"🔍 Debug: GOOGLE_APPLICATION_CREDENTIALS_JSON exists: {bool(os.getenv('GOOGLE_APPLICATION_CREDENTIALS_JSON'))}")
         
-        # Create credentials file from environment variable if available
-        if os.getenv("GOOGLE_APPLICATION_CREDENTIALS_JSON"):
-            try:
-                credentials_info = json.loads(os.getenv("GOOGLE_APPLICATION_CREDENTIALS_JSON"))
-                credentials_file = "/tmp/gcp_credentials.json"
-                with open(credentials_file, "w") as f:
-                    json.dump(credentials_info, f)
-                os.environ["GOOGLE_APPLICATION_CREDENTIALS"] = credentials_file
-                print(f"✅ Создан файл credentials: {credentials_file}")
-            except Exception as e:
-                print(f"❌ Ошибка при создании файла credentials: {e}")
-        
-        # Use default credentials (will use GOOGLE_APPLICATION_CREDENTIALS if set)
+        # Initialize Vertex AI using ADC (recommended approach for Cloud Run)
         try:
-            credentials, project = default()
-            print(f"✅ Используем credentials для проекта: {project}")
-            print(f"🔍 Debug: Credentials type: {type(credentials)}")
-            print(f"🔍 Debug: Credentials service_account_email: {getattr(credentials, 'service_account_email', 'N/A')}")
+            vertexai.init(project=self.config.PROJECT_ID, location=self.config.LOCATION)
+            print("✅ Vertex AI инициализирован с Application Default Credentials (ADC)")
         except Exception as e:
-            print(f"❌ Ошибка аутентификации: {e}")
+            print(f"❌ Ошибка инициализации Vertex AI с ADC: {e}")
             raise
-        
-        # Initialize Vertex AI once
-        try:
-            vertexai.init(project=self.config.PROJECT_ID, location=self.config.LOCATION, credentials=credentials)
-            print("✅ Vertex AI инициализирован с credentials")
-        except Exception as e:
-            print(f"❌ Ошибка инициализации Vertex AI с credentials: {e}")
-            # Try without explicit credentials (use ADC)
-            try:
-                vertexai.init(project=self.config.PROJECT_ID, location=self.config.LOCATION)
-                print("✅ Vertex AI инициализирован с ADC")
-            except Exception as e2:
-                print(f"❌ Ошибка инициализации Vertex AI с ADC: {e2}")
-                raise
     
     def analyze_receipt_phase1(self, image_path: str) -> str:
         """

@@ -14,17 +14,16 @@ COPY . .
 # Получаем credentials как build argument
 ARG GOOGLE_APPLICATION_CREDENTIALS_JSON
 
-# Создаем файл credentials из build argument
+# Создаем файл credentials из build argument (для Google Sheets)
 RUN if [ -n "$GOOGLE_APPLICATION_CREDENTIALS_JSON" ]; then \
-        echo "$GOOGLE_APPLICATION_CREDENTIALS_JSON" > /app/gcp_credentials.json; \
         echo "$GOOGLE_APPLICATION_CREDENTIALS_JSON" > /app/google_sheets_credentials.json; \
-        echo "✅ Созданы файлы credentials для всех сервисов"; \
+        echo "✅ Создан файл credentials для Google Sheets"; \
     else \
         echo "❌ GOOGLE_APPLICATION_CREDENTIALS_JSON не передан"; \
     fi
 
-# Устанавливаем переменную окружения для credentials
-ENV GOOGLE_APPLICATION_CREDENTIALS=/app/gcp_credentials.json
+# Для Vertex AI используем Application Default Credentials (ADC)
+# Cloud Run автоматически предоставляет сервисный аккаунт
 
 # Cloud Run передает порт в переменной $PORT
 ENV PORT=8080
