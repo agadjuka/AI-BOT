@@ -30,16 +30,33 @@ try:
     print(f"✅ pandas версия: {pd.__version__}")
 except ImportError as e:
     print(f"❌ Ошибка импорта numpy/pandas: {e}")
-    raise
+    # Не прерываем запуск, если numpy/pandas недоступны
+    np = None
+    pd = None
 
-from config.settings import BotConfig
-from config.prompts import PromptManager
-from services.ai_service import AIService, ReceiptAnalysisService
-from handlers.message_handlers import MessageHandlers
-from handlers.callback_handlers import CallbackHandlers
-from utils.ingredient_storage import IngredientStorage
-from utils.message_sender import MessageSender
-from google_sheets_handler import get_google_sheets_ingredients
+# Импорты с обработкой ошибок
+try:
+    from config.settings import BotConfig
+    from config.prompts import PromptManager
+    from services.ai_service import AIService, ReceiptAnalysisService
+    from handlers.message_handlers import MessageHandlers
+    from handlers.callback_handlers import CallbackHandlers
+    from utils.ingredient_storage import IngredientStorage
+    from utils.message_sender import MessageSender
+    from google_sheets_handler import get_google_sheets_ingredients
+    print("✅ Все модули импортированы успешно")
+except ImportError as e:
+    print(f"❌ Ошибка импорта модулей: {e}")
+    # Устанавливаем None для всех модулей
+    BotConfig = None
+    PromptManager = None
+    AIService = None
+    ReceiptAnalysisService = None
+    MessageHandlers = None
+    CallbackHandlers = None
+    IngredientStorage = None
+    MessageSender = None
+    get_google_sheets_ingredients = None
 
 # Bot configuration - будет инициализирован позже
 TOKEN = None
@@ -64,6 +81,11 @@ def cleanup_old_files_periodically(ingredient_storage: IngredientStorage) -> Non
 
 def create_application() -> Application:
     """Create and configure the Telegram application"""
+    # Check if all required modules are available
+    if not all([BotConfig, PromptManager, AIService, ReceiptAnalysisService, 
+                MessageHandlers, CallbackHandlers, IngredientStorage]):
+        raise ImportError("Required modules are not available")
+    
     # Initialize configuration
     config = BotConfig()
     prompt_manager = PromptManager()

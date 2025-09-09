@@ -5,14 +5,14 @@ FROM python:3.11-slim
 WORKDIR /app
 
 # Устанавливаем зависимости
-COPY requirements_full.txt .
-RUN pip install --no-cache-dir -r requirements_full.txt
+COPY requirements.txt .
+RUN pip install --no-cache-dir -r requirements.txt
 
-# Копируем файл
-COPY main_full.py .
+# Копируем все файлы
+COPY . .
 
 # Cloud Run передает порт в переменной $PORT
 ENV PORT=8080
 
-# Запускаем полную версию
-CMD ["python", "main_full.py"]
+# Запускаем оригинальный main.py
+CMD ["python", "main.py"]
