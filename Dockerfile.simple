@@ -1,0 +1,14 @@
+# Максимально простой Dockerfile для тестирования
+FROM python:3.11-slim
+
+# Устанавливаем рабочую директорию
+WORKDIR /app
+
+# Копируем только простой файл
+COPY main_simple.py .
+
+# Cloud Run передает порт в переменной $PORT
+ENV PORT=8080
+
+# Запускаем простую версию
+CMD ["python", "main_simple.py"]

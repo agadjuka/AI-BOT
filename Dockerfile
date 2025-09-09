@@ -4,14 +4,11 @@ FROM python:3.11-slim
 # Устанавливаем рабочую директорию
 WORKDIR /app
 
-# Копируем файлы
-COPY requirements.txt .
-RUN pip install --no-cache-dir -r requirements.txt
-
-COPY . .
+# Копируем только простой файл (без зависимостей)
+COPY main_simple.py .
 
 # Cloud Run передает порт в переменной $PORT
 ENV PORT=8080
 
-# Запускаем основной код
-CMD ["python", "main_test.py"]
+# Запускаем простую версию для тестирования
+CMD ["python", "main_simple.py"]
