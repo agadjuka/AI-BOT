@@ -92,7 +92,7 @@ python main.py
 
 Подробные инструкции по настройке см. в [GOOGLE_SHEETS_SETUP.md](GOOGLE_SHEETS_SETUP.md)
 
-### Быстрый тест конфигурациии
+### Быстрый тест конфигурацииич
 
 ```bash
 python test_google_sheets_config.py
