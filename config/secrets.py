@@ -13,7 +13,7 @@ class SecretsConfig:
         # Bot Token - токен Telegram бота
         self.BOT_TOKEN: str = self._get_env_var(
             "BOT_TOKEN", 
-            "8291213805:AAEHDlkDCHLQ3RFtrB5HLMeU-nGzF1hOZYE"
+            "8351394597:AAE9aV6X4c0iLcRMqd_i4viccm_KCLdWStU"
         )
         
         # Poster Token - токен для API Poster

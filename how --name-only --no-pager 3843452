@@ -1,0 +1,123 @@
+[33m295a4c9[m[33m ([m[1;32mDevelop[m[33m)[m оптим гугла
+[1mdiff --git a/handlers/__pycache__/google_sheets_callback_handler.cpython-310.pyc b/handlers/__pycache__/google_sheets_callback_handler.cpython-310.pyc[m
+[1mindex b40adcd..0f0d1e2 100644[m
+Binary files a/handlers/__pycache__/google_sheets_callback_handler.cpython-310.pyc and b/handlers/__pycache__/google_sheets_callback_handler.cpython-310.pyc differ
+[1mdiff --git "a/handlers/google_sheets_callback_handler \342\200\224 \320\272\320\276\320\277\320\270\321\217.py" "b/handlers/google_sheets_callback_handler \342\200\224 \320\272\320\276\320\277\320\270\321\217.py"[m
+[1mnew file mode 100644[m
+[1mindex 0000000..a049aa0[m
+[1m--- /dev/null[m
+[1m+++ "b/handlers/google_sheets_callback_handler \342\200\224 \320\272\320\276\320\277\320\270\321\217.py"[m	
+[36m@@ -0,0 +1,988 @@[m
+[32m+[m[32m"""[m
+[32m+[m[32mGoogle Sheets callback handler for Telegram bot[m
+[32m+[m[32m"""[m
+[32m+[m[32mimport asyncio[m
+[32m+[m[32mfrom datetime import datetime[m
+[32m+[m[32mfrom telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup[m
+[32m+[m[32mfrom telegram.ext import ContextTypes[m
+[32m+[m
+[32m+[m[32mfrom handlers.base_callback_handler import BaseCallbackHandler[m
+[32m+[m[32mfrom models.ingredient_matching import IngredientMatchingResult, IngredientMatch, MatchStatus[m
+[32m+[m[32mfrom services.google_sheets_service import GoogleSheetsService[m
+[32m+[m[32mfrom services.file_generator_service import FileGeneratorService[m
+[32m+[m[32mfrom utils.common_handlers import CommonHandlers[m
+[32m+[m
+[32m+[m
+[32m+[m[32mclass GoogleSheetsCallbackHandler(BaseCallbackHandler):[m
+[32m+[m[32m    """Handler for Google Sheets related callbacks"""[m
+[32m+[m[41m    [m
+[32m+[m[32m    def __init__(self, config, analysis_service):[m
+[32m+[m[32m        super().__init__(config, analysis_service)[m
+[32m+[m[32m        self.google_sheets_service = GoogleSheetsService([m
+[32m+[m[32m            credentials_path=config.GOOGLE_SHEETS_CREDENTIALS,[m
+[32m+[m[32m            spreadsheet_id=config.GOOGLE_SHEETS_SPREADSHEET_ID[m
+[32m+[m[32m        )[m
+[32m+[m[32m        self.file_generator = FileGeneratorService()[m
+[32m+[m[32m        self.common_handlers = CommonHandlers(config, analysis_service)[m
+[32m+[m[41m    [m
+[32m+[m[32m    async def _show_google_sheets_matching_page(self, update: Update, context: ContextTypes.DEFAULT_TYPE,[m
+[32m+[m[32m                                               receipt_data=None, matching_result=None):[m
+[32m+[m[32m        """Show Google Sheets matching page with the same table as editor"""[m
+[32m+[m[32m        query = update.callback_query[m
+[32m+[m[32m        await query.answer()[m
+[32m+[m[41m        [m
+[32m+[m[32m        # Get data from parameters or context[m
+[32m+[m[32m        if not matching_result:[m
+[32m+[m[32m            matching_result = context.user_data.get('ingredient_matching_result')[m
+[32m+[m[32m        if not receipt_data:[m
+[32m+[m[32m            receipt_data = context.user_data.get('receipt_data')[m
+[32m+[m[41m        [m
+[32m+[m[32m        if not matching_result:[m
+[32m+[m[32m            await query.edit_message_text("❌ Результаты сопоставления не найдены")[m
+[32m+[m[32m            return[m
+[32m+[m[41m        [m
+[32m+[m[32m        # Use the same table formatting as the editor[m
+[32m+[m[32m        table_text = self._format_google_sheets_matching_table(matching_result)[m
+[32m+[m[41m        [m
+[32m+[m[32m        # Add additional text after the table[m
+[32m+[m[32m        schema_text = table_text + "\n\nВыберите действие для работы с сопоставлением:"[m
+[32m+[m[41m        [m
+[32m+[m[32m        # Create action buttons[m
+[32m+[m[32m        keyboard = [[m
+[32m+[m[32m            [InlineKeyboardButton("✏️ Редактировать сопоставление", callback_data="edit_google_sheets_matching")],[m
+[32m+[m[32m            [InlineKeyboardButton("👁️ Предпросмотр", callback_data="preview_google_sheets_upload")],[m
+[32m+[m[32m            [InlineKeyboardButton("◀️ Вернуться к чеку", callback_data="back_to_receipt")][m
+[32m+[m[32m        ][m
+[32m+[m[41m        [m
+[32m+[m[32m        reply_markup = InlineKeyboardMarkup(keyboard)[m
+[32m+[m[41m        [m
+[32m+[m[32m        # Save data for future use[m
+[32m+[m[32m        context.user_data['pending_google_sheets_upload'] = {[m
+[32m+[m[32m            'receipt_data': receipt_data,[m
+[32m+[m[32m            'matching_result': matching_result[m
+[32m+[m[32m        }[m
+[32m+[m[41m        [m
+[32m+[m[32m        await query.edit_message_text(schema_text, reply_markup=reply_markup, parse_mode='Markdown')[m
+[32m+[m[41m    [m
+[32m+[m[32m    async def _show_google_sheets_preview(self, update: Update, context: ContextTypes.DEFAULT_TYPE,[m
+[32m+[m[32m                                        receipt_data=None, matching_result=None):[m
+[32m+[m[32m        """Show Google Sheets upload preview with confirmation buttons"""[m
+[32m+[m[32m        query = update.callback_query[m
+[32m+[m[32m        await query.answer()[m
+[32m+[m[41m        [m
+[32m+[m[32m        # Get data from parameters or context[m
+[32m+[m[32m        if not matching_result:[m
+[32m+[m[32m            matching_result = context.user_data.get('ingredient_matching_result')[m
+[32m+[m[32m        if not receipt_data:[m
+[32m+[m[32m            receipt_data = context.user_data.get('receipt_data')[m
+[32m+[m[41m        [m
+[32m+[m[32m        if not matching_result or not receipt_data:[m
+[32m+[m[32m            await query.edit_message_text("❌ Данные для предпросмотра не найдены")[m
+[32m+[m[32m            return[m
+[32m+[m[41m        [m
+[32m+[m[32m        # Create table preview with Google Sheets data[m
+[32m+[m[32m        table_preview = self._format_google_sheets_table_preview(receipt_data, matching_result)[m
+[32m+[m[41m        [m
+[32m+[m[32m        # Text with table preview only[m
+[32m+[m[32m        text = "📊 **Предварительный просмотр загрузки в Google Таблицы**\n\n"[m
+[32m+[m[32m        text += f"```\n{table_preview}\n```"[m
+[32m+[m[41m        [m
+[32m+[m[32m        keyboard = [[m
+[32m+[m[32m            [InlineKeyboardButton("✅ Загрузить в Google Таблицы", callback_data="confirm_google_sheets_upload")],[m
+[32m+[m[32m            [InlineKeyboardButton("✏️ Редактировать сопоставление", callback_data="edit_google_sheets_matching")],[m
+[32m+[m[32m            [InlineKeyboardButton("◀️ Назад", callback_data="upload_to_google_sheets")][m
+[32m+[m[32m        ][m
+[32m+[m[41m        [m
+[32m+[m[32m        reply_markup = InlineKeyboardMarkup(keyboard)[m
+[32m+[m[41m        [m
+[32m+[m[32m        # Save data for upload[m
+[32m+[m[32m        context.user_data['pending_google_sheets_upload'] = {[m
+[32m+[m[32m            'receipt_data': receipt_data,[m
+[32m+[m[32m            'matching_result': matching_result[m
+[32m+[m[32m        }[m
+[32m+[m[41m        [m
+[32m+[m[32m        try:[m
+[32m+[m[32m            await query.edit_message_text(text, reply_markup=reply_markup, parse_mode='Markdown')[m
+[32m+[m[32m        except Exception as e:[m
+[32m+[m[32m            print(f"DEBUG: Error editing message in preview: {e}")[m
+[32m+[m[32m            # If editing fails, try to send a new message[m
+[32m+[m[32m            await query.message.reply_text(text, reply_markup=reply_markup, parse_mode='Markdown')[m
+[32m+[m[41m    [m
+[32m+[m[32m    async def _upload_to_google_sheets(self, update: Update, context: ContextTypes.DEFAULT_TYPE,[m
+[32m+[m[32m                                     matching_result: IngredientMatchingResult):[m
+[32m+[m[32m        """Uplo
