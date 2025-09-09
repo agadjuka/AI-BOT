@@ -29,6 +29,18 @@ class AIService:
         print(f"🔍 Debug: GOOGLE_APPLICATION_CREDENTIALS = {os.getenv('GOOGLE_APPLICATION_CREDENTIALS')}")
         print(f"🔍 Debug: GOOGLE_APPLICATION_CREDENTIALS_JSON exists: {bool(os.getenv('GOOGLE_APPLICATION_CREDENTIALS_JSON'))}")
         
+        # Create credentials file from environment variable if available
+        if os.getenv("GOOGLE_APPLICATION_CREDENTIALS_JSON"):
+            try:
+                credentials_info = json.loads(os.getenv("GOOGLE_APPLICATION_CREDENTIALS_JSON"))
+                credentials_file = "/tmp/gcp_credentials.json"
+                with open(credentials_file, "w") as f:
+                    json.dump(credentials_info, f)
+                os.environ["GOOGLE_APPLICATION_CREDENTIALS"] = credentials_file
+                print(f"✅ Создан файл credentials: {credentials_file}")
+            except Exception as e:
+                print(f"❌ Ошибка при создании файла credentials: {e}")
+        
         # Use default credentials (will use GOOGLE_APPLICATION_CREDENTIALS if set)
         from google.auth import default
         credentials, project = default()
