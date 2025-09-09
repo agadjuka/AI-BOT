@@ -27,10 +27,13 @@ class PhotoHandler(BaseMessageHandler):
         await photo_file.download_to_drive(self.config.PHOTO_FILE_NAME)
 
         try:
+            print("🔍 Начинаем анализ чека...")
             analysis_data = self.analysis_service.analyze_receipt(self.config.PHOTO_FILE_NAME)
+            print(f"✅ Анализ завершен, получены данные: {len(str(analysis_data))} символов")
             
             # Convert to ReceiptData model
             receipt_data = ReceiptData.from_dict(analysis_data)
+            print("✅ Данные конвертированы в ReceiptData")
             
             # Validate and correct data
             is_valid, message = self.validator.validate_receipt_data(receipt_data)
@@ -38,6 +41,7 @@ class PhotoHandler(BaseMessageHandler):
                 print(f"Предупреждение валидации: {message}")
             
             context.user_data['receipt_data'] = receipt_data
+            print("✅ Данные сохранены в user_data")
             # Save original data for change tracking
             context.user_data['original_data'] = ReceiptData.from_dict(receipt_data.to_dict())  # Deep copy
             
@@ -47,6 +51,13 @@ class PhotoHandler(BaseMessageHandler):
         except (json.JSONDecodeError, KeyError, IndexError, ValueError) as e:
             print(f"Ошибка парсинга JSON или структуры данных от Gemini: {e}")
             await update.message.reply_text("Не удалось распознать структуру чека. Попробуйте сделать фото более четким.")
+            return self.config.AWAITING_CORRECTION
+        
+        except Exception as e:
+            print(f"❌ Критическая ошибка при обработке фото: {e}")
+            import traceback
+            traceback.print_exc()
+            await update.message.reply_text(f"Произошла ошибка при обработке фото: {e}")
             return self.config.AWAITING_CORRECTION
 
         # Always show final report with edit button
