@@ -5,6 +5,7 @@ import logging
 import asyncio
 import time
 import threading
+import os
 from telegram.ext import (
     Application,
     CommandHandler,
@@ -85,6 +86,10 @@ def cleanup_old_files_periodically(ingredient_storage: IngredientStorage) -> Non
 
 def main() -> None:
     """Main function to start the bot"""
+    # Get port from environment variable (for Cloud Run)
+    port = int(os.environ.get('PORT', 8080))
+    print(f"🌐 Порт: {port}")
+    
     # Initialize configuration
     config = BotConfig()
     prompt_manager = PromptManager()
