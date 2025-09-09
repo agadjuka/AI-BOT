@@ -22,6 +22,21 @@ from telegram.ext import (
 )
 from telegram.error import Conflict, NetworkError
 
+# Инициализация клиента Firestore
+# Этот код будет работать автоматически в Cloud Run
+# и при локальной настройке с переменной окружения.
+from google.cloud import firestore
+
+# Инициализация клиента Firestore с обработкой ошибок
+try:
+    db = firestore.Client(database='billscaner')
+    print("✅ Firestore клиент инициализирован успешно (база: billscaner)")
+except Exception as e:
+    print(f"❌ Ошибка инициализации Firestore: {e}")
+    print("💡 Убедитесь, что переменная GOOGLE_APPLICATION_CREDENTIALS установлена")
+    print(f"💡 Текущее значение: {os.environ.get('GOOGLE_APPLICATION_CREDENTIALS', 'НЕ УСТАНОВЛЕНО')}")
+    db = None
+
 # Проверяем совместимость numpy/pandas перед импортом других модулей
 try:
     import numpy as np
