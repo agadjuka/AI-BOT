@@ -46,8 +46,10 @@ jobs:
 
     - name: Build and push Docker image
       run: |
-        # Build the Docker image
-        docker build -t gcr.io/$PROJECT_ID/$SERVICE_NAME:$GITHUB_SHA .
+        # Build the Docker image with credentials
+        docker build \
+          --build-arg GOOGLE_APPLICATION_CREDENTIALS_JSON="${{ secrets.GCP_SA_KEY }}" \
+          -t gcr.io/$PROJECT_ID/$SERVICE_NAME:$GITHUB_SHA .
         
         # Push the image to Google Container Registry
         docker push gcr.io/$PROJECT_ID/$SERVICE_NAME:$GITHUB_SHA

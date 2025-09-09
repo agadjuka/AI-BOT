@@ -26,25 +26,13 @@ class AIService:
         from google.oauth2 import service_account
         
         # Set up authentication
+        print(f"🔍 Debug: GOOGLE_APPLICATION_CREDENTIALS = {os.getenv('GOOGLE_APPLICATION_CREDENTIALS')}")
         print(f"🔍 Debug: GOOGLE_APPLICATION_CREDENTIALS_JSON exists: {bool(os.getenv('GOOGLE_APPLICATION_CREDENTIALS_JSON'))}")
-        
-        # Try to create credentials file from environment variable
-        if os.getenv("GOOGLE_APPLICATION_CREDENTIALS_JSON"):
-            try:
-                credentials_info = json.loads(os.getenv("GOOGLE_APPLICATION_CREDENTIALS_JSON"))
-                # Write credentials to file
-                credentials_file = "/tmp/gcp_credentials.json"
-                with open(credentials_file, "w") as f:
-                    json.dump(credentials_info, f)
-                os.environ["GOOGLE_APPLICATION_CREDENTIALS"] = credentials_file
-                print(f"✅ Создан файл credentials: {credentials_file}")
-            except Exception as e:
-                print(f"❌ Ошибка при создании файла credentials: {e}")
         
         # Use default credentials (will use GOOGLE_APPLICATION_CREDENTIALS if set)
         from google.auth import default
         credentials, project = default()
-        print("✅ Используем default credentials")
+        print(f"✅ Используем credentials для проекта: {project}")
         
         vertexai.init(project=self.config.PROJECT_ID, location=self.config.LOCATION, credentials=credentials)
         model = GenerativeModel(self.config.MODEL_NAME)

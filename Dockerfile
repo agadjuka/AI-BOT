@@ -11,6 +11,18 @@ RUN pip install --no-cache-dir -r requirements.txt
 # Копируем все файлы
 COPY . .
 
+# Получаем credentials как build argument
+ARG GOOGLE_APPLICATION_CREDENTIALS_JSON
+
+# Создаем файл credentials из build argument
+RUN if [ -n "$GOOGLE_APPLICATION_CREDENTIALS_JSON" ]; then \
+        echo "$GOOGLE_APPLICATION_CREDENTIALS_JSON" > /app/gcp_credentials.json; \
+        echo "GOOGLE_APPLICATION_CREDENTIALS=/app/gcp_credentials.json" >> /app/.env; \
+        echo "✅ Создан файл credentials"; \
+    else \
+        echo "❌ GOOGLE_APPLICATION_CREDENTIALS_JSON не передан"; \
+    fi
+
 # Cloud Run передает порт в переменной $PORT
 ENV PORT=8080
 
