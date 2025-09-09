@@ -141,6 +141,11 @@ class ReceiptEditDispatcher(BaseCallbackHandler):
                 context.user_data['field_to_edit'] = field_name
                 context.user_data['line_to_edit'] = line_number
                 
+                # Save the current edit menu message ID before showing input request
+                if hasattr(update, 'callback_query') and update.callback_query:
+                    context.user_data['edit_menu_message_id'] = update.callback_query.message.message_id
+                    print(f"DEBUG: Saved edit_menu_message_id = {update.callback_query.message.message_id}")
+                
                 field_display_names = {
                     'name': 'название товара',
                     'quantity': 'количество',

@@ -205,28 +205,54 @@ class ReceiptEditCallbackHandler(BaseCallbackHandler):
         
         reply_markup = InlineKeyboardMarkup(keyboard)
         
-        # Determine chat_id and message sending method
+        # Check if we should edit existing message or create new one
+        edit_menu_message_id = context.user_data.get('edit_menu_message_id')
+        if message_id_to_edit:
+            edit_menu_message_id = message_id_to_edit
+        
+        if edit_menu_message_id:
+            # Try to edit existing message
+            try:
+                if hasattr(update, 'callback_query') and update.callback_query:
+                    await update.callback_query.message.bot.edit_message_text(
+                        chat_id=update.callback_query.message.chat_id,
+                        message_id=edit_menu_message_id,
+                        text=text,
+                        reply_markup=reply_markup,
+                        parse_mode='Markdown'
+                    )
+                elif hasattr(update, 'message') and update.message:
+                    await context.bot.edit_message_text(
+                        chat_id=update.message.chat_id,
+                        message_id=edit_menu_message_id,
+                        text=text,
+                        reply_markup=reply_markup,
+                        parse_mode='Markdown'
+                    )
+                print(f"DEBUG: Successfully edited existing message {edit_menu_message_id}")
+                return
+            except Exception as e:
+                print(f"DEBUG: Error editing message {edit_menu_message_id}: {e}")
+                # If couldn't edit, fall through to create new message
+        
+        # Create new message if no existing message or edit failed
         if hasattr(update, 'callback_query') and update.callback_query:
             # For callback queries, send new message to preserve receipt menu
             try:
-                await update.callback_query.message.reply_text(
-                    text, reply_markup=reply_markup, parse_mode='Markdown'
-                )
-            except Exception as e:
-                print(f"DEBUG: Error editing message: {e}")
-                # If couldn't edit, send new message
                 message = await update.callback_query.message.reply_text(
                     text, reply_markup=reply_markup, parse_mode='Markdown'
                 )
                 context.user_data['edit_menu_message_id'] = message.message_id
-                print(f"DEBUG: Saved edit_menu_message_id = {message.message_id}")
+                print(f"DEBUG: Created new message with ID {message.message_id}")
+            except Exception as e:
+                print(f"DEBUG: Error creating new message: {e}")
         elif hasattr(update, 'message') and update.message:
             # For regular messages, create new message
             message = await self.ui_manager.send_menu(
                 update, context, text, reply_markup, 'Markdown'
             )
             context.user_data['edit_menu_message_id'] = message.message_id
-            print(f"DEBUG: Saved edit_menu_message_id = {message.message_id}")
+            print(f"DEBUG: Created new message with ID {message.message_id}")
         else:
             return
     
