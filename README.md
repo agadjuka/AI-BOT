@@ -1,4 +1,4 @@
-# AI Bot - Receipt Analysis
+# AI Bot - Receipt Analysis 765
 
 Telegram бот для анализа чеков с использованием Google Gemini AI.
 
