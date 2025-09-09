@@ -1,0 +1,17 @@
+# Dockerfile с минимальными зависимостями
+FROM python:3.11-slim
+
+# Устанавливаем рабочую директорию
+WORKDIR /app
+
+# Устанавливаем только FastAPI и uvicorn
+RUN pip install --no-cache-dir fastapi uvicorn
+
+# Копируем файл
+COPY main_fastapi.py .
+
+# Cloud Run передает порт в переменной $PORT
+ENV PORT=8080
+
+# Запускаем FastAPI версию
+CMD ["python", "main_fastapi.py"]
