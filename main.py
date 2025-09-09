@@ -220,6 +220,8 @@ async def startup_event():
         await initialize_bot()
     except Exception as e:
         print(f"❌ Ошибка при инициализации бота: {e}")
+        import traceback
+        traceback.print_exc()
         # Не прерываем запуск приложения, если бот не может инициализироваться
 
 @app.get("/")

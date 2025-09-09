@@ -9,7 +9,7 @@ on:
 env:
   PROJECT_ID: ${{ secrets.GCP_PROJECT_ID }}
   SERVICE_NAME: ai-bot
-  REGION: us-central1
+  REGION: asia-southeast1
 
 jobs:
   deploy:
