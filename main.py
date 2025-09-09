@@ -41,11 +41,9 @@ from utils.ingredient_storage import IngredientStorage
 from utils.message_sender import MessageSender
 from google_sheets_handler import get_google_sheets_ingredients
 
-# Bot configuration
-TOKEN = os.getenv("BOT_TOKEN")
-if not TOKEN:
-    raise ValueError("BOT_TOKEN environment variable is required")
-TELEGRAM_API = f"https://api.telegram.org/bot{TOKEN}"
+# Bot configuration - будет инициализирован позже
+TOKEN = None
+TELEGRAM_API = None
 
 # FastAPI app
 app = FastAPI(title="AI Bot", description="Telegram Bot for receipt processing")
@@ -82,7 +80,7 @@ def create_application() -> Application:
     ingredient_storage = IngredientStorage(max_age_hours=1)
     
     # Create application
-    application = Application.builder().token(config.BOT_TOKEN).concurrent_updates(True).build()
+    application = Application.builder().token(TOKEN).concurrent_updates(True).build()
     
     # Initialize empty poster ingredients - will be loaded on demand
     application.bot_data["poster_ingredients"] = {}
@@ -143,9 +141,18 @@ def create_application() -> Application:
 
 async def initialize_bot():
     """Initialize the bot application and start background tasks"""
-    global application, ingredient_storage
+    global application, ingredient_storage, TOKEN, TELEGRAM_API
     
     print("🚀 Инициализация бота...")
+    
+    # Check if BOT_TOKEN is available
+    TOKEN = os.getenv("BOT_TOKEN")
+    if not TOKEN:
+        print("❌ BOT_TOKEN не найден в переменных окружения")
+        return
+    
+    TELEGRAM_API = f"https://api.telegram.org/bot{TOKEN}"
+    print("✅ BOT_TOKEN найден")
     
     # Create application
     application = create_application()
@@ -180,7 +187,11 @@ async def initialize_bot():
 @app.on_event("startup")
 async def startup_event():
     """Initialize bot on startup"""
-    await initialize_bot()
+    try:
+        await initialize_bot()
+    except Exception as e:
+        print(f"❌ Ошибка при инициализации бота: {e}")
+        # Не прерываем запуск приложения, если бот не может инициализироваться
 
 @app.get("/")
 async def health_check():
@@ -248,7 +259,7 @@ async def webhook(request: Request):
         
         if not application:
             print("❌ Бот не инициализирован")
-            return {"ok": True}
+            return {"ok": True, "error": "Bot not initialized"}
         
         update = Update.de_json(update_data, application.bot)
         print(f"📊 Parsed update: {update}")

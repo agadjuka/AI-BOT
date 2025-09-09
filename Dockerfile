@@ -13,5 +13,5 @@ COPY . .
 # Cloud Run передает порт в переменной $PORT
 ENV PORT=8080
 
-# Запускаем твой код
-CMD ["python", "main.py"]
+# Запускаем основной код
+CMD ["python", "main_test.py"]
