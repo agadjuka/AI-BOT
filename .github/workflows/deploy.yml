@@ -2,52 +2,45 @@ name: Deploy to Google Cloud Run
 
 on:
   push:
-<<<<<<< HEAD
     branches: [ main ]
   pull_request:
     branches: [ main ]
-=======
-    branches: [ main, master ]
-  pull_request:
-    branches: [ main, master ]
->>>>>>> bed72345f4cca2278a731ad56c2134ad2393eaa8
 
 env:
   PROJECT_ID: ${{ secrets.GCP_PROJECT_ID }}
   SERVICE_NAME: ai-bot
-  REGION: europe-west1
+  REGION: us-central1
 
 jobs:
   deploy:
     runs-on: ubuntu-latest
     
+    permissions:
+      contents: read
+      id-token: write
+
     steps:
     - name: Checkout code
       uses: actions/checkout@v4
 
-    - name: Set up Cloud SDK
-      uses: google-github-actions/setup-gcloud@v2
-      with:
-        project_id: ${{ secrets.GCP_PROJECT_ID }}
-<<<<<<< HEAD
-
-    - name: Authenticate to Google Cloud
+    - name: Google Auth
+      id: auth
       uses: google-github-actions/auth@v2
       with:
         credentials_json: ${{ secrets.GCP_SA_KEY }}
 
-    - name: Configure Docker for GCR
-=======
-        service_account_key: ${{ secrets.GCP_SA_KEY }}
-        export_default_credentials: true
+    - name: Set up Cloud SDK
+      uses: google-github-actions/setup-gcloud@v2
 
     - name: Configure Docker
->>>>>>> bed72345f4cca2278a731ad56c2134ad2393eaa8
       run: gcloud auth configure-docker
 
     - name: Build and push Docker image
       run: |
+        # Build the Docker image
         docker build -t gcr.io/$PROJECT_ID/$SERVICE_NAME:$GITHUB_SHA .
+        
+        # Push the image to Google Container Registry
         docker push gcr.io/$PROJECT_ID/$SERVICE_NAME:$GITHUB_SHA
 
     - name: Deploy to Cloud Run
@@ -61,11 +54,22 @@ jobs:
           --memory 1Gi \
           --cpu 1 \
           --max-instances 10 \
-<<<<<<< HEAD
           --min-instances 0 \
           --timeout 300 \
-          --concurrency 1000
+          --concurrency 80 \
+          --set-env-vars "BOT_TOKEN=${{ secrets.BOT_TOKEN }}" \
+          --set-env-vars "WEBHOOK_URL=${{ secrets.WEBHOOK_URL }}" \
+          --set-env-vars "GOOGLE_APPLICATION_CREDENTIALS=/app/google_sheets_credentials.json"
 
-=======
-          --set-env-vars PORT=8080,BOT_TOKEN=${{ secrets.BOT_TOKEN }},POSTER_TOKEN=${{ secrets.POSTER_TOKEN }},PROJECT_ID=${{ secrets.GCP_PROJECT_ID }}
->>>>>>> bed72345f4cca2278a731ad56c2134ad2393eaa8
+    - name: Get service URL
+      run: |
+        SERVICE_URL=$(gcloud run services describe $SERVICE_NAME --region=$REGION --format='value(status.url)')
+        echo "Service deployed at: $SERVICE_URL"
+        echo "SERVICE_URL=$SERVICE_URL" >> $GITHUB_ENV
+
+    - name: Update webhook
+      run: |
+        SERVICE_URL=$(gcloud run services describe $SERVICE_NAME --region=$REGION --format='value(status.url)')
+        curl -X POST "$SERVICE_URL/set_webhook" \
+          -H "Content-Type: application/json" \
+          -d "{\"webhook_url\": \"$SERVICE_URL\"}"

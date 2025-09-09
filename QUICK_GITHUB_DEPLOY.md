@@ -1,65 +1,107 @@
 # Быстрый деплой на Google Cloud Run через GitHub
 
-## 1. Подготовка Google Cloud
+## 🚀 Шаги для первого деплоя
+
+### 1. Подготовка Google Cloud
 
 ```bash
-# Включить API
+# Установите gcloud CLI и авторизуйтесь
+gcloud auth login
+
+# Установите проект
+gcloud config set project YOUR_PROJECT_ID
+
+# Включите API
 gcloud services enable run.googleapis.com containerregistry.googleapis.com cloudbuild.googleapis.com
 
-# Создать Service Account
-gcloud iam service-accounts create github-actions --display-name="GitHub Actions"
+# Создайте Service Account
+gcloud iam service-accounts create github-actions-sa --display-name="GitHub Actions"
 
-# Назначить роли
+# Привяжите роли
 gcloud projects add-iam-policy-binding YOUR_PROJECT_ID \
-    --member="serviceAccount:github-actions@YOUR_PROJECT_ID.iam.gserviceaccount.com" \
+    --member="serviceAccount:github-actions-sa@YOUR_PROJECT_ID.iam.gserviceaccount.com" \
     --role="roles/run.admin"
 
 gcloud projects add-iam-policy-binding YOUR_PROJECT_ID \
-    --member="serviceAccount:github-actions@YOUR_PROJECT_ID.iam.gserviceaccount.com" \
+    --member="serviceAccount:github-actions-sa@YOUR_PROJECT_ID.iam.gserviceaccount.com" \
     --role="roles/storage.admin"
 
 gcloud projects add-iam-policy-binding YOUR_PROJECT_ID \
-    --member="serviceAccount:github-actions@YOUR_PROJECT_ID.iam.gserviceaccount.com" \
+    --member="serviceAccount:github-actions-sa@YOUR_PROJECT_ID.iam.gserviceaccount.com" \
     --role="roles/iam.serviceAccountUser"
 
-# Создать ключ
+# Создайте ключ
 gcloud iam service-accounts keys create github-actions-key.json \
-    --iam-account=github-actions@YOUR_PROJECT_ID.iam.gserviceaccount.com
+    --iam-account=github-actions-sa@YOUR_PROJECT_ID.iam.gserviceaccount.com
 ```
 
-## 2. Настройка GitHub Secrets
+### 2. Настройка GitHub Secrets
 
-В GitHub → Settings → Secrets and variables → Actions добавить:
+Перейдите в ваш репозиторий: **Settings → Secrets and variables → Actions**
 
-- `GCP_PROJECT_ID`: ID вашего Google Cloud проекта
-- `GCP_SA_KEY`: содержимое файла `github-actions-key.json`
+Добавьте секреты:
 
-## 3. Настройка переменных окружения в Cloud Run
+| Secret Name | Value |
+|-------------|-------|
+| `GCP_PROJECT_ID` | `YOUR_PROJECT_ID` |
+| `GCP_SA_KEY` | Содержимое файла `github-actions-key.json` |
+| `BOT_TOKEN` | `YOUR_TELEGRAM_BOT_TOKEN` |
+| `WEBHOOK_URL` | `https://ai-bot-xxxxx-uc.a.run.app` (будет обновлен автоматически) |
 
-В Google Cloud Console → Cloud Run → ваш сервис → Edit & Deploy New Revision → Variables & Secrets:
+### 3. Загрузка кода
 
-- `BOT_TOKEN`: токен вашего Telegram бота
-- Другие переменные из `config/settings.py`
-
-## 4. Деплой
-
-Просто сделайте push в ветку `main` - деплой произойдет автоматически!
-
-## Структура файлов
-
-```
-.github/workflows/deploy.yml  # GitHub Actions workflow
-Dockerfile                    # Обновленный Dockerfile
-.dockerignore                # Исключения для Docker
-.gitignore                   # Исключения для Git
-GITHUB_DEPLOY_SETUP.md       # Подробная инструкция
-QUICK_GITHUB_DEPLOY.md       # Эта инструкция
+```bash
+# Добавьте все файлы в git
+git add .
+git commit -m "Add GitHub Actions deployment"
+git push origin main
 ```
 
-## Проверка
+### 4. Проверка деплоя
 
-После деплоя проверьте:
-- GitHub Actions: статус в разделе Actions
-- Cloud Run: логи в Google Cloud Console
-- Telegram бот: отправьте `/start`
+1. Перейдите в **Actions** tab в GitHub
+2. Дождитесь завершения workflow
+3. Скопируйте URL сервиса из логов
+4. Обновите `WEBHOOK_URL` в секретах GitHub
 
+### 5. Тестирование
+
+```bash
+# Health check
+curl https://your-service-url/
+
+# Проверка webhook
+curl https://your-service-url/get_webhook
+```
+
+## ✅ Готово!
+
+Теперь при каждом push в `main` ваш бот будет автоматически обновляться на Google Cloud Run.
+
+## 🔧 Настройки в workflow
+
+Если нужно изменить настройки, отредактируйте `.github/workflows/deploy.yml`:
+
+```yaml
+env:
+  PROJECT_ID: ${{ secrets.GCP_PROJECT_ID }}
+  SERVICE_NAME: ai-bot        # Имя сервиса
+  REGION: us-central1         # Регион
+```
+
+И в секции деплоя:
+
+```yaml
+--memory 1Gi                  # Память
+--cpu 1                       # CPU
+--max-instances 10            # Максимум инстансов
+--min-instances 0             # Минимум инстансов
+--timeout 300                 # Таймаут
+```
+
+## 🆘 Проблемы?
+
+1. **Ошибка аутентификации** → Проверьте `GCP_SA_KEY`
+2. **Ошибка сборки** → Проверьте `Dockerfile` и `requirements.txt`
+3. **Webhook не работает** → Проверьте `BOT_TOKEN` и `WEBHOOK_URL`
+4. **Сервис не запускается** → Проверьте логи в Cloud Run Console

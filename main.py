@@ -6,15 +6,11 @@ import os
 import asyncio
 import time
 import threading
-<<<<<<< HEAD
-import os
-=======
 from typing import Optional
 from fastapi import FastAPI, Request, HTTPException
 from fastapi.responses import JSONResponse
 import httpx
 from telegram import Update
->>>>>>> bed72345f4cca2278a731ad56c2134ad2393eaa8
 from telegram.ext import (
     Application,
     CommandHandler,
@@ -68,17 +64,8 @@ def cleanup_old_files_periodically(ingredient_storage: IngredientStorage) -> Non
         except Exception as e:
             print(f"Ошибка при очистке файлов: {e}")
 
-<<<<<<< HEAD
-def main() -> None:
-    """Main function to start the bot"""
-    # Get port from environment variable (for Cloud Run)
-    port = int(os.environ.get('PORT', 8080))
-    print(f"🌐 Порт: {port}")
-    
-=======
 def create_application() -> Application:
     """Create and configure the Telegram application"""
->>>>>>> bed72345f4cca2278a731ad56c2134ad2393eaa8
     # Initialize configuration
     config = BotConfig()
     prompt_manager = PromptManager()

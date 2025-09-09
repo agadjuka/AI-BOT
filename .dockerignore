@@ -1,65 +1,76 @@
-# Git
-.git
-.gitignore
-
 # Python
-__pycache__
-*.pyc
-*.pyo
-*.pyd
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
 .Python
-env
-pip-log.txt
-pip-delete-this-directory.txt
-.tox
-.coverage
-.coverage.*
-.cache
-nosetests.xml
-coverage.xml
-*.cover
-*.log
-.git
-.mypy_cache
-.pytest_cache
-.hypothesis
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+
+# Virtual environments
+venv/
+env/
+ENV/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
 
 # OS
 .DS_Store
-.DS_Store?
-._*
-.Spotlight-V100
-.Trashes
-ehthumbs.db
 Thumbs.db
 
-# IDE
-.vscode
-.idea
-*.swp
-*.swo
-*~
+# Git
+.git/
+.gitignore
 
-# Project specific
-*.xlsx
-*.jpg
-*.jpeg
-*.png
-*.gif
+# Documentation
+*.md
+README.md
+DEPLOY*.md
+MIGRATION.md
+QUICK*.md
+GITHUB*.md
+WEBHOOK*.md
+
+# Temporary files
+*.tmp
+*.temp
 last_photo.jpg
 receipt_data_*.xlsx
 
-# Documentation
-README.md
-DEPLOY_README.md
-QUICK_DEPLOY.md
-*.md
+# Logs
+*.log
 
-# Deployment
-deploy.ps1
-deploy.sh
+# Test files
+test_*
+*_test.py
+
+# Deployment scripts
+deploy*.py
+deploy*.ps1
+deploy*.sh
+setup_webhook.py
+
+# Cloud build files
 cloudbuild.yaml
 app.yaml
 
-# GitHub
-.github
+# Docker
+Dockerfile
+.dockerignore
