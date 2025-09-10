@@ -41,10 +41,7 @@ except Exception as e:
     print("💡 Firestore может быть недоступен, но бот будет работать без сохранения языков")
     db = None
 
-# КРИТИЧЕСКИ ВАЖНО: Инициализируем LocaleManager СРАЗУ после Firestore
-# Это должно произойти ДО импорта handlers, чтобы избежать race condition
-from config.locales.locale_manager import initialize_locale_manager
-initialize_locale_manager(db)
+# LocaleManager будет инициализирован в create_application() после импорта всех модулей
 
 # Проверяем совместимость numpy/pandas перед импортом других модулей
 try:
@@ -118,7 +115,10 @@ def create_application() -> Application:
     ai_service = AIService(config, prompt_manager)
     analysis_service = ReceiptAnalysisService(ai_service)
     
-    # LocaleManager уже инициализирован глобально с Firestore instance
+    # КРИТИЧЕСКИ ВАЖНО: Инициализируем LocaleManager ПЕРЕД созданием handlers
+    # Это должно произойти ДО импорта handlers, чтобы избежать race condition
+    from config.locales.locale_manager import initialize_locale_manager
+    initialize_locale_manager(db)
     
     # Initialize handlers AFTER LocaleManager is initialized
     message_handlers = MessageHandlers(config, analysis_service)
@@ -212,6 +212,11 @@ async def initialize_bot():
     """Initialize the bot application and start background tasks"""
     global application, ingredient_storage, TOKEN, TELEGRAM_API
     
+    # Проверяем, не инициализирован ли уже бот
+    if application is not None:
+        print("⚠️ Бот уже инициализирован, пропускаем повторную инициализацию")
+        return
+    
     print("🚀 Инициализация бота...")
     
     # Debug: Print all environment variables
@@ -231,7 +236,9 @@ async def initialize_bot():
     print("✅ BOT_TOKEN найден")
     
     # Create application
+    print("🔧 Создаем Telegram application...")
     application = create_application()
+    print(f"✅ Application создан: {application}")
     
     # Initialize ingredient storage with 1 hour cleanup
     ingredient_storage = IngredientStorage(max_age_hours=1)
@@ -242,7 +249,9 @@ async def initialize_bot():
     print("✅ Фоновый поток очистки запущен")
     
     # Initialize the application
+    print("🔧 Инициализируем Telegram application...")
     await application.initialize()
+    print("✅ Telegram application инициализирован")
     
     print("🚀 Бот инициализирован для webhook режима")
 
@@ -260,7 +269,12 @@ async def startup_event():
 @app.get("/")
 async def health_check():
     """Health check endpoint for Cloud Run"""
-    return {"status": "ok", "message": "AI Bot is running"}
+    return {
+        "status": "ok", 
+        "message": "AI Bot is running",
+        "application_initialized": application is not None,
+        "firestore_connected": db is not None
+    }
 
 @app.post("/set_webhook")
 async def set_webhook(request: Request):
@@ -302,6 +316,21 @@ async def get_webhook():
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
+@app.get("/debug")
+async def debug_info():
+    """Debug information endpoint"""
+    return {
+        "application_initialized": application is not None,
+        "firestore_connected": db is not None,
+        "bot_token_set": TOKEN is not None,
+        "environment_vars": {
+            "BOT_TOKEN": "***" if os.getenv("BOT_TOKEN") else "NOT SET",
+            "PROJECT_ID": "***" if os.getenv("PROJECT_ID") else "NOT SET",
+            "WEBHOOK_URL": "***" if os.getenv("WEBHOOK_URL") else "NOT SET",
+            "POSTER_TOKEN": "***" if os.getenv("POSTER_TOKEN") else "NOT SET"
+        }
+    }
+
 @app.post("/webhook")
 async def webhook(request: Request):
     """Webhook endpoint for Telegram updates"""
@@ -323,7 +352,11 @@ async def webhook(request: Request):
         
         if not application:
             print("❌ Бот не инициализирован")
+            print(f"🔍 application = {application}")
             return {"ok": True, "error": "Bot not initialized"}
+        
+        print(f"🔍 application.bot = {application.bot}")
+        print(f"🔍 application.bot.token = {'***' if application.bot.token else 'None'}")
         
         update = Update.de_json(update_data, application.bot)
         print(f"📊 Parsed update: {update}")
@@ -333,6 +366,7 @@ async def webhook(request: Request):
             return {"ok": True}
         
         # Process the update
+        print("🔄 Обрабатываем update...")
         await application.process_update(update)
         
         print("✅ Update обработан успешно")

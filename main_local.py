@@ -111,6 +111,9 @@ def main() -> None:
     ai_service = AIService(config, prompt_manager)
     analysis_service = ReceiptAnalysisService(ai_service)
     
+    # КРИТИЧЕСКИ ВАЖНО: Инициализируем LocaleManager ПЕРЕД созданием handlers
+    initialize_locale_manager(db)
+    
     # Initialize handlers
     message_handlers = MessageHandlers(config, analysis_service)
     callback_handlers = CallbackHandlers(config, analysis_service)
@@ -127,9 +130,6 @@ def main() -> None:
     
     # Create application
     application = Application.builder().token(config.BOT_TOKEN).concurrent_updates(True).build()
-    
-    # Initialize global LocaleManager
-    initialize_locale_manager()
     
     # Initialize empty poster ingredients - will be loaded on demand
     application.bot_data["poster_ingredients"] = {}
