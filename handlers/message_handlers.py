@@ -13,7 +13,7 @@ from handlers.input_handler import InputHandler
 from handlers.ingredient_matching_input_handler import IngredientMatchingInputHandler
 from handlers.google_sheets_input_handler import GoogleSheetsInputHandler
 from utils.common_handlers import CommonHandlers
-from config.locales.locale_manager import LocaleManager
+from config.locales.locale_manager import get_global_locale_manager
 from config.locales.language_buttons import get_language_keyboard
 
 
@@ -24,7 +24,7 @@ class MessageHandlers(BaseMessageHandler):
         super().__init__(config, analysis_service)
         
         # Initialize LocaleManager
-        self.locale_manager = LocaleManager()
+        self.locale_manager = get_global_locale_manager()
         
         # Initialize specialized handlers
         self.photo_handler = PhotoHandler(config, analysis_service)
@@ -35,13 +35,46 @@ class MessageHandlers(BaseMessageHandler):
     
     async def start(self, update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         """Handle /start command"""
-        # Always show language selection on /start command
-        # This ensures users can change language anytime
-        language_keyboard = get_language_keyboard()
-        await update.message.reply_html(
-            self.locale_manager.get_text("welcome.choose_language", context),
-            reply_markup=language_keyboard
-        )
+        user_id = update.effective_user.id
+        
+        # Try to load saved language from Firestore
+        saved_language = self.locale_manager.get_user_language_from_storage(user_id)
+        
+        if saved_language and saved_language != self.locale_manager.DEFAULT_LANGUAGE:
+            # User has a saved language, set it and show main menu
+            context.user_data['language'] = saved_language
+            
+            # Create main menu with localized buttons
+            keyboard = [
+                [InlineKeyboardButton(
+                    self.locale_manager.get_text("buttons.analyze_receipt", context), 
+                    callback_data="analyze_receipt"
+                )],
+                [InlineKeyboardButton(
+                    self.locale_manager.get_text("buttons.generate_supply_file", context), 
+                    callback_data="generate_supply_file"
+                )],
+                [InlineKeyboardButton(
+                    self.locale_manager.get_text("buttons.dashboard", context), 
+                    callback_data="dashboard_main"
+                )]
+            ]
+            
+            reply_markup = InlineKeyboardMarkup(keyboard)
+            
+            await update.message.reply_html(
+                self.locale_manager.get_text("welcome.start_message", context, 
+                                           user=update.effective_user.mention_html()),
+                reply_markup=reply_markup
+            )
+        else:
+            # No saved language, show language selection
+            language_keyboard = get_language_keyboard()
+            await update.message.reply_html(
+                self.locale_manager.get_text("welcome.choose_language", context),
+                reply_markup=language_keyboard
+            )
+        
         return self.config.AWAITING_CORRECTION
     
     async def reset_language(self, update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
@@ -55,6 +88,20 @@ class MessageHandlers(BaseMessageHandler):
             self.locale_manager.get_text("welcome.choose_language", context),
             reply_markup=language_keyboard
         )
+        return self.config.AWAITING_CORRECTION
+    
+    async def check_language(self, update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+        """Handle /check_language command - show current language settings"""
+        user_id = update.effective_user.id
+        current_language = context.user_data.get('language', 'not set')
+        stored_language = self.locale_manager.language_service.get_user_language(user_id)
+        
+        message = f"🔍 Language Debug Info:\n"
+        message += f"Current in context: {current_language}\n"
+        message += f"Stored in Firestore: {stored_language or 'not found'}\n"
+        message += f"User ID: {user_id}"
+        
+        await update.message.reply_text(message)
         return self.config.AWAITING_CORRECTION
     
     async def dashboard(self, update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:

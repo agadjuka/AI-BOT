@@ -21,6 +21,7 @@ from telegram.ext import (
     CallbackQueryHandler,
 )
 from telegram.error import Conflict, NetworkError
+from config.locales.locale_manager import initialize_locale_manager
 
 # Инициализация клиента Firestore
 # Этот код будет работать автоматически в Cloud Run
@@ -118,6 +119,9 @@ def create_application() -> Application:
     
     # Create application
     application = Application.builder().token(TOKEN).concurrent_updates(True).build()
+    
+    # Initialize global LocaleManager
+    initialize_locale_manager()
     
     # Initialize empty poster ingredients - will be loaded on demand
     application.bot_data["poster_ingredients"] = {}

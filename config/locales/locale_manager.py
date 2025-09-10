@@ -7,6 +7,7 @@ from typing import Dict, Any, Optional, Union
 from config.locales.ru import RU_TRANSLATIONS
 from config.locales.en import EN_TRANSLATIONS
 from config.locales.id import ID_TRANSLATIONS
+from services.language_service import get_language_service
 
 
 class LocaleManager:
@@ -32,30 +33,75 @@ class LocaleManager:
     
     def __init__(self):
         """Инициализация LocaleManager."""
+        if hasattr(self, '_initialized'):
+            return
         self._translations = self.SUPPORTED_LANGUAGES
         self._default_lang = self.DEFAULT_LANGUAGE
+        self.language_service = get_language_service()
+        self._initialized = True
+    
+    def get_user_language_from_storage(self, user_id: int) -> str:
+        """Get user language from Firestore"""
+        if not user_id:
+            return self._default_lang
+        stored_language = self.language_service.get_user_language(user_id)
+        if stored_language and self.is_language_supported(stored_language):
+            return stored_language
+        return self._default_lang
+    
+    def load_user_language_on_start(self, context: Any) -> str:
+        """Load user language from Firestore when user starts interaction"""
+        if not context or not hasattr(context, 'effective_user'):
+            return self._default_lang
+        
+        user_id = getattr(context, 'effective_user', {}).get('id')
+        if not user_id:
+            return self._default_lang
+        
+        # Try to get from Firestore first
+        stored_language = self.language_service.get_user_language(user_id)
+        if stored_language and self.is_language_supported(stored_language):
+            # Save to context for this session
+            if hasattr(context, 'user_data'):
+                context.user_data['language'] = stored_language
+            return stored_language
+        
+        # Fallback to default
+        return self._default_lang
     
     def get_language_from_context(self, context: Any) -> str:
         """
-        Получает язык из context.user_data.
+        Получает язык из context.user_data или Firestore.
         
         Args:
             context: Контекст пользователя (обычно из Telegram bot)
             
         Returns:
-            str: Код языка ('ru' или 'en') или язык по умолчанию
+            str: Код языка или язык по умолчанию
         """
-        if not context or not hasattr(context, 'user_data'):
+        if not context:
             return self._default_lang
         
-        user_data = getattr(context, 'user_data', {})
-        language = user_data.get('language', self._default_lang)
+        # First try to get from context.user_data
+        if hasattr(context, 'user_data'):
+            user_data = getattr(context, 'user_data', {})
+            language = user_data.get('language')
+            
+            if language and self.is_language_supported(language):
+                return language
         
-        # Проверяем, поддерживается ли язык
-        if language not in self.SUPPORTED_LANGUAGES:
-            return self._default_lang
+        # If not in context, try to load from Firestore
+        if hasattr(context, 'effective_user'):
+            user_id = getattr(context, 'effective_user', {}).get('id')
+            if user_id:
+                stored_language = self.language_service.get_user_language(user_id)
+                if stored_language and self.is_language_supported(stored_language):
+                    # Save to context for this session
+                    if hasattr(context, 'user_data'):
+                        context.user_data['language'] = stored_language
+                    return stored_language
         
-        return language
+        return self._default_lang
     
     def get_text(self, key: str, context: Optional[Any] = None, 
                  language: Optional[str] = None, **kwargs) -> str:
@@ -200,25 +246,53 @@ class LocaleManager:
         return list(translations.keys())
     
     def set_user_language(self, context: Any, language: str) -> bool:
-        """
-        Устанавливает язык пользователя в context.user_data.
-        
-        Args:
-            context: Контекст пользователя
-            language: Код языка для установки
-            
-        Returns:
-            bool: True если язык установлен успешно
-        """
+        """Set user language in context and save to Firestore"""
         if not self.is_language_supported(language):
             return False
-        
         if not context or not hasattr(context, 'user_data'):
             return False
-        
+
+        # Save to context
         context.user_data['language'] = language
+
+        # Save to Firestore
+        user_id = getattr(context, 'effective_user', {}).get('id')
+        if user_id:
+            success = self.language_service.save_user_language(user_id, language)
+            if success:
+                print(f"✅ Language '{language}' saved to Firestore for user {user_id}")
+            else:
+                print(f"❌ Failed to save language '{language}' to Firestore for user {user_id}")
+        else:
+            print(f"⚠️ No user_id found, language '{language}' saved only to context")
+
         return True
 
 
-# Создаем глобальный экземпляр для удобства использования
+# Global LocaleManager instance
+_global_locale_manager = None
+
+# Create a global instance for backward compatibility
 locale_manager = LocaleManager()
+
+
+def get_global_locale_manager() -> LocaleManager:
+    """
+    Get the global LocaleManager instance (singleton pattern).
+    
+    Returns:
+        LocaleManager: The global LocaleManager instance
+    """
+    global _global_locale_manager
+    if _global_locale_manager is None:
+        _global_locale_manager = LocaleManager()
+    return _global_locale_manager
+
+
+def initialize_locale_manager():
+    """Initialize the global LocaleManager at startup"""
+    global _global_locale_manager
+    if _global_locale_manager is None:
+        _global_locale_manager = LocaleManager()
+        print("✅ Global LocaleManager initialized")
+    return _global_locale_manager

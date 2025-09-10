@@ -6,7 +6,7 @@ from telegram.ext import ContextTypes
 
 from handlers.base_callback_handler import BaseCallbackHandler
 from models.receipt import ReceiptData, ReceiptItem
-from config.locales.locale_manager import locale_manager
+from config.locales.locale_manager import get_global_locale_manager
 from handlers.input_handler import InputHandler
 
 
@@ -15,6 +15,7 @@ class ReceiptEditCallbackHandler(BaseCallbackHandler):
     
     def __init__(self, config, analysis_service):
         super().__init__(config, analysis_service)
+        self.locale_manager = get_global_locale_manager()
         self.input_handler = InputHandler(config, analysis_service)
     
     async def _add_new_row(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -24,7 +25,7 @@ class ReceiptEditCallbackHandler(BaseCallbackHandler):
         
         data: ReceiptData = context.user_data.get('receipt_data')
         if not data:
-            await query.edit_message_text(locale_manager.get_text("errors.receipt_data_not_found", context))
+            await query.edit_message_text(self.locale_manager.get_text("errors.receipt_data_not_found", context))
             return
         
         # Find maximum line number
@@ -34,7 +35,7 @@ class ReceiptEditCallbackHandler(BaseCallbackHandler):
         # Create new row with empty data
         new_item = ReceiptItem(
             line_number=new_line_number,
-            name=locale_manager.get_text("analysis.new_item_name", context),
+            name=self.locale_manager.get_text("analysis.new_item_name", context),
             quantity=1.0,
             price=0.0,
             total=0.0,
@@ -71,7 +72,7 @@ class ReceiptEditCallbackHandler(BaseCallbackHandler):
         
         data: ReceiptData = context.user_data.get('receipt_data', {})
         if not data:
-            await query.edit_message_text(locale_manager.get_text("errors.receipt_data_not_found", context))
+            await query.edit_message_text(self.locale_manager.get_text("errors.receipt_data_not_found", context))
             return
         
         current_total = data.grand_total_text
@@ -81,10 +82,10 @@ class ReceiptEditCallbackHandler(BaseCallbackHandler):
         calculated_total = self.formatter.calculate_total_sum(data)
         formatted_calculated_total = self.number_formatter.format_number_with_spaces(calculated_total)
         
-        editing_total_text = locale_manager.get_text("analysis.editing_total", context)
-        current_total_text = locale_manager.get_text("analysis.current_total", context, total=formatted_total)
-        calculated_total_text = locale_manager.get_text("analysis.calculated_total", context, calculated_total=formatted_calculated_total)
-        choose_action_text = locale_manager.get_text("analysis.choose_action", context)
+        editing_total_text = self.locale_manager.get_text("analysis.editing_total", context)
+        current_total_text = self.locale_manager.get_text("analysis.current_total", context, total=formatted_total)
+        calculated_total_text = self.locale_manager.get_text("analysis.calculated_total", context, calculated_total=formatted_calculated_total)
+        choose_action_text = self.locale_manager.get_text("analysis.choose_action", context)
         
         text = editing_total_text
         text += current_total_text
@@ -93,11 +94,11 @@ class ReceiptEditCallbackHandler(BaseCallbackHandler):
         
         keyboard = [
             [
-                InlineKeyboardButton(locale_manager.get_text("buttons.auto_calculate_total", context), callback_data="auto_calculate_total"),
-                InlineKeyboardButton(locale_manager.get_text("buttons.manual_edit_total", context), callback_data="manual_edit_total")
+                InlineKeyboardButton(self.locale_manager.get_text("buttons.auto_calculate_total", context), callback_data="auto_calculate_total"),
+                InlineKeyboardButton(self.locale_manager.get_text("buttons.manual_edit_total", context), callback_data="manual_edit_total")
             ],
             [
-                InlineKeyboardButton(locale_manager.get_text("buttons.cancel", context), callback_data="cancel")
+                InlineKeyboardButton(self.locale_manager.get_text("buttons.cancel", context), callback_data="cancel")
             ]
         ]
         
@@ -124,7 +125,7 @@ class ReceiptEditCallbackHandler(BaseCallbackHandler):
         
         data: ReceiptData = context.user_data.get('receipt_data', {})
         if not data:
-            await query.edit_message_text(locale_manager.get_text("errors.receipt_data_not_found", context))
+            await query.edit_message_text(self.locale_manager.get_text("errors.receipt_data_not_found", context))
             return
         
         # Calculate total sum of all positions
@@ -152,7 +153,7 @@ class ReceiptEditCallbackHandler(BaseCallbackHandler):
         # Show success message
         formatted_total = self.number_formatter.format_number_with_spaces(calculated_total)
         await self.ui_manager.send_temp(
-            update, context, locale_manager.get_text("status.total_auto_calculated", context, total=formatted_total), duration=2
+            update, context, self.locale_manager.get_text("status.total_auto_calculated", context, total=formatted_total), duration=2
         )
     
     
@@ -168,7 +169,7 @@ class ReceiptEditCallbackHandler(BaseCallbackHandler):
             if hasattr(update, 'callback_query') and update.callback_query:
                 await self.ui_manager.send_temp(
                     update, context,
-                    locale_manager.get_text("errors.receipt_data_not_found", context) + "\n\n" +
+                    self.locale_manager.get_text("errors.receipt_data_not_found", context) + "\n\n" +
                     "Try uploading the receipt again.",
                     duration=5
                 )
@@ -194,15 +195,15 @@ class ReceiptEditCallbackHandler(BaseCallbackHandler):
             
             # Add red marker if there are errors
             if has_errors:
-                final_report += locale_manager.get_text("analysis.errors_found", context)
+                final_report += self.locale_manager.get_text("analysis.errors_found", context)
             
             final_report += f"```\n{aligned_table}\n```\n\n"
             
             if abs(calculated_total - receipt_total) < 0.01:
-                final_report += locale_manager.get_text("analysis.total_matches", context)
+                final_report += self.locale_manager.get_text("analysis.total_matches", context)
             else:
                 difference = abs(calculated_total - receipt_total)
-                final_report += locale_manager.get_text("analysis.total_mismatch", context, difference=self.number_formatter.format_number_with_spaces(difference))
+                final_report += self.locale_manager.get_text("analysis.total_mismatch", context, difference=self.number_formatter.format_number_with_spaces(difference))
             
             # Save report in cache for quick access
             context.user_data['cached_final_report'] = final_report
@@ -233,7 +234,7 @@ class ReceiptEditCallbackHandler(BaseCallbackHandler):
                     # If there are calculation errors, unreadable data or status not confirmed
                     if status != 'confirmed' or has_calculation_error or is_unreadable:
                         fix_buttons.append(InlineKeyboardButton(
-                            locale_manager.get_text("buttons.fix_line", context, line_number=item.line_number),
+                            self.locale_manager.get_text("buttons.fix_line", context, line_number=item.line_number),
                             callback_data=f"edit_item_{item.line_number}"
                         ))
                 
@@ -260,27 +261,27 @@ class ReceiptEditCallbackHandler(BaseCallbackHandler):
             
             # Add line management buttons
             keyboard.append([
-                InlineKeyboardButton(locale_manager.get_text("buttons.add_row", context), callback_data="add_row"),
-                InlineKeyboardButton(locale_manager.get_text("buttons.delete_row", context), callback_data="delete_row")
+                InlineKeyboardButton(self.locale_manager.get_text("buttons.add_row", context), callback_data="add_row"),
+                InlineKeyboardButton(self.locale_manager.get_text("buttons.delete_row", context), callback_data="delete_row")
             ])
             
             # Add edit line by number button under add/delete buttons
-            keyboard.append([InlineKeyboardButton(locale_manager.get_text("buttons.edit_line_number", context), callback_data="edit_line_number")])
+            keyboard.append([InlineKeyboardButton(self.locale_manager.get_text("buttons.edit_line_number", context), callback_data="edit_line_number")])
             
             # Add total edit and reanalysis buttons in one row
             keyboard.append([
-                InlineKeyboardButton(locale_manager.get_text("buttons.edit_total", context), callback_data="edit_total"),
-                InlineKeyboardButton(locale_manager.get_text("buttons.reanalyze", context), callback_data="reanalyze")
+                InlineKeyboardButton(self.locale_manager.get_text("buttons.edit_total", context), callback_data="edit_total"),
+                InlineKeyboardButton(self.locale_manager.get_text("buttons.reanalyze", context), callback_data="reanalyze")
             ])
             
             # Add Google Sheets upload button
-            keyboard.append([InlineKeyboardButton(locale_manager.get_text("buttons.upload_to_google_sheets", context), callback_data="upload_to_google_sheets")])
+            keyboard.append([InlineKeyboardButton(self.locale_manager.get_text("buttons.upload_to_google_sheets", context), callback_data="upload_to_google_sheets")])
             
             # Add file generation button
-            keyboard.append([InlineKeyboardButton(locale_manager.get_text("buttons.generate_supply_file", context), callback_data="generate_supply_file")])
+            keyboard.append([InlineKeyboardButton(self.locale_manager.get_text("buttons.generate_supply_file", context), callback_data="generate_supply_file")])
             
             # Add back button (required in every menu)
-            keyboard.append([InlineKeyboardButton(locale_manager.get_text("buttons.back_to_receipt", context), callback_data="back_to_receipt")])
+            keyboard.append([InlineKeyboardButton(self.locale_manager.get_text("buttons.back_to_receipt", context), callback_data="back_to_receipt")])
             
             reply_markup = InlineKeyboardMarkup(keyboard)
             
@@ -302,5 +303,5 @@ class ReceiptEditCallbackHandler(BaseCallbackHandler):
         except Exception as e:
             print(f"Error forming report: {e}")
             if hasattr(update, 'callback_query') and update.callback_query:
-                await update.callback_query.message.reply_text(locale_manager.get_text("errors.report_formation_error", context) + f": {e}")
+                await update.callback_query.message.reply_text(self.locale_manager.get_text("errors.report_formation_error", context) + f": {e}")
     

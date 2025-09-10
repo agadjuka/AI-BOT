@@ -15,7 +15,7 @@ from handlers.callback_dispatchers.file_generation_dispatcher import FileGenerat
 from handlers.ingredient_matching_callback_handler import IngredientMatchingCallbackHandler
 from handlers.google_sheets_callback_handler import GoogleSheetsCallbackHandler
 from handlers.file_generation_callback_handler import FileGenerationCallbackHandler
-from config.locales.locale_manager import LocaleManager
+from config.locales.locale_manager import get_global_locale_manager
 from config.locales.language_buttons import get_language_keyboard
 
 
@@ -26,7 +26,7 @@ class CallbackHandlers(BaseCallbackHandler):
         super().__init__(config, analysis_service)
         
         # Initialize LocaleManager
-        self.locale_manager = LocaleManager()
+        self.locale_manager = get_global_locale_manager()
         
         # Initialize services
         self.google_sheets_service = GoogleSheetsService(
