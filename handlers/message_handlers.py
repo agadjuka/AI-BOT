@@ -13,6 +13,7 @@ from handlers.input_handler import InputHandler
 from handlers.ingredient_matching_input_handler import IngredientMatchingInputHandler
 from handlers.google_sheets_input_handler import GoogleSheetsInputHandler
 from utils.common_handlers import CommonHandlers
+from config.locales.locale_manager import LocaleManager
 from config.locales.language_buttons import get_language_keyboard
 
 
@@ -21,6 +22,9 @@ class MessageHandlers(BaseMessageHandler):
     
     def __init__(self, config: BotConfig, analysis_service: ReceiptAnalysisService):
         super().__init__(config, analysis_service)
+        
+        # Initialize LocaleManager
+        self.locale_manager = LocaleManager()
         
         # Initialize specialized handlers
         self.photo_handler = PhotoHandler(config, analysis_service)
@@ -31,43 +35,25 @@ class MessageHandlers(BaseMessageHandler):
     
     async def start(self, update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         """Handle /start command"""
-        # Check if user has already selected a language
-        user_language = context.user_data.get('language')
-        
-        if not user_language:
-            # First time user - show language selection
-            language_keyboard = get_language_keyboard()
-            await update.message.reply_html(
-                self.locale_manager.get_text("welcome.choose_language", context),
-                reply_markup=language_keyboard
-            )
-            return self.config.AWAITING_CORRECTION
-        
-        # User has selected language - show main menu in their language
-        # Create start menu with buttons using localized text
-        keyboard = [
-            [InlineKeyboardButton(
-                self.locale_manager.get_text("buttons.analyze_receipt", context), 
-                callback_data="analyze_receipt"
-            )],
-            [InlineKeyboardButton(
-                self.locale_manager.get_text("buttons.generate_supply_file", context), 
-                callback_data="generate_supply_file"
-            )]
-        ]
-        
-        # Add back button if there's existing receipt data
-        if context.user_data.get('receipt_data'):
-            keyboard.append([InlineKeyboardButton(
-                self.locale_manager.get_text("buttons.back_to_receipt", context), 
-                callback_data="back_to_receipt"
-            )])
-        
-        reply_markup = InlineKeyboardMarkup(keyboard)
-        
+        # Always show language selection on /start command
+        # This ensures users can change language anytime
+        language_keyboard = get_language_keyboard()
         await update.message.reply_html(
-            self.locale_manager.get_text("welcome.start_message", context, user=update.effective_user.mention_html()),
-            reply_markup=reply_markup
+            self.locale_manager.get_text("welcome.choose_language", context),
+            reply_markup=language_keyboard
+        )
+        return self.config.AWAITING_CORRECTION
+    
+    async def reset_language(self, update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+        """Handle /reset_language command - reset language and show selection"""
+        # Clear language from user_data
+        context.user_data.pop('language', None)
+        
+        # Show language selection
+        language_keyboard = get_language_keyboard()
+        await update.message.reply_html(
+            self.locale_manager.get_text("welcome.choose_language", context),
+            reply_markup=language_keyboard
         )
         return self.config.AWAITING_CORRECTION
     

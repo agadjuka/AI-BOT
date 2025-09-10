@@ -4,9 +4,9 @@ These buttons are the same for all language versions and are not translated.
 """
 
 try:
-    from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
+    from telegram import InlineKeyboardMarkup, InlineKeyboardButton
 except ImportError:
-    # Для тестирования без aiogram
+    # Для тестирования без telegram
     InlineKeyboardMarkup = None
     InlineKeyboardButton = None
 
@@ -19,16 +19,14 @@ def get_language_keyboard():
         InlineKeyboardMarkup: Keyboard with language selection buttons
     """
     if InlineKeyboardMarkup is None or InlineKeyboardButton is None:
-        raise ImportError("aiogram is required for get_language_keyboard function")
-    
-    keyboard = InlineKeyboardMarkup(row_width=1)
+        raise ImportError("python-telegram-bot is required for get_language_keyboard function")
     
     # Language buttons with flags and names (not translated)
-    keyboard.add(
-        InlineKeyboardButton("🇷🇺 Русский", callback_data="select_language_ru"),
-        InlineKeyboardButton("🇺🇸 English", callback_data="select_language_en"),
-        InlineKeyboardButton("🇮🇩 Bahasa Indonesia", callback_data="select_language_id")
-    )
+    keyboard = InlineKeyboardMarkup([
+        [InlineKeyboardButton("🇷🇺 Русский", callback_data="select_language_ru")],
+        [InlineKeyboardButton("🇺🇸 English", callback_data="select_language_en")],
+        [InlineKeyboardButton("🇮🇩 Bahasa Indonesia", callback_data="select_language_id")]
+    ])
     
     return keyboard
 
