@@ -107,16 +107,27 @@ class LocaleManager:
         user_id = None
         if update and hasattr(update, 'effective_user'):
             user_id = getattr(update.effective_user, 'id', None)
-        elif hasattr(context, 'effective_user'):
-            user_id = getattr(context, 'effective_user', {}).get('id')
+        elif hasattr(context, 'effective_user') and context.effective_user:
+            user_id = getattr(context.effective_user, 'id', None)
+        elif hasattr(context, 'user_data'):
+            # Try to get user_id from stored in context
+            user_id = context.user_data.get('_current_user_id')
         
         if user_id:
+            print(f"DEBUG: Loading language from Firestore for user {user_id}")
             stored_language = self.language_service.get_user_language(user_id)
+            print(f"DEBUG: Retrieved language from Firestore: '{stored_language}'")
+            
             if stored_language and self.is_language_supported(stored_language):
                 # Save to context for this session
                 if hasattr(context, 'user_data'):
                     context.user_data['language'] = stored_language
+                    print(f"DEBUG: Language '{stored_language}' saved to context for user {user_id}")
                 return stored_language
+            else:
+                print(f"DEBUG: No valid language found in Firestore for user {user_id}, using default")
+        else:
+            print(f"DEBUG: No user_id found, using default language")
         
         return self._default_lang
     

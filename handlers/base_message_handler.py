@@ -10,6 +10,7 @@ from utils.ingredient_formatter import IngredientFormatter
 from utils.ingredient_storage import IngredientStorage
 from utils.receipt_processor import ReceiptProcessor
 from utils.ui_manager import UIManager
+from utils.language_middleware import save_user_id_to_context
 from validators.receipt_validator import ReceiptValidator
 
 
@@ -47,30 +48,54 @@ class BaseMessageHandler:
                 if stored_language and self.locale_manager.is_language_supported(stored_language):
                     context.user_data['language'] = stored_language
                     print(f"DEBUG: Auto-loaded language '{stored_language}' for user {user_id}")
+    
+    def save_user_context(self, update, context):
+        """Save user_id to context for language loading"""
+        if update and context:
+            save_user_id_to_context(update, context)
 
     def get_text(self, key: str, context=None, language=None, update=None, **kwargs) -> str:
         """
-        Получает переведенный текст по ключу.
+        Получает переведенный текст по ключу с автоматической загрузкой языка.
         
         Args:
             key: Ключ для поиска перевода
             context: Контекст пользователя (опционально)
-            language: Язык (опционально, если не указан, берется из context)
+            language: Язык (опционально, если не указан, берется из context или Firestore)
             update: Update объект для автоматической загрузки языка
             **kwargs: Переменные для интерполяции
             
         Returns:
             str: Переведенный текст с интерполяцией переменных
         """
-        # Auto-load language if update is provided
-        if update and context:
-            self.ensure_language_loaded(update, context)
+        # LocaleManager теперь автоматически загружает язык из Firestore
+        return self.locale_manager.get_text(key, context, language, update, **kwargs)
+    
+    def get_text_auto_update(self, key: str, context=None, language=None, **kwargs) -> str:
+        """
+        Получает переведенный текст с автоматическим определением update из контекста.
+        Используется когда update недоступен напрямую.
+        
+        Args:
+            key: Ключ для поиска перевода
+            context: Контекст пользователя (должен содержать update)
+            language: Язык (опционально)
+            **kwargs: Переменные для интерполяции
+            
+        Returns:
+            str: Переведенный текст с интерполяцией переменных
+        """
+        # Пытаемся получить update из контекста
+        update = None
+        if context and hasattr(context, 'user_data'):
+            update = context.user_data.get('_current_update')
         
         return self.locale_manager.get_text(key, context, language, update, **kwargs)
     
     def get_text_with_auto_load(self, key: str, update, context, language=None, **kwargs) -> str:
         """
         Получает переведенный текст по ключу с автоматической загрузкой языка.
+        Теперь это просто алиас для get_text, так как автоматическая загрузка встроена.
         
         Args:
             key: Ключ для поиска перевода
@@ -82,36 +107,36 @@ class BaseMessageHandler:
         Returns:
             str: Переведенный текст с интерполяцией переменных
         """
-        # Always ensure language is loaded
-        self.ensure_language_loaded(update, context)
-        
-        return self.locale_manager.get_text(key, context, language, update, **kwargs)
+        # get_text теперь автоматически загружает язык из Firestore
+        return self.get_text(key, context, language, update, **kwargs)
     
-    def get_button_text(self, key: str, context=None, language=None, **kwargs) -> str:
+    def get_button_text(self, key: str, context=None, language=None, update=None, **kwargs) -> str:
         """
-        Получает текст для кнопки по ключу.
+        Получает текст для кнопки по ключу с автоматической загрузкой языка.
         
         Args:
             key: Ключ для поиска перевода (обычно с префиксом 'button_')
             context: Контекст пользователя (опционально)
-            language: Язык (опционально, если не указан, берется из context)
+            language: Язык (опционально, если не указан, берется из context или Firestore)
+            update: Update объект для автоматической загрузки языка
             **kwargs: Переменные для интерполяции
             
         Returns:
             str: Переведенный текст кнопки с интерполяцией переменных
         """
-        return self.locale_manager.get_text(key, context, language, **kwargs)
+        return self.locale_manager.get_text(key, context, language, update, **kwargs)
     
-    def get_emoji(self, key: str, context=None, language=None) -> str:
+    def get_emoji(self, key: str, context=None, language=None, update=None) -> str:
         """
-        Получает эмодзи по ключу.
+        Получает эмодзи по ключу с автоматической загрузкой языка.
         
         Args:
             key: Ключ для поиска эмодзи (обычно с префиксом 'emoji_')
             context: Контекст пользователя (опционально)
-            language: Язык (опционально, если не указан, берется из context)
+            language: Язык (опционально, если не указан, берется из context или Firestore)
+            update: Update объект для автоматической загрузки языка
             
         Returns:
             str: Эмодзи или пустая строка если не найдено
         """
-        return self.locale_manager.get_text(key, context, language)
+        return self.locale_manager.get_text(key, context, language, update)
