@@ -51,6 +51,8 @@ RU_TRANSLATIONS = {
         "receipt_data_not_found": "❌ Данные чека не найдены",
         "operation_cancelled": "❌ Операция отменена\n\nИспользуйте /start для начала новой работы.",
         "unknown_action": "Неизвестное действие",
+        "unsupported_language": "❌ Неподдерживаемый язык",
+        "language_fallback": "❌ Неподдерживаемый язык. Установлен русский язык по умолчанию.",
         "field_not_specified": "❌ Ошибка: не указано поле для редактирования.\nПожалуйста, выберите поле для редактирования из меню.",
         "line_not_found": "Ошибка: строка не найдена",
         "data_not_found": "Произошла ошибка, данные не найдены.",
@@ -59,7 +61,11 @@ RU_TRANSLATIONS = {
         "field_edit_error": "Ошибка при редактировании поля: {error}",
         "total_update_error": "Ошибка при обновлении итоговой суммы: {error}",
         "total_update_retry": "Ошибка при обновлении итоговой суммы. Попробуйте еще раз.",
-        "critical_photo_error": "❌ Критическая ошибка при обработке фото: {error}"
+        "critical_photo_error": "❌ Критическая ошибка при обработке фото: {error}",
+        "invalid_update_object": "Неверный объект обновления",
+        "failed_to_edit_message": "Не удалось отредактировать сообщение {message_id}: {error}",
+        "failed_to_delete_message": "Не удалось удалить сообщение {message_id}: {error}",
+        "failed_to_delete_temporary_message": "Не удалось удалить временное сообщение {message_id}: {error}"
     },
     
     # Сообщения валидации
@@ -138,5 +144,17 @@ RU_TRANSLATIONS = {
         "no_data": "Нет данных для отображения",
         "table_header": "{'№':^{number_width}} | {'Товар':<{product_width}} | {'Кол':^{quantity_width}} | {'Цена':^{price_width}} | {'Сумма':>{total_width}} | {'':^{status_width}}",
         "total_label": "Итого:"
+    },
+    
+    # Отладочные сообщения
+    "debug": {
+        "no_matching_result": "DEBUG: Не найдено результатов сопоставления для обновления после {change_type}",
+        "item_edited": "DEBUG: Товар отредактирован - сопоставление ингредиентов может потребовать пересчета",
+        "matching_updated": "DEBUG: Обновлено сопоставление ингредиентов после {change_type}, новый хеш: {new_receipt_hash}, успех: {success}",
+        "matching_update_error": "DEBUG: Ошибка обновления сопоставления ингредиентов после {change_type}: {error}",
+        "no_matching_result_deletion": "DEBUG: Не найдено результатов сопоставления для обновления после удаления",
+        "matching_updated_deletion": "DEBUG: Обновлено сопоставление ингредиентов после удаления, новый хеш: {new_receipt_hash}, успех: {success}",
+        "deleted_line_not_found": "DEBUG: Не удалось найти индекс сопоставления для удаленной строки {deleted_line_number}",
+        "deletion_error": "DEBUG: Ошибка обновления сопоставления ингредиентов после удаления: {error}"
     }
 }

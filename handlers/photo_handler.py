@@ -7,10 +7,15 @@ from telegram.ext import ContextTypes
 
 from models.receipt import ReceiptData
 from handlers.base_message_handler import BaseMessageHandler
+from config.locales.locale_manager import LocaleManager
 
 
 class PhotoHandler(BaseMessageHandler):
     """Handler for photo upload and processing"""
+    
+    def __init__(self, config, analysis_service):
+        super().__init__(config, analysis_service)
+        self.locale_manager = LocaleManager()
     
     async def handle_photo(self, update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
         """Handle photo upload"""
@@ -21,7 +26,7 @@ class PhotoHandler(BaseMessageHandler):
         self._clear_receipt_data(context)
         print(f"DEBUG: Cleared all data for new receipt upload")
         
-        processing_message = await self.ui_manager.send_temp(update, context, "Обрабатываю квитанцию", duration=10)
+        processing_message = await self.ui_manager.send_temp(update, context, self.locale_manager.get_text("status.processing_receipt", context), duration=10)
         
         photo_file = await update.message.photo[-1].get_file()
         await photo_file.download_to_drive(self.config.PHOTO_FILE_NAME)
@@ -29,7 +34,7 @@ class PhotoHandler(BaseMessageHandler):
         try:
             print("🔍 Начинаем анализ чека...")
             analysis_data = self.analysis_service.analyze_receipt(self.config.PHOTO_FILE_NAME)
-            print(f"✅ Анализ завершен, получены данные: {len(str(analysis_data))} символов")
+            print(f"✅ {self.locale_manager.get_text('status.analysis_completed', context)}")
             
             # Convert to ReceiptData model
             receipt_data = ReceiptData.from_dict(analysis_data)
@@ -50,7 +55,7 @@ class PhotoHandler(BaseMessageHandler):
             
         except (json.JSONDecodeError, KeyError, IndexError, ValueError) as e:
             print(f"Ошибка парсинга JSON или структуры данных от Gemini: {e}")
-            await update.message.reply_text("Не удалось распознать структуру чека. Попробуйте сделать фото более четким.")
+            await update.message.reply_text(self.locale_manager.get_text("errors.parsing_error", context))
             return self.config.AWAITING_CORRECTION
         
         except Exception as e:

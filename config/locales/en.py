@@ -50,6 +50,8 @@ EN_TRANSLATIONS = {
         "receipt_data_not_found": "❌ Receipt data not found",
         "operation_cancelled": "❌ Operation cancelled\n\nUse /start to begin new work.",
         "unknown_action": "Unknown action",
+        "unsupported_language": "❌ Unsupported language",
+        "language_fallback": "❌ Unsupported language. Russian language set as default.",
         "field_not_specified": "❌ Error: field for editing not specified.\nPlease select a field for editing from the menu.",
         "line_not_found": "Error: line not found",
         "data_not_found": "An error occurred, data not found.",
@@ -137,5 +139,17 @@ EN_TRANSLATIONS = {
         "no_data": "No data to display",
         "table_header": "{'№':^{number_width}} | {'Product':<{product_width}} | {'Qty':^{quantity_width}} | {'Price':^{price_width}} | {'Amount':>{total_width}} | {'':^{status_width}}",
         "total_label": "Total:"
+    },
+    
+    # Debug messages
+    "debug": {
+        "no_matching_result": "DEBUG: No matching result found to update after {change_type}",
+        "item_edited": "DEBUG: Item edited - ingredient matching may need to be redone",
+        "matching_updated": "DEBUG: Updated ingredient matching after {change_type}, new hash: {new_receipt_hash}, success: {success}",
+        "matching_update_error": "DEBUG: Error updating ingredient matching after {change_type}: {error}",
+        "no_matching_result_deletion": "DEBUG: No matching result found to update after deletion",
+        "matching_updated_deletion": "DEBUG: Updated ingredient matching after deletion, new hash: {new_receipt_hash}, success: {success}",
+        "deleted_line_not_found": "DEBUG: Could not find matching index for deleted line {deleted_line_number}",
+        "deletion_error": "DEBUG: Error updating ingredient matching after deletion: {error}"
     }
 }

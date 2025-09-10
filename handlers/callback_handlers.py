@@ -79,7 +79,7 @@ class CallbackHandlers(BaseCallbackHandler):
             return await self.file_generation_dispatcher._handle_file_generation_actions(update, context, action)
         
         elif action == "finish":
-            await query.answer("Отчет уже готов!")
+            await query.answer(self.locale_manager.get_text("buttons.finish", context))
             return self.config.AWAITING_CORRECTION
         
         elif action == "cancel":
@@ -99,7 +99,7 @@ class CallbackHandlers(BaseCallbackHandler):
             return self.config.AWAITING_CORRECTION
         
         else:
-            await query.answer("Неизвестное действие")
+            await query.answer(self.locale_manager.get_text("errors.unknown_action", context))
             return self.config.AWAITING_CORRECTION
     
     async def _handle_language_selection(self, update: Update, context: ContextTypes.DEFAULT_TYPE, action: str) -> int:
@@ -113,7 +113,7 @@ class CallbackHandlers(BaseCallbackHandler):
         
         # Validate language code
         if not self.locale_manager.is_language_supported(language_code):
-            await query.answer("❌ Неподдерживаемый язык")
+            await query.answer(self.locale_manager.get_text("errors.unsupported_language", context))
             return self.config.AWAITING_CORRECTION
         
         # Set user language
@@ -154,7 +154,7 @@ class CallbackHandlers(BaseCallbackHandler):
         else:
             # Fallback to Russian if language not supported
             await query.edit_message_text(
-                "❌ Неподдерживаемый язык. Установлен русский язык по умолчанию."
+                self.locale_manager.get_text("errors.language_fallback", context)
             )
             return self.config.AWAITING_CORRECTION
     
@@ -168,8 +168,7 @@ class CallbackHandlers(BaseCallbackHandler):
         
         # Show start message - avoid circular import
         await query.edit_message_text(
-            "❌ Операция отменена\n\n"
-            "Используйте /start для начала новой работы."
+            self.locale_manager.get_text("errors.operation_cancelled", context)
         )
         
         return self.config.AWAITING_CORRECTION

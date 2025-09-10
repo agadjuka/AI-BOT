@@ -50,6 +50,8 @@ ID_TRANSLATIONS = {
         "receipt_data_not_found": "❌ Data struk tidak ditemukan",
         "operation_cancelled": "❌ Operasi dibatalkan\n\nGunakan /start untuk memulai pekerjaan baru.",
         "unknown_action": "Aksi tidak dikenal",
+        "unsupported_language": "❌ Bahasa tidak didukung",
+        "language_fallback": "❌ Bahasa tidak didukung. Bahasa Rusia diatur sebagai default.",
         "field_not_specified": "❌ Error: field untuk edit tidak ditentukan.\nSilakan pilih field untuk edit dari menu.",
         "line_not_found": "Error: baris tidak ditemukan",
         "data_not_found": "Terjadi error, data tidak ditemukan.",
@@ -137,5 +139,17 @@ ID_TRANSLATIONS = {
         "no_data": "Tidak ada data untuk ditampilkan",
         "table_header": "{'№':^{number_width}} | {'Barang':<{product_width}} | {'Jml':^{quantity_width}} | {'Harga':^{price_width}} | {'Jumlah':>{total_width}} | {'':^{status_width}}",
         "total_label": "Total:"
+    },
+    
+    # Pesan debug
+    "debug": {
+        "no_matching_result": "DEBUG: Tidak ditemukan hasil pencocokan untuk update setelah {change_type}",
+        "item_edited": "DEBUG: Item diedit - pencocokan bahan mungkin perlu diulang",
+        "matching_updated": "DEBUG: Pencocokan bahan diperbarui setelah {change_type}, hash baru: {new_receipt_hash}, sukses: {success}",
+        "matching_update_error": "DEBUG: Error update pencocokan bahan setelah {change_type}: {error}",
+        "no_matching_result_deletion": "DEBUG: Tidak ditemukan hasil pencocokan untuk update setelah penghapusan",
+        "matching_updated_deletion": "DEBUG: Pencocokan bahan diperbarui setelah penghapusan, hash baru: {new_receipt_hash}, sukses: {success}",
+        "deleted_line_not_found": "DEBUG: Tidak dapat menemukan indeks pencocokan untuk baris yang dihapus {deleted_line_number}",
+        "deletion_error": "DEBUG: Error update pencocokan bahan setelah penghapusan: {error}"
     }
 }
