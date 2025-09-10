@@ -316,9 +316,7 @@ class LocaleManager:
 
 # Global LocaleManager instance
 _global_locale_manager = None
-
-# Create a global instance for backward compatibility
-locale_manager = LocaleManager()
+locale_manager = None
 
 
 def get_global_locale_manager() -> LocaleManager:
@@ -330,20 +328,31 @@ def get_global_locale_manager() -> LocaleManager:
     """
     global _global_locale_manager
     if _global_locale_manager is None:
+        # Initialize with default LanguageService if not already initialized
+        from services.language_service import get_language_service
+        language_service = get_language_service()
         _global_locale_manager = LocaleManager()
+        _global_locale_manager.language_service = language_service
     return _global_locale_manager
 
 
 def initialize_locale_manager(db_instance=None):
     """Initialize the global LocaleManager at startup"""
-    global _global_locale_manager
+    global _global_locale_manager, locale_manager
+    
+    # Initialize LanguageService with Firestore instance
+    from services.language_service import get_language_service
+    language_service = get_language_service(db_instance)
+    
+    # Create or update LocaleManager with the language service
     if _global_locale_manager is None:
-        # Initialize LanguageService with Firestore instance
-        from services.language_service import get_language_service
-        language_service = get_language_service(db_instance)
-        
-        # Create LocaleManager with the language service
         _global_locale_manager = LocaleManager()
-        _global_locale_manager.language_service = language_service
-        print("✅ Global LocaleManager initialized")
+    
+    # Update the language service with Firestore instance
+    _global_locale_manager.language_service = language_service
+    
+    # Update the global locale_manager variable for backward compatibility
+    locale_manager = _global_locale_manager
+    
+    print("✅ Global LocaleManager initialized with Firestore instance")
     return _global_locale_manager
