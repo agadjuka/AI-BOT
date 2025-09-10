@@ -35,6 +35,7 @@ ID_TRANSLATIONS = {
         "edit_total_field": "💵 Jumlah",
         "apply_changes": "✅ Terapkan",
         "cancel": "❌ Batal",
+        "fix_line": "Perbaiki baris {line_number}",
         
         # Aksi dengan total
         "auto_calculate_total": "🧮 Hitung otomatis",
@@ -60,7 +61,11 @@ ID_TRANSLATIONS = {
         "field_edit_error": "Error saat edit field: {error}",
         "total_update_error": "Error saat update total: {error}",
         "total_update_retry": "Error saat update total. Coba lagi.",
-        "critical_photo_error": "❌ Error kritis saat memproses foto: {error}"
+        "critical_photo_error": "❌ Error kritis saat memproses foto",
+        "invalid_update_object": "Objek update tidak valid",
+        "failed_to_edit_message": "Gagal edit pesan {message_id}: {error}",
+        "failed_to_delete_message": "Gagal hapus pesan {message_id}: {error}",
+        "failed_to_delete_temporary_message": "Gagal hapus pesan sementara {message_id}: {error}"
     },
     
     # Pesan validasi
@@ -125,13 +130,168 @@ ID_TRANSLATIONS = {
         "table_header": "{'№':<2} | {'Barang':<{name_width}} | {'Poster':<{name_width}} | {'Status':<4}",
         "manual_instructions": "**Instruksi pencocokan manual:**\n\n1. Pilih nomor saran untuk pencocokan otomatis\n2. Atau masukkan '0' untuk melewatkan bahan ini\n3. Atau masukkan 'search: <nama>' untuk mencari opsi lain\n\nContoh:\n• `1` - pilih saran pertama\n• `0` - lewati\n• `search: tomat` - cari opsi dengan 'tomat'",
         "no_search_results": "Tidak ditemukan hasil untuk '{query}'.",
-        "search_results": "**Hasil pencarian untuk '{query}':**\n"
+        "search_results": "**Hasil pencarian untuk '{query}':**\n",
+        
+        # Pesan pemrosesan input
+        "matching_data_not_found": "Error: data pencocokan tidak ditemukan.",
+        "failed_to_delete_message": "Gagal menghapus pesan pengguna: {error}",
+        "enter_search_query": "Masukkan query pencarian setelah 'search:'",
+        "ingredient_skipped": "✅ Bahan dilewati: {ingredient_name}",
+        "ingredient_matched": "✅ Dicocokkan: {receipt_item} → {matched_ingredient}",
+        "invalid_suggestion_number": "Nomor tidak valid. Masukkan nomor dari 1 sampai {max_number} atau 0 untuk melewatkan.",
+        "invalid_format": "Format tidak valid. Masukkan nomor saran, 0 untuk melewatkan atau 'search: query' untuk mencari.",
+        "processing_error": "Error memproses pencocokan manual: {error}",
+        "try_again": "Terjadi error. Coba lagi.",
+        
+        # Pesan pencarian
+        "search_results_title": "**Hasil pencarian untuk '{query}':**\n\n",
+        "found_variants": "Ditemukan varian: **{count}**\n\n",
+        "select_ingredient": "**Pilih bahan untuk dicocokkan:**\n",
+        "no_suitable_variants": "❌ **Tidak ditemukan varian yang sesuai untuk '{query}'**\n\nCoba query pencarian lain atau kembali ke ringkasan.",
+        "nothing_found": "❌ **Tidak ditemukan hasil untuk '{query}'**\n\nCoba query pencarian lain atau kembali ke ringkasan.",
+        "no_suitable_results": "Tidak ditemukan varian yang sesuai untuk '{query}' (dengan probabilitas > 50%).",
+        "search_nothing_found": "Tidak ditemukan hasil untuk '{query}'.",
+        
+        # Tombol pencarian
+        "new_search": "🔍 Pencarian baru",
+        "back_to_receipt": "📋 Kembali ke ringkasan",
+        "skip_ingredient": "⏭️ Lewati",
+        "back": "◀️ Kembali",
+        
+        # Pesan pencocokan posisi
+        "invalid_line_number": "Nomor baris tidak valid. Masukkan nomor dari 1 sampai {max_lines}",
+        "line_selected": "Baris {line_number} dipilih. Sekarang masukkan nama bahan dari poster untuk pencarian:",
+        "invalid_line_format": "Format tidak valid. Masukkan hanya nomor baris (contoh: `3`):",
+        
+        # Progress pencocokan
+        "matching_progress": "**Pencocokan bahan** ({current}/{total})\n\n",
+        "current_item": "**Barang saat ini:** {item_name}\n\n",
+        "auto_matched": "✅ **Otomatis dicocokkan:** {ingredient_name}\n\n",
+        "continue_instruction": "Tekan /continue untuk ke barang berikutnya.",
+        
+        # Hasil akhir
+        "rematch_ingredients": "🔄 Cocokkan ulang bahan",
+        "back_to_receipt_final": "📋 Kembali ke struk",
+        
+        # Pesan callback untuk pencocokan bahan
+        "callback": {
+            "results_not_found": "❌ Hasil pencocokan tidak ditemukan",
+            "manual_matching": "✏️ Pencocokan manual",
+            "show_table": "📊 Tampilkan tabel",
+            "back_to_edit": "◀️ Kembali",
+            "auto_match_all": "🔄 Pencocokan otomatis",
+            "matching_overview_title": "🔍 **Ringkasan pencocokan bahan**\n\n",
+            "statistics_title": "📊 **Statistik:**\n",
+            "matched_count": "✅ Dicocokkan: {count}\n",
+            "partial_count": "⚠️ Sebagian: {count}\n",
+            "no_match_count": "❌ Tidak dicocokkan: {count}\n",
+            "total_positions": "📝 Total posisi: {count}\n\n",
+            "choose_action": "Pilih aksi:",
+            "position_selection_title": "🔍 **Pilih posisi untuk dicocokkan:**\n\n",
+            "invalid_position_index": "❌ Indeks posisi tidak valid",
+            "invalid_suggestion_number": "❌ Nomor saran tidak valid",
+            "matching_position_title": "🔍 **Pencocokan posisi {position}:**\n\n",
+            "receipt_item": "📝 **Barang struk:** {item_name}\n\n",
+            "suggestions_title": "💡 **Saran:**\n",
+            "no_suggestions": "❌ Tidak ada saran ditemukan\n",
+            "manual_search": "🔍 Pencarian manual",
+            "skip_item": "❌ Lewati",
+            "back_to_list": "◀️ Kembali ke daftar",
+            "matching_completed": "✅ **Pencocokan selesai!**\n\n",
+            "matched_item": "📝 **Barang:** {item_name}\n",
+            "matched_ingredient": "🎯 **Bahan:** {ingredient_name}\n",
+            "similarity_score": "📊 **Kesamaan:** {score:.2f}\n\n",
+            "continue_to_next": "Pindah ke posisi berikutnya...",
+            "next_position": "➡️ Posisi berikutnya",
+            "matching_finished": "🎉 **Pencocokan selesai!**\n\n",
+            "results_title": "📊 **Hasil:**\n",
+            "matched_percentage": "📈 Persentase: {percentage:.1f}%\n\n",
+            "all_matched": "🎯 Semua posisi berhasil dicocokkan!",
+            "remaining_items": "⚠️ Masih perlu dicocokkan: {count} posisi",
+            "back_to_editing": "◀️ Kembali ke edit"
+        }
     },
     
     # Pesan Google Sheets
     "sheets": {
         "ingredients_loaded": "✅ Dimuat {count} bahan Google Sheets sesuai permintaan",
-        "no_data_for_upload": "❌ **Tidak ada data untuk diupload**\n\nPertama perlu upload dan analisis struk.\nKlik 'Analisis struk' dan upload foto struk."
+        "no_data_for_upload": "❌ **Tidak ada data untuk diupload**\n\nPertama perlu upload dan analisis struk.\nKlik 'Analisis struk' dan upload foto struk.",
+        
+        # Pesan pencarian Google Sheets
+        "no_line_selected": "Error: tidak ada baris yang dipilih untuk pencocokan.",
+        "dictionary_not_loaded": "Error: kamus Google Sheets tidak dimuat.",
+        "no_search_results": "Tidak ditemukan hasil untuk '{query}' di Google Sheets.",
+        "no_item_selected": "Error: tidak ada item yang dipilih untuk pencarian.",
+        "ingredients_loaded_for_search": "✅ Dimuat {count} bahan Google Sheets untuk pencarian",
+        "using_cached_ingredients": "✅ Menggunakan {count} bahan Google Sheets yang sudah dimuat",
+        "search_results_title": "**Hasil pencarian Google Sheets untuk '{query}':**\n\n",
+        "back_button": "◀️ Kembali",
+        
+        # Pesan callback untuk Google Sheets
+        "callback": {
+            "matching_results_not_found": "❌ Hasil pencocokan tidak ditemukan",
+            "choose_action_for_matching": "Pilih aksi untuk bekerja dengan pencocokan:",
+            "preview_data_not_found": "❌ Data untuk preview tidak ditemukan",
+            "upload_preview_title": "📊 **Preview upload ke Google Sheets**",
+            "uploading_data": "📤 Mengupload data ke Google Sheets...",
+            "receipt_data_not_found": "Data struk tidak ditemukan",
+            "upload_successful": "Upload berhasil",
+            "upload_error": "❌ Error upload: {message}",
+            "matching_data_not_found": "Error: data pencocokan tidak ditemukan.",
+            "all_positions_processed": "✅ Semua posisi diproses!",
+            "choose_position_for_matching": "**Pilih posisi untuk pencocokan**",
+            "matching_updated": "✅ Pencocokan diperbarui!",
+            "data_successfully_uploaded": "✅ **Data berhasil diupload ke Google Sheets!**",
+            "no_upload_data_for_undo": "Tidak ada data tentang upload terakhir untuk dibatalkan",
+            "no_data_to_undo": "Tidak ada data untuk dibatalkan",
+            "undo_upload_failed": "Gagal membatalkan upload: {message}",
+            "unexpected_error": "Terjadi error tak terduga: {error}",
+            "no_receipt_data_for_file": "❌ Tidak ada data struk untuk pembuatan file.",
+            "no_matching_data_for_file": "❌ Tidak ada data pencocokan Google Sheets untuk pembuatan file.",
+            "excel_generation_error": "❌ Error membuat file Excel.",
+            "excel_generation_error_detailed": "❌ Error membuat file Excel: {error}",
+            "matching_table_title": "**Pencocokan dengan bahan Google Sheets:**",
+            "no_ingredients_for_matching": "Tidak ada bahan untuk dicocokkan.",
+            "table_header": "{'№':<2} | {'Nama':<20} | {'Google Sheets':<20} | {'Status':<4}",
+            "manual_matching_editor_title": "**Editor pencocokan Google Sheets**",
+            "current_item": "**Barang:** {item_name}",
+            "choose_suitable_ingredient": "**Pilih bahan yang sesuai:**",
+            "no_suitable_options": "❌ **Tidak ada opsi yang sesuai ditemukan**",
+            "undo_error_title": "❌ **{error_message}**",
+            "undo_error_info": "Informasi tentang upload terakhir tidak ditemukan.",
+            "undo_successful": "✍️ **Upload berhasil dibatalkan!**",
+            "cancelled_rows": "📊 **Baris yang dibatalkan:** {row_count}",
+            "worksheet_name": "📋 **Lembar kerja:** {worksheet_name}",
+            "undo_time": "🕒 **Waktu pembatalan:** {time}",
+            "data_deleted_from_sheets": "Data telah dihapus dari Google Sheets.",
+            "excel_file_created": "📄 **File Excel dengan data struk dibuat!**",
+            "excel_success_title": "✅ **File Excel berhasil dibuat!**",
+            "excel_success_description": "File berisi data yang sama yang diupload ke Google Sheets.",
+            "file_available_for_download": "⏰ **File akan tersedia untuk download selama 5 menit**",
+            "no_data_to_display": "Tidak ada data untuk ditampilkan",
+            "date_header": "Tanggal",
+            "volume_header": "Vol",
+            "price_header": "harga",
+            "product_header": "Produk",
+            "total_label": "Total:",
+            "new_item_name": "Barang baru",
+            "invalid_item_index": "Error: indeks item tidak valid.",
+            "invalid_suggestion_index": "Error: indeks saran tidak valid.",
+            "invalid_search_result_index": "Error: indeks hasil pencarian tidak valid.",
+            "matched_successfully": "✅ Dicocokkan: {receipt_item} → {ingredient_name}",
+            "edit_matching": "✏️ Edit pencocokan",
+            "preview": "👁️ Preview",
+            "back_to_receipt": "◀️ Kembali ke struk",
+            "upload_to_google_sheets": "✅ Upload ke Google Sheets",
+            "back": "◀️ Kembali",
+            "select_position_for_matching": "🔍 Pilih posisi untuk pencocokan",
+            "search": "🔍 Cari",
+            "undo_upload": "↩️ Batalkan upload",
+            "generate_file": "📄 Buat file",
+            "upload_new_receipt": "📸 Upload struk baru",
+            "back_to_receipt_button": "📋 Kembali ke struk",
+            "preview_google_sheets": "👁️ Preview Google Sheets"
+        }
     },
     
     # Pesan file
@@ -141,15 +301,4 @@ ID_TRANSLATIONS = {
         "total_label": "Total:"
     },
     
-    # Pesan debug
-    "debug": {
-        "no_matching_result": "DEBUG: Tidak ditemukan hasil pencocokan untuk update setelah {change_type}",
-        "item_edited": "DEBUG: Item diedit - pencocokan bahan mungkin perlu diulang",
-        "matching_updated": "DEBUG: Pencocokan bahan diperbarui setelah {change_type}, hash baru: {new_receipt_hash}, sukses: {success}",
-        "matching_update_error": "DEBUG: Error update pencocokan bahan setelah {change_type}: {error}",
-        "no_matching_result_deletion": "DEBUG: Tidak ditemukan hasil pencocokan untuk update setelah penghapusan",
-        "matching_updated_deletion": "DEBUG: Pencocokan bahan diperbarui setelah penghapusan, hash baru: {new_receipt_hash}, sukses: {success}",
-        "deleted_line_not_found": "DEBUG: Tidak dapat menemukan indeks pencocokan untuk baris yang dihapus {deleted_line_number}",
-        "deletion_error": "DEBUG: Error update pencocokan bahan setelah penghapusan: {error}"
-    }
 }
