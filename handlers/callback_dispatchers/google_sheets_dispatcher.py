@@ -6,6 +6,7 @@ from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import ContextTypes
 
 from config.settings import BotConfig
+from config.locales.locale_manager import locale_manager
 from services.ai_service import ReceiptAnalysisService
 from services.google_sheets_service import GoogleSheetsService
 from services.ingredient_matching_service import IngredientMatchingService
@@ -49,17 +50,21 @@ class GoogleSheetsDispatcher(BaseCallbackHandler):
             await self.google_sheets_handler._show_google_sheets_position_selection(update, context)
         elif action in ["gs_upload", "upload_to_google_sheets"]:
             query = update.callback_query
-            await query.answer("📊 Загружаю данные в Google Sheets...")
+            await query.answer(locale_manager.get_text("sheets.callback.uploading_data", context))
             
             receipt_data = context.user_data.get('receipt_data')
             if not receipt_data:
                 await query.edit_message_text(
-                    "❌ **Нет данных для загрузки**\n\n"
-                    "Сначала необходимо загрузить и проанализировать чек.\n"
-                    "Нажмите 'Анализировать чек' и загрузите фото чека.",
+                    locale_manager.get_text("sheets.no_data_for_upload", context),
                     reply_markup=InlineKeyboardMarkup([
-                        [InlineKeyboardButton("📸 Анализировать чек", callback_data="analyze_receipt")],
-                        [InlineKeyboardButton("◀️ Главное меню", callback_data="back_to_main_menu")]
+                        [InlineKeyboardButton(
+                            locale_manager.get_text("buttons.analyze_receipt", context), 
+                            callback_data="analyze_receipt"
+                        )],
+                        [InlineKeyboardButton(
+                            locale_manager.get_text("buttons.back_to_main_menu", context), 
+                            callback_data="back_to_main_menu"
+                        )]
                     ]),
                     parse_mode='Markdown'
                 )
@@ -67,12 +72,17 @@ class GoogleSheetsDispatcher(BaseCallbackHandler):
             
             if not await self._ensure_google_sheets_ingredients_loaded(context):
                 await query.edit_message_text(
-                    "❌ **Ошибка загрузки в Google Sheets**\n\n"
-                    "Не удалось загрузить справочник ингредиентов для Google Sheets.\n"
-                    "Проверьте настройки конфигурации.",
+                    locale_manager.get_text("sheets.callback.upload_error", context, 
+                        message=locale_manager.get_text("sheets.callback.dictionary_not_loaded", context)),
                     reply_markup=InlineKeyboardMarkup([
-                        [InlineKeyboardButton("📊 Загрузить в Google Sheets", callback_data="upload_to_google_sheets")],
-                        [InlineKeyboardButton("◀️ Назад", callback_data="back_to_receipt")]
+                        [InlineKeyboardButton(
+                            locale_manager.get_text("buttons.upload_to_google_sheets", context), 
+                            callback_data="upload_to_google_sheets"
+                        )],
+                        [InlineKeyboardButton(
+                            locale_manager.get_text("buttons.back_to_receipt", context), 
+                            callback_data="back_to_receipt"
+                        )]
                     ]),
                     parse_mode='Markdown'
                 )
@@ -126,18 +136,22 @@ class GoogleSheetsDispatcher(BaseCallbackHandler):
             await self.google_sheets_handler._show_google_sheets_position_selection(update, context)
         elif action == "preview_google_sheets_upload":
             # User wants to preview Google Sheets upload
-            await query.answer("👁️ Показываю предпросмотр...")
+            await query.answer(locale_manager.get_text("sheets.callback.preview", context))
             
             # Get pending data
             pending_data = context.user_data.get('pending_google_sheets_upload')
             if not pending_data:
                 await query.edit_message_text(
-                    "❌ **Ошибка предпросмотра**\n\n"
-                    "Данные для предпросмотра не найдены.\n"
-                    "Попробуйте начать процесс заново.",
+                    locale_manager.get_text("sheets.callback.preview_data_not_found", context),
                     reply_markup=InlineKeyboardMarkup([
-                        [InlineKeyboardButton("📊 Загрузить в Google Sheets", callback_data="upload_to_google_sheets")],
-                        [InlineKeyboardButton("◀️ Назад", callback_data="back_to_receipt")]
+                        [InlineKeyboardButton(
+                            locale_manager.get_text("buttons.upload_to_google_sheets", context), 
+                            callback_data="upload_to_google_sheets"
+                        )],
+                        [InlineKeyboardButton(
+                            locale_manager.get_text("buttons.back_to_receipt", context), 
+                            callback_data="back_to_receipt"
+                        )]
                     ]),
                     parse_mode='Markdown'
                 )
@@ -150,7 +164,7 @@ class GoogleSheetsDispatcher(BaseCallbackHandler):
             await self.google_sheets_handler._show_google_sheets_preview(update, context, receipt_data, matching_result)
         elif action == "confirm_google_sheets_upload":
             # User confirmed Google Sheets upload
-            await query.answer("📊 Загружаю данные в Google Sheets...")
+            await query.answer(locale_manager.get_text("sheets.callback.uploading_data", context))
             
             # Clean up all messages except anchor before showing new menu
             await self.ui_manager.cleanup_all_except_anchor(update, context)
@@ -160,12 +174,17 @@ class GoogleSheetsDispatcher(BaseCallbackHandler):
             if not pending_data:
                 await self.ui_manager.send_menu(
                     update, context,
-                    "❌ **Ошибка загрузки в Google Sheets**\n\n"
-                    "Данные для загрузки не найдены.\n"
-                    "Попробуйте начать процесс заново.",
+                    locale_manager.get_text("sheets.callback.upload_error", context, 
+                        message=locale_manager.get_text("sheets.callback.receipt_data_not_found", context)),
                     InlineKeyboardMarkup([
-                        [InlineKeyboardButton("📊 Загрузить в Google Sheets", callback_data="upload_to_google_sheets")],
-                        [InlineKeyboardButton("◀️ Назад", callback_data="back_to_receipt")]
+                        [InlineKeyboardButton(
+                            locale_manager.get_text("buttons.upload_to_google_sheets", context), 
+                            callback_data="upload_to_google_sheets"
+                        )],
+                        [InlineKeyboardButton(
+                            locale_manager.get_text("buttons.back_to_receipt", context), 
+                            callback_data="back_to_receipt"
+                        )]
                     ]),
                     'Markdown'
                 )
@@ -184,7 +203,7 @@ class GoogleSheetsDispatcher(BaseCallbackHandler):
             await self.google_sheets_handler._show_google_sheets_position_selection(update, context)
         elif action == "back_to_google_sheets_matching":
             # Return to Google Sheets matching table
-            await query.answer("◀️ Возвращаюсь к таблице сопоставления...")
+            await query.answer(locale_manager.get_text("sheets.callback.back", context))
             
             # Delete the current message (position selection interface) to make it disappear
             try:
@@ -198,18 +217,23 @@ class GoogleSheetsDispatcher(BaseCallbackHandler):
                     pending_data['receipt_data'], pending_data['matching_result'])
         elif action == "edit_google_sheets_matching":
             # User wants to edit Google Sheets matching
-            await query.answer("✏️ Открываю редактор сопоставления...")
+            await query.answer(locale_manager.get_text("sheets.callback.edit_matching", context))
             
             # Get pending data
             pending_data = context.user_data.get('pending_google_sheets_upload')
             if not pending_data:
                 await query.edit_message_text(
-                    "❌ **Ошибка редактирования сопоставления**\n\n"
-                    "Данные для редактирования не найдены.\n"
-                    "Попробуйте начать процесс заново.",
+                    locale_manager.get_text("sheets.callback.upload_error", context, 
+                        message=locale_manager.get_text("sheets.callback.matching_data_not_found", context)),
                     reply_markup=InlineKeyboardMarkup([
-                        [InlineKeyboardButton("📊 Загрузить в Google Sheets", callback_data="upload_to_google_sheets")],
-                        [InlineKeyboardButton("◀️ Назад", callback_data="back_to_receipt")]
+                        [InlineKeyboardButton(
+                            locale_manager.get_text("buttons.upload_to_google_sheets", context), 
+                            callback_data="upload_to_google_sheets"
+                        )],
+                        [InlineKeyboardButton(
+                            locale_manager.get_text("buttons.back_to_receipt", context), 
+                            callback_data="back_to_receipt"
+                        )]
                     ]),
                     parse_mode='Markdown'
                 )
@@ -222,7 +246,7 @@ class GoogleSheetsDispatcher(BaseCallbackHandler):
             await self.google_sheets_handler._show_google_sheets_matching_table(update, context, receipt_data, matching_result)
         elif action == "back_to_google_sheets_preview":
             # Return to Google Sheets preview
-            await query.answer("◀️ Возвращаюсь к предпросмотру...")
+            await query.answer(locale_manager.get_text("sheets.callback.back", context))
             pending_data = context.user_data.get('pending_google_sheets_upload')
             if pending_data:
                 receipt_data = pending_data['receipt_data']
@@ -230,28 +254,28 @@ class GoogleSheetsDispatcher(BaseCallbackHandler):
                 await self.google_sheets_handler._show_google_sheets_preview(update, context, receipt_data, matching_result)
         elif action == "undo_google_sheets_upload":
             # Handle undo upload
-            await query.answer("↩️ Отменяю загрузку...")
+            await query.answer(locale_manager.get_text("sheets.callback.undo_upload", context))
             await self.google_sheets_handler._handle_undo_google_sheets_upload(update, context)
         elif action == "start_new_receipt":
             # Handle start new receipt
-            await update.callback_query.edit_message_text("📸 Загрузите фото нового чека для анализа")
+            await update.callback_query.edit_message_text(locale_manager.get_text("welcome.analyze_receipt", context))
         elif action == "generate_excel_file":
             # Generate Excel file
             matching_result = context.user_data.get('ingredient_matching_result')
             if matching_result:
                 await self.google_sheets_handler._generate_excel_file(update, context)
             else:
-                await update.callback_query.edit_message_text("❌ Результаты сопоставления не найдены")
+                await update.callback_query.edit_message_text(locale_manager.get_text("sheets.callback.matching_results_not_found", context))
         elif action.startswith("edit_google_sheets_item_"):
             # User wants to edit specific Google Sheets item
             item_index = int(action.split("_")[4])
-            await query.answer("✏️ Открываю редактор сопоставления...")
+            await query.answer(locale_manager.get_text("sheets.callback.edit_matching", context))
             await self.google_sheets_handler._show_google_sheets_manual_matching_for_item(update, context, item_index)
         elif action.startswith("select_google_sheets_line_"):
             # User selected a line for Google Sheets matching
             line_number = int(action.split("_")[4])
             item_index = line_number - 1  # Convert to 0-based index
-            await query.answer(f"Выбрана строка {line_number}")
+            await query.answer(locale_manager.get_text("matching.callback.line_selected", context, line_number=line_number))
             
             # Delete the current message (position selection interface) to make it disappear
             try:
@@ -265,12 +289,13 @@ class GoogleSheetsDispatcher(BaseCallbackHandler):
             parts = action.split("_")
             item_index = int(parts[4])
             suggestion_index = int(parts[5])
-            await query.answer("✅ Выбрано предложение...")
+            await query.answer(locale_manager.get_text("matching.callback.matched_successfully", context, 
+                receipt_item="", ingredient_name=""))
             await self.google_sheets_handler._handle_google_sheets_suggestion_selection(update, context, item_index, suggestion_index)
         elif action.startswith("search_google_sheets_ingredient_"):
             # User wants to search for Google Sheets ingredient
             item_index = int(action.split("_")[4])
-            await query.answer("🔍 Введите поисковый запрос...")
+            await query.answer(locale_manager.get_text("sheets.callback.search", context))
             
             print(f"DEBUG: search_google_sheets_ingredient_{item_index} button pressed")
             print(f"DEBUG: Setting google_sheets_search_mode = True for item_index = {item_index}")
@@ -284,7 +309,7 @@ class GoogleSheetsDispatcher(BaseCallbackHandler):
             
             await self.ui_manager.send_temp(
                 update, context, 
-                "Введите наименование ингредиента для поиска в Google Таблицах:", 
+                locale_manager.get_text("matching.callback.search_ingredient", context), 
                 duration=10
             )
             return self.config.AWAITING_CORRECTION
@@ -293,20 +318,22 @@ class GoogleSheetsDispatcher(BaseCallbackHandler):
             parts = action.split("_")
             item_index = int(parts[4])
             result_index = int(parts[5])
-            await query.answer("✅ Выбран результат поиска...")
+            await query.answer(locale_manager.get_text("matching.callback.matched_successfully", context, 
+                receipt_item="", ingredient_name=""))
             await self.google_sheets_handler._handle_google_sheets_search_selection(update, context, item_index, result_index)
         elif action.startswith("select_google_sheets_position_match_"):
             # User selected a position match from search results
             parts = action.split("_")
             selected_line = int(parts[4])
             result_index = int(parts[5]) - 1
-            await query.answer("✅ Выбрано совпадение...")
+            await query.answer(locale_manager.get_text("matching.callback.matched_successfully", context, 
+                receipt_item="", ingredient_name=""))
             await self.google_sheets_handler._handle_google_sheets_suggestion_selection(update, context, result_index)
         elif action in ["gs_skip_item", "skip_ingredient"]:
-            await query.answer("⏭️ Пропускаю позицию...")
+            await query.answer(locale_manager.get_text("matching.callback.skip_item", context))
             await self.google_sheets_handler._handle_skip_item(update, context)
         elif action in ["gs_next_item", "next_ingredient_match"]:
-            await query.answer("➡️ Переход к следующей позиции...")
+            await query.answer(locale_manager.get_text("matching.callback.next_position", context))
             await self.google_sheets_handler._handle_next_item(update, context)
         
         return self.config.AWAITING_CORRECTION
@@ -340,14 +367,23 @@ class GoogleSheetsDispatcher(BaseCallbackHandler):
                 await self._show_upload_success_page(update, context, summary, message)
             else:
                 # Show error message
-                error_text = f"❌ **Ошибка загрузки в Google Sheets**\n\n{message}\n\n{summary}"
+                error_text = locale_manager.get_text("sheets.callback.upload_error", context, message=message)
                 await self.ui_manager.send_menu(
                     update, context,
                     error_text,
                     InlineKeyboardMarkup([
-                        [InlineKeyboardButton("🔄 Попробовать снова", callback_data="upload_to_google_sheets")],
-                        [InlineKeyboardButton("📄 Сгенерировать файл", callback_data="generate_file_from_table")],
-                        [InlineKeyboardButton("◀️ Назад", callback_data="back_to_receipt")]
+                        [InlineKeyboardButton(
+                            locale_manager.get_text("buttons.reanalyze", context), 
+                            callback_data="upload_to_google_sheets"
+                        )],
+                        [InlineKeyboardButton(
+                            locale_manager.get_text("buttons.generate_supply_file", context), 
+                            callback_data="generate_file_from_table"
+                        )],
+                        [InlineKeyboardButton(
+                            locale_manager.get_text("buttons.back_to_receipt", context), 
+                            callback_data="back_to_receipt"
+                        )]
                     ]),
                     'Markdown'
                 )
@@ -356,9 +392,12 @@ class GoogleSheetsDispatcher(BaseCallbackHandler):
             print(f"DEBUG: Error uploading to Google Sheets: {e}")
             await self.ui_manager.send_menu(
                 update, context,
-                f"❌ **Критическая ошибка**\n\nПроизошла неожиданная ошибка при загрузке в Google Sheets:\n`{str(e)}`",
+                locale_manager.get_text("sheets.callback.unexpected_error", context, error=str(e)),
                 InlineKeyboardMarkup([
-                    [InlineKeyboardButton("◀️ Назад", callback_data="back_to_receipt")]
+                    [InlineKeyboardButton(
+                        locale_manager.get_text("buttons.back_to_receipt", context), 
+                        callback_data="back_to_receipt"
+                    )]
                 ]),
                 'Markdown'
             )
@@ -370,14 +409,26 @@ class GoogleSheetsDispatcher(BaseCallbackHandler):
         await self.ui_manager.cleanup_all_except_anchor(update, context)
         
         # Create success message with only the header
-        success_text = "✅ **Данные успешно загружены в Google Sheets!**"
+        success_text = locale_manager.get_text("sheets.callback.data_successfully_uploaded", context)
         
         # Create new button layout
         keyboard = [
-            [InlineKeyboardButton("↩️ Отменить загрузку", callback_data="undo_google_sheets_upload")],
-            [InlineKeyboardButton("📄 Сгенерировать файл", callback_data="generate_excel_file")],
-            [InlineKeyboardButton("📋 Вернуться к чеку", callback_data="back_to_receipt")],
-            [InlineKeyboardButton("📸 Загрузить новый чек", callback_data="start_new_receipt")]
+            [InlineKeyboardButton(
+                locale_manager.get_text("sheets.callback.undo_upload", context), 
+                callback_data="undo_google_sheets_upload"
+            )],
+            [InlineKeyboardButton(
+                locale_manager.get_text("sheets.callback.generate_file", context), 
+                callback_data="generate_excel_file"
+            )],
+            [InlineKeyboardButton(
+                locale_manager.get_text("sheets.callback.back_to_receipt_button", context), 
+                callback_data="back_to_receipt"
+            )],
+            [InlineKeyboardButton(
+                locale_manager.get_text("sheets.callback.upload_new_receipt", context), 
+                callback_data="start_new_receipt"
+            )]
         ]
         
         reply_markup = InlineKeyboardMarkup(keyboard)

@@ -279,7 +279,7 @@ class ReceiptEditCallbackHandler(BaseCallbackHandler):
             has_errors = not self.processor.check_all_items_confirmed(final_data)
             
             # Create aligned table programmatically
-            aligned_table = self.formatter.format_aligned_table(final_data)
+            aligned_table = self.formatter.format_aligned_table(final_data, context)
             
             # Calculate total sum
             calculated_total = self.formatter.calculate_total_sum(final_data)

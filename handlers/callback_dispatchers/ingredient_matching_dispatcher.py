@@ -6,6 +6,7 @@ from telegram.ext import ContextTypes
 
 from handlers.base_callback_handler import BaseCallbackHandler
 from models.ingredient_matching import MatchStatus
+from config.locales.locale_manager import locale_manager
 
 
 class IngredientMatchingDispatcher(BaseCallbackHandler):
@@ -45,8 +46,7 @@ class IngredientMatchingDispatcher(BaseCallbackHandler):
         elif action == "apply_matching_changes":
             # Apply matching changes - delegate to message handlers
             await update.callback_query.edit_message_text(
-                "✅ Изменения сопоставления применены!\n\n"
-                "Переходим к следующему шагу..."
+                locale_manager.get_text("matching.callback.changes_applied", context)
             )
             return self.config.AWAITING_CORRECTION
         elif action == "select_position_for_matching":
@@ -55,8 +55,7 @@ class IngredientMatchingDispatcher(BaseCallbackHandler):
             await self.ingredient_matching_handler._show_manual_matching_overview(update, context)
         elif action == "search_ingredient":
             await update.callback_query.edit_message_text(
-                "🔍 Поиск ингредиента\n\n"
-                "Введите название ингредиента для поиска:"
+                locale_manager.get_text("matching.callback.search_ingredient", context)
             )
             return self.config.AWAITING_MANUAL_MATCH
         elif action in ["skip_ingredient", "next_ingredient_match"]:
@@ -64,15 +63,13 @@ class IngredientMatchingDispatcher(BaseCallbackHandler):
         elif action == "confirm_back_without_changes":
             # Confirm back without changes
             await update.callback_query.edit_message_text(
-                "✅ Возврат без сохранения изменений\n\n"
-                "Изменения не были сохранены."
+                locale_manager.get_text("matching.callback.back_without_changes", context)
             )
             return self.config.AWAITING_CORRECTION
         elif action == "cancel_back":
             # Cancel back action
             await update.callback_query.edit_message_text(
-                "❌ Отмена возврата\n\n"
-                "Продолжаем работу с текущими данными."
+                locale_manager.get_text("matching.callback.cancel_back", context)
             )
             return self.config.AWAITING_CORRECTION
         
@@ -85,7 +82,9 @@ class IngredientMatchingDispatcher(BaseCallbackHandler):
         
         matching_result = context.user_data.get('ingredient_matching_result')
         if not matching_result:
-            await query.edit_message_text("❌ Результаты сопоставления не найдены")
+            await query.edit_message_text(
+                locale_manager.get_text("matching.callback.results_not_found", context)
+            )
             return
         
         # Format matching results
@@ -93,9 +92,18 @@ class IngredientMatchingDispatcher(BaseCallbackHandler):
         
         # Create action buttons
         keyboard = [
-            [InlineKeyboardButton("✏️ Ручное сопоставление", callback_data="manual_matching")],
-            [InlineKeyboardButton("📊 Показать таблицу", callback_data="show_matching_table")],
-            [InlineKeyboardButton("◀️ Назад", callback_data="back_to_edit")]
+            [InlineKeyboardButton(
+                locale_manager.get_text("matching.callback.manual_matching", context), 
+                callback_data="manual_matching"
+            )],
+            [InlineKeyboardButton(
+                locale_manager.get_text("matching.callback.show_table", context), 
+                callback_data="show_matching_table"
+            )],
+            [InlineKeyboardButton(
+                locale_manager.get_text("matching.callback.back_to_edit", context), 
+                callback_data="back_to_edit"
+            )]
         ]
         reply_markup = InlineKeyboardMarkup(keyboard)
         
@@ -108,7 +116,9 @@ class IngredientMatchingDispatcher(BaseCallbackHandler):
         
         matching_result = context.user_data.get('ingredient_matching_result')
         if not matching_result:
-            await query.edit_message_text("❌ Результаты сопоставления не найдены")
+            await query.edit_message_text(
+                locale_manager.get_text("matching.callback.results_not_found", context)
+            )
             return
         
         # Count different match statuses
@@ -116,13 +126,13 @@ class IngredientMatchingDispatcher(BaseCallbackHandler):
         matched_count = sum(1 for match in matching_result.matches if match.match_status == MatchStatus.MATCHED)
         partial_count = sum(1 for match in matching_result.matches if match.match_status == MatchStatus.PARTIAL_MATCH)
         
-        overview_text = f"🔍 **Обзор сопоставления ингредиентов**\n\n"
-        overview_text += f"📊 **Статистика:**\n"
-        overview_text += f"✅ Сопоставлено: {matched_count}\n"
-        overview_text += f"⚠️ Частично: {partial_count}\n"
-        overview_text += f"❌ Не сопоставлено: {no_match_count}\n"
-        overview_text += f"📝 Всего позиций: {len(matching_result.matches)}\n\n"
-        overview_text += "Выберите действие:"
+        overview_text = locale_manager.get_text("matching.callback.matching_overview_title", context)
+        overview_text += locale_manager.get_text("matching.callback.statistics_title", context)
+        overview_text += locale_manager.get_text("matching.callback.matched_count", context, count=matched_count)
+        overview_text += locale_manager.get_text("matching.callback.partial_count", context, count=partial_count)
+        overview_text += locale_manager.get_text("matching.callback.no_match_count", context, count=no_match_count)
+        overview_text += locale_manager.get_text("matching.callback.total_positions", context, count=len(matching_result.matches))
+        overview_text += locale_manager.get_text("matching.callback.choose_action", context)
         
         # Create buttons for each unmatched item
         keyboard = []
@@ -133,9 +143,18 @@ class IngredientMatchingDispatcher(BaseCallbackHandler):
         
         # Add control buttons
         keyboard.extend([
-            [InlineKeyboardButton("🔄 Автоматическое сопоставление", callback_data="auto_match_all")],
-            [InlineKeyboardButton("📊 Показать таблицу", callback_data="show_matching_table")],
-            [InlineKeyboardButton("◀️ Назад", callback_data="back_to_edit")]
+            [InlineKeyboardButton(
+                locale_manager.get_text("matching.callback.auto_match_all", context), 
+                callback_data="auto_match_all"
+            )],
+            [InlineKeyboardButton(
+                locale_manager.get_text("matching.callback.show_table", context), 
+                callback_data="show_matching_table"
+            )],
+            [InlineKeyboardButton(
+                locale_manager.get_text("matching.callback.back_to_edit", context), 
+                callback_data="back_to_edit"
+            )]
         ])
         
         reply_markup = InlineKeyboardMarkup(keyboard)
@@ -148,11 +167,13 @@ class IngredientMatchingDispatcher(BaseCallbackHandler):
         
         matching_result = context.user_data.get('ingredient_matching_result')
         if not matching_result:
-            await query.edit_message_text("❌ Результаты сопоставления не найдены")
+            await query.edit_message_text(
+                locale_manager.get_text("matching.callback.results_not_found", context)
+            )
             return
         
         # Show items that need matching
-        items_text = "🔍 **Выберите позицию для сопоставления:**\n\n"
+        items_text = locale_manager.get_text("matching.callback.position_selection_title", context)
         
         keyboard = []
         for i, match in enumerate(matching_result.matches):
@@ -161,7 +182,10 @@ class IngredientMatchingDispatcher(BaseCallbackHandler):
             keyboard.append([InlineKeyboardButton(f"{status_emoji} {item_text}", callback_data=f"select_item_{i}")])
         
         # Add back button
-        keyboard.append([InlineKeyboardButton("◀️ Назад", callback_data="manual_matching")])
+        keyboard.append([InlineKeyboardButton(
+            locale_manager.get_text("matching.callback.back_to_edit", context), 
+            callback_data="manual_matching"
+        )])
         
         reply_markup = InlineKeyboardMarkup(keyboard)
         await query.edit_message_text(items_text, reply_markup=reply_markup, parse_mode='Markdown')
@@ -173,7 +197,9 @@ class IngredientMatchingDispatcher(BaseCallbackHandler):
         
         matching_result = context.user_data.get('ingredient_matching_result')
         if not matching_result or item_index >= len(matching_result.matches):
-            await query.edit_message_text("❌ Неверный индекс позиции")
+            await query.edit_message_text(
+                locale_manager.get_text("matching.callback.invalid_position_index", context)
+            )
             return
         
         # Store current item index
