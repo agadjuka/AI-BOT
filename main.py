@@ -41,6 +41,11 @@ except Exception as e:
     print("💡 Firestore может быть недоступен, но бот будет работать без сохранения языков")
     db = None
 
+# КРИТИЧЕСКИ ВАЖНО: Инициализируем LocaleManager СРАЗУ после Firestore
+# Это должно произойти ДО импорта handlers, чтобы избежать race condition
+from config.locales.locale_manager import initialize_locale_manager
+initialize_locale_manager(db)
+
 # Проверяем совместимость numpy/pandas перед импортом других модулей
 try:
     import numpy as np
@@ -113,8 +118,7 @@ def create_application() -> Application:
     ai_service = AIService(config, prompt_manager)
     analysis_service = ReceiptAnalysisService(ai_service)
     
-    # Initialize global LocaleManager with Firestore instance FIRST
-    initialize_locale_manager(db)
+    # LocaleManager уже инициализирован глобально с Firestore instance
     
     # Initialize handlers AFTER LocaleManager is initialized
     message_handlers = MessageHandlers(config, analysis_service)

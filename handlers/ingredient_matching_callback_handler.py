@@ -4,7 +4,7 @@ Ingredient matching callback handler for Telegram bot
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import ContextTypes
 
-from config.locales.locale_manager import LocaleManager
+from config.locales.locale_manager import get_global_locale_manager
 from handlers.base_callback_handler import BaseCallbackHandler
 from models.ingredient_matching import IngredientMatchingResult, IngredientMatch, MatchStatus
 from services.ingredient_matching_service import IngredientMatchingService
@@ -16,7 +16,7 @@ class IngredientMatchingCallbackHandler(BaseCallbackHandler):
     
     def __init__(self, config, analysis_service):
         super().__init__(config, analysis_service)
-        self.locale_manager = LocaleManager()
+        self.locale_manager = get_global_locale_manager()
         self.ingredient_matching_service = IngredientMatchingService()
         self.ingredient_formatter = IngredientFormatter()
     

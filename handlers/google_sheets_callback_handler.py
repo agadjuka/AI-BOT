@@ -12,7 +12,7 @@ from models.ingredient_matching import IngredientMatchingResult, IngredientMatch
 from services.google_sheets_service import GoogleSheetsService
 from services.file_generator_service import FileGeneratorService
 from utils.common_handlers import CommonHandlers
-from config.locales.locale_manager import LocaleManager
+from config.locales.locale_manager import get_global_locale_manager
 
 
 class GoogleSheetsCallbackHandler(BaseCallbackHandler):
@@ -26,7 +26,7 @@ class GoogleSheetsCallbackHandler(BaseCallbackHandler):
         )
         self.file_generator = FileGeneratorService()
         self.common_handlers = CommonHandlers(config, analysis_service)
-        self.locale_manager = LocaleManager()
+        self.locale_manager = get_global_locale_manager()
     
     # ==================== MAIN INTERFACE METHODS ====================
     

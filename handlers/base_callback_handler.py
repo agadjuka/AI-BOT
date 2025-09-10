@@ -7,7 +7,7 @@ from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import ContextTypes
 
 from config.settings import BotConfig
-from config.locales.locale_manager import LocaleManager
+from config.locales.locale_manager import get_global_locale_manager
 from services.ai_service import ReceiptAnalysisService
 from utils.formatters import ReceiptFormatter, NumberFormatter, TextParser
 from utils.ingredient_storage import IngredientStorage
@@ -24,7 +24,7 @@ class BaseCallbackHandler:
     def __init__(self, config: BotConfig, analysis_service: ReceiptAnalysisService):
         self.config = config
         self.analysis_service = analysis_service
-        self.locale_manager = LocaleManager()
+        self.locale_manager = get_global_locale_manager()
         self.formatter = ReceiptFormatter()
         self.number_formatter = NumberFormatter()
         self.text_parser = TextParser()

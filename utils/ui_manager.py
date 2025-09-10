@@ -8,7 +8,7 @@ from telegram import Update, InlineKeyboardMarkup, Message
 from telegram.ext import ContextTypes
 
 from config.settings import BotConfig
-from config.locales.locale_manager import LocaleManager
+from config.locales.locale_manager import get_global_locale_manager
 
 
 class UIManager:
@@ -25,7 +25,7 @@ class UIManager:
     
     def __init__(self, config: BotConfig):
         self.config = config
-        self.locale = LocaleManager()
+        self.locale = get_global_locale_manager()
         self.MAX_MESSAGE_LENGTH = config.MAX_MESSAGE_LENGTH
         self.MESSAGE_DELAY = config.MESSAGE_DELAY
     

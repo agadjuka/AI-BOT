@@ -328,10 +328,9 @@ def get_global_locale_manager() -> LocaleManager:
     """
     global _global_locale_manager
     if _global_locale_manager is None:
-        # If not initialized yet, create a temporary one
-        # This will be replaced when initialize_locale_manager() is called
-        _global_locale_manager = LocaleManager()
-        print("⚠️ LocaleManager created without Firestore - will be updated later")
+        # LocaleManager должен быть инициализирован через initialize_locale_manager()
+        # в main.py после инициализации Firestore
+        raise RuntimeError("LocaleManager not initialized! Call initialize_locale_manager() first.")
     return _global_locale_manager
 
 
@@ -343,16 +342,12 @@ def initialize_locale_manager(db_instance=None):
     from services.language_service import get_language_service
     language_service = get_language_service(db_instance)
     
-    # Create LocaleManager if it doesn't exist
-    if _global_locale_manager is None:
-        _global_locale_manager = LocaleManager()
-    
-    # ALWAYS update the language service with Firestore instance
-    # This ensures that even if LocaleManager was created earlier, it gets the correct Firestore instance
+    # Create LocaleManager with the correct LanguageService
+    _global_locale_manager = LocaleManager()
     _global_locale_manager.language_service = language_service
     
     # Update the global locale_manager variable for backward compatibility
     locale_manager = _global_locale_manager
     
-    print("✅ Global LocaleManager updated with Firestore instance")
+    print("✅ Global LocaleManager initialized with Firestore instance")
     return _global_locale_manager

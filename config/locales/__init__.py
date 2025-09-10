@@ -9,8 +9,9 @@ from .ru import RU_TRANSLATIONS
 from .en import EN_TRANSLATIONS
 from .id import ID_TRANSLATIONS
 
-# Создаем глобальный экземпляр LocaleManager
-locale_manager = LocaleManager()
+# Глобальный экземпляр LocaleManager будет создан через initialize_locale_manager()
+# в main.py после инициализации Firestore
+locale_manager = None
 
 __all__ = [
     'LocaleManager', 

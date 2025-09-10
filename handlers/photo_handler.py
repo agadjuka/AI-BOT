@@ -7,7 +7,7 @@ from telegram.ext import ContextTypes
 
 from models.receipt import ReceiptData
 from handlers.base_message_handler import BaseMessageHandler
-from config.locales.locale_manager import LocaleManager
+from config.locales.locale_manager import get_global_locale_manager
 
 
 class PhotoHandler(BaseMessageHandler):
@@ -15,7 +15,7 @@ class PhotoHandler(BaseMessageHandler):
     
     def __init__(self, config, analysis_service):
         super().__init__(config, analysis_service)
-        self.locale_manager = LocaleManager()
+        self.locale_manager = get_global_locale_manager()
     
     async def handle_photo(self, update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
         """Handle photo upload"""

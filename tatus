@@ -10,3 +10,83 @@
   [31mremotes/origin/Local-version[m
   [31mremotes/origin/clean-deploy[m
   [31mremotes/origin/main[m
+[1mdiff --git a/main.py b/main.py[m
+[1mindex 9dfc3b44..2e57b3a5 100644[m
+[1m--- a/main.py[m
+[1m+++ b/main.py[m
+[36m@@ -237,20 +237,6 @@[m [masync def initialize_bot():[m
+     # Initialize the application[m
+     await application.initialize()[m
+     [m
+[31m-    # Set webhook URL for Cloud Run[m
+[31m-    webhook_url = os.environ.get("WEBHOOK_URL")[m
+[31m-    if webhook_url:[m
+[31m-        try:[m
+[31m-            await application.bot.set_webhook([m
+[31m-                url=f"{webhook_url}/webhook",[m
+[31m-                drop_pending_updates=True[m
+[31m-            )[m
+[31m-            print(f"✅ Webhook установлен: {webhook_url}/webhook")[m
+[31m-        except Exception as e:[m
+[31m-            print(f"❌ Ошибка при установке webhook: {e}")[m
+[31m-    else:[m
+[31m-        print("⚠️ WEBHOOK_URL не установлен в переменных окружения")[m
+[31m-    [m
+     print("🚀 Бот инициализирован для webhook режима")[m
+ [m
+ @app.on_event("startup")[m
+[36m@@ -309,32 +295,9 @@[m [masync def get_webhook():[m
+     except Exception as e:[m
+         raise HTTPException(status_code=500, detail=str(e))[m
+ [m
+[31m-async def process_update_background(update_data: dict):[m
+[31m-    """Process Telegram update in background"""[m
+[31m-    try:[m
+[31m-        if not application:[m
+[31m-            print("❌ Бот не инициализирован для фоновой обработки")[m
+[31m-            return[m
+[31m-        [m
+[31m-        update = Update.de_json(update_data, application.bot)[m
+[31m-        print(f"📊 Parsed update: {update}")[m
+[31m-        [m
+[31m-        if not update:[m
+[31m-            print("❌ Не удалось распарсить update")[m
+[31m-            return[m
+[31m-        [m
+[31m-        # Process the update[m
+[31m-        await application.process_update(update)[m
+[31m-        print("✅ Update обработан успешно в фоновом режиме")[m
+[31m-        [m
+[31m-    except Exception as e:[m
+[31m-        print(f"❌ Ошибка при фоновой обработке update: {e}")[m
+[31m-        import traceback[m
+[31m-        traceback.print_exc()[m
+[31m-[m
+ @app.post("/webhook")[m
+ async def webhook(request: Request):[m
+[31m-    """Webhook endpoint for Telegram updates - returns immediately"""[m
+[32m+[m[32m    """Webhook endpoint for Telegram updates"""[m
+     try:[m
+         print("📨 Получен webhook запрос")[m
+         [m
+[36m@@ -355,10 +318,17 @@[m [masync def webhook(request: Request):[m
+             print("❌ Бот не инициализирован")[m
+             return {"ok": True, "error": "Bot not initialized"}[m
+         [m
+[31m-        # Start background processing and return immediately[m
+[31m-        asyncio.create_task(process_update_background(update_data))[m
+[32m+[m[32m        update = Update.de_json(update_data, application.bot)[m
+[32m+[m[32m        print(f"📊 Parsed update: {update}")[m
+[32m+[m[41m        [m
+[32m+[m[32m        if not update:[m
+[32m+[m[32m            print("❌ Не удалось распарсить update")[m
+[32m+[m[32m            return {"ok": True}[m
+[32m+[m[41m        [m
+[32m+[m[32m        # Process the update[m
+[32m+[m[32m        await application.process_update(update)[m
+         [m
+[31m-        print("✅ Update отправлен на фоновую обработку")[m
+[32m+[m[32m        print("✅ Update обработан успешно")[m
+         return {"ok": True}[m
+         [m
+     except Exception as e:[m
