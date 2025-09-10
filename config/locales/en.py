@@ -8,7 +8,14 @@ EN_TRANSLATIONS = {
     "welcome": {
         "start_message": "Hello, {user}! 👋\n\nChoose an action:",
         "analyze_receipt": "📸 Receipt Analysis\n\nSend a photo of the receipt for analysis:",
-        "main_menu": "🏠 Main Menu\n\nUse /start to begin new work."
+        "main_menu": "🏠 Main Menu\n\nUse /start to begin new work.",
+        "choose_language": "🌍 Choose language / Choose language:",
+        "dashboard": {
+            "welcome_message": "👤 Personal Dashboard\n\nWelcome, {user}!\n\nChoose a setting:",
+            "buttons": {
+                "language_settings": "🌍 Language Settings"
+            }
+        }
     },
     
     # Interface buttons
@@ -18,6 +25,7 @@ EN_TRANSLATIONS = {
         "generate_supply_file": "📄 Get file for poster upload",
         "back_to_receipt": "◀️ Back to receipt",
         "back_to_main_menu": "◀️ Back",
+        "dashboard": "👤 Dashboard",
         
         
         # Receipt editing

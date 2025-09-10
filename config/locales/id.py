@@ -8,7 +8,14 @@ ID_TRANSLATIONS = {
     "welcome": {
         "start_message": "Halo, {user}! 👋\n\nPilih aksi:",
         "analyze_receipt": "📸 Analisis struk\n\nKirim foto struk untuk dianalisis:",
-        "main_menu": "🏠 Menu utama\n\nGunakan /start untuk memulai pekerjaan baru."
+        "main_menu": "🏠 Menu utama\n\nGunakan /start untuk memulai pekerjaan baru.",
+        "choose_language": "🌍 Pilih bahasa / Choose language:",
+        "dashboard": {
+            "welcome_message": "👤 Dashboard Pribadi\n\nSelamat datang, {user}!\n\nPilih pengaturan:",
+            "buttons": {
+                "language_settings": "🌍 Pengaturan Bahasa"
+            }
+        }
     },
     
     # Tombol antarmuka
@@ -18,6 +25,7 @@ ID_TRANSLATIONS = {
         "generate_supply_file": "📄 Dapatkan file untuk upload ke poster",
         "back_to_receipt": "◀️ Kembali ke struk",
         "back_to_main_menu": "◀️ Kembali",
+        "dashboard": "👤 Dashboard",
         
         
         # Edit struk

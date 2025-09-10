@@ -57,6 +57,34 @@ class MessageHandlers(BaseMessageHandler):
         )
         return self.config.AWAITING_CORRECTION
     
+    async def dashboard(self, update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
+        """Handle /dashboard command - show user dashboard"""
+        # Set anchor message for dashboard
+        self.ui_manager.set_anchor(context, update.message.message_id)
+        
+        # Create dashboard keyboard
+        keyboard = [
+            [InlineKeyboardButton(
+                self.locale_manager.get_text("welcome.dashboard.buttons.language_settings", context), 
+                callback_data="dashboard_language_settings"
+            )],
+            [InlineKeyboardButton(
+                self.locale_manager.get_text("buttons.back_to_main_menu", context), 
+                callback_data="back_to_main_menu"
+            )]
+        ]
+        
+        reply_markup = InlineKeyboardMarkup(keyboard)
+        
+        # Send dashboard message
+        await update.message.reply_html(
+            self.locale_manager.get_text("welcome.dashboard.welcome_message", context, 
+                                       user=update.effective_user.mention_html()),
+            reply_markup=reply_markup
+        )
+        
+        return self.config.AWAITING_CORRECTION
+    
     async def handle_photo(self, update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
         """Handle photo upload - delegate to photo handler"""
         return await self.photo_handler.handle_photo(update, context)
