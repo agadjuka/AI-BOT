@@ -237,20 +237,6 @@ async def initialize_bot():
     # Initialize the application
     await application.initialize()
     
-    # Set webhook URL for Cloud Run
-    webhook_url = os.environ.get("WEBHOOK_URL")
-    if webhook_url:
-        try:
-            await application.bot.set_webhook(
-                url=f"{webhook_url}/webhook",
-                drop_pending_updates=True
-            )
-            print(f"✅ Webhook установлен: {webhook_url}/webhook")
-        except Exception as e:
-            print(f"❌ Ошибка при установке webhook: {e}")
-    else:
-        print("⚠️ WEBHOOK_URL не установлен в переменных окружения")
-    
     print("🚀 Бот инициализирован для webhook режима")
 
 @app.on_event("startup")
@@ -309,32 +295,9 @@ async def get_webhook():
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
-async def process_update_background(update_data: dict):
-    """Process Telegram update in background"""
-    try:
-        if not application:
-            print("❌ Бот не инициализирован для фоновой обработки")
-            return
-        
-        update = Update.de_json(update_data, application.bot)
-        print(f"📊 Parsed update: {update}")
-        
-        if not update:
-            print("❌ Не удалось распарсить update")
-            return
-        
-        # Process the update
-        await application.process_update(update)
-        print("✅ Update обработан успешно в фоновом режиме")
-        
-    except Exception as e:
-        print(f"❌ Ошибка при фоновой обработке update: {e}")
-        import traceback
-        traceback.print_exc()
-
 @app.post("/webhook")
 async def webhook(request: Request):
-    """Webhook endpoint for Telegram updates - returns immediately"""
+    """Webhook endpoint for Telegram updates"""
     try:
         print("📨 Получен webhook запрос")
         
@@ -355,10 +318,17 @@ async def webhook(request: Request):
             print("❌ Бот не инициализирован")
             return {"ok": True, "error": "Bot not initialized"}
         
-        # Start background processing and return immediately
-        asyncio.create_task(process_update_background(update_data))
+        update = Update.de_json(update_data, application.bot)
+        print(f"📊 Parsed update: {update}")
         
-        print("✅ Update отправлен на фоновую обработку")
+        if not update:
+            print("❌ Не удалось распарсить update")
+            return {"ok": True}
+        
+        # Process the update
+        await application.process_update(update)
+        
+        print("✅ Update обработан успешно")
         return {"ok": True}
         
     except Exception as e:
