@@ -3,7 +3,7 @@ English texts for Telegram bot
 Contains all message texts, buttons, errors and notifications in English
 """
 
-TEXTS = {
+EN_TRANSLATIONS = {
     # Welcome messages
     "welcome": {
         "start_message": "Hello, {user}! 👋\n\nChoose an action:",
@@ -15,19 +15,16 @@ TEXTS = {
     # Interface buttons
     "buttons": {
         # Main actions
-        "analyze_receipt": "📸 Analyze Receipt",
-        "generate_supply_file": "📄 Get File for Poster Upload",
-        "back_to_receipt": "◀️ Back to Receipt",
+        "analyze_receipt": "📸 Analyze receipt",
+        "generate_supply_file": "📄 Get file for poster upload",
+        "back_to_receipt": "◀️ Back to receipt",
         "back_to_main_menu": "◀️ Back",
         
-        # Language selection
-        "language_russian": "🇷🇺 Русский",
-        "language_english": "🇺🇸 English",
         
         # Receipt editing
-        "add_row": "➕ Add Row",
-        "delete_row": "➖ Delete Row",
-        "edit_line_number": "🔢 Edit Row by Number",
+        "add_row": "➕ Add row",
+        "delete_row": "➖ Delete row",
+        "edit_line_number": "🔢 Edit row by number",
         "edit_total": "💰 Edit Total",
         "reanalyze": "🔄 Re-analyze",
         "upload_to_google_sheets": "📊 Upload to Google Sheets",
@@ -41,11 +38,11 @@ TEXTS = {
         "cancel": "❌ Cancel",
         
         # Total actions
-        "auto_calculate_total": "🧮 Calculate Automatically",
-        "manual_edit_total": "✏️ Enter Manually",
+        "auto_calculate_total": "🧮 Calculate automatically",
+        "manual_edit_total": "✏️ Enter manually",
         
         # Status and actions
-        "finish": "Report is already ready!",
+        "finish": "Report is ready!",
         "noop": "Unknown action"
     },
     
@@ -54,10 +51,10 @@ TEXTS = {
         "receipt_data_not_found": "❌ Receipt data not found",
         "operation_cancelled": "❌ Operation cancelled\n\nUse /start to begin new work.",
         "unknown_action": "Unknown action",
-        "field_not_specified": "❌ Error: field not specified for editing.\nPlease select a field to edit from the menu.",
+        "field_not_specified": "❌ Error: field for editing not specified.\nPlease select a field for editing from the menu.",
         "line_not_found": "Error: line not found",
         "data_not_found": "An error occurred, data not found.",
-        "parsing_error": "Could not recognize receipt structure. Try taking a clearer photo.",
+        "parsing_error": "Failed to recognize receipt structure. Try taking a clearer photo.",
         "photo_processing_error": "An error occurred while processing the photo: {error}",
         "field_edit_error": "Error editing field: {error}",
         "total_update_error": "Error updating total amount: {error}",
@@ -87,7 +84,7 @@ TEXTS = {
         "total_updated": "✅ Total amount updated: **{total}**",
         "analysis_started": "🔍 Starting receipt analysis...",
         "analysis_completed": "✅ Analysis completed",
-        "ingredients_loaded": "✅ Loaded {count} Google Sheets ingredients"
+        "ingredients_loaded": "✅ Loaded {count} ingredients from Google Sheets"
     },
     
     # Analysis messages
@@ -121,19 +118,19 @@ TEXTS = {
     
     # Ingredient matching messages
     "matching": {
-        "no_ingredients": "No ingredients to match.",
-        "matching_title": "**Ingredient Matching:**\n",
+        "no_ingredients": "No ingredients for matching.",
+        "matching_title": "**Ingredient matching:**\n",
         "statistics": "📊 **Statistics:** Total: {total} | 🟢 Exact: {exact} | 🟡 Partial: {partial} | 🔴 Not found: {none}\n",
         "table_header": "{'№':<2} | {'Product':<{name_width}} | {'Poster':<{name_width}} | {'Status':<4}",
-        "manual_instructions": "**Manual matching instructions:**\n\n1. Select suggestion number for automatic matching\n2. Or enter '0' to skip this ingredient\n3. Or enter 'search: <name>' to find other options\n\nExamples:\n• `1` - select first suggestion\n• `0` - skip\n• `search: tomato` - find options with 'tomato'",
+        "manual_instructions": "**Manual matching instructions:**\n\n1. Select suggestion number for automatic matching\n2. Or enter '0' to skip this ingredient\n3. Or enter 'search: <name>' to search for other options\n\nExamples:\n• `1` - select first suggestion\n• `0` - skip\n• `search: tomato` - find options with 'tomato'",
         "no_search_results": "Nothing found for query '{query}'.",
         "search_results": "**Search results for '{query}':**\n"
     },
     
     # Google Sheets messages
     "sheets": {
-        "ingredients_loaded": "✅ Loaded {count} Google Sheets ingredients on demand",
-        "no_data_for_upload": "❌ **No data to upload**\n\nFirst, you need to load and analyze a receipt.\nClick 'Analyze Receipt' and upload a receipt photo."
+        "ingredients_loaded": "✅ Loaded {count} ingredients from Google Sheets on demand",
+        "no_data_for_upload": "❌ **No data for upload**\n\nFirst you need to upload and analyze a receipt.\nClick 'Analyze receipt' and upload a receipt photo."
     },
     
     # File messages

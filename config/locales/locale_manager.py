@@ -4,8 +4,9 @@ LocaleManager - класс для управления локализацией 
 
 import re
 from typing import Dict, Any, Optional, Union
-from config.locales.ru import RU_TRANSLATIONS
-from config.locales.en import EN_TRANSLATIONS
+from config.locales.ru_flat import RU_TRANSLATIONS
+from config.locales.en_flat import EN_TRANSLATIONS
+from config.locales.id import ID_TRANSLATIONS
 
 
 class LocaleManager:
@@ -23,6 +24,7 @@ class LocaleManager:
     SUPPORTED_LANGUAGES = {
         'ru': RU_TRANSLATIONS,
         'en': EN_TRANSLATIONS,
+        'id': ID_TRANSLATIONS,
     }
     
     # Язык по умолчанию

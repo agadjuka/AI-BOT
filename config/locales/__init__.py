@@ -4,8 +4,9 @@
 """
 
 from .locale_manager import LocaleManager
-from .ru import RU_TRANSLATIONS
-from .en import EN_TRANSLATIONS
+from .ru_flat import RU_TRANSLATIONS
+from .en_flat import EN_TRANSLATIONS
+from .id import ID_TRANSLATIONS
 
 # Создаем глобальный экземпляр LocaleManager
 locale_manager = LocaleManager()
@@ -14,5 +15,6 @@ __all__ = [
     'LocaleManager', 
     'locale_manager',
     'RU_TRANSLATIONS', 
-    'EN_TRANSLATIONS'
+    'EN_TRANSLATIONS',
+    'ID_TRANSLATIONS'
 ]

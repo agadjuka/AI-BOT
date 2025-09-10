@@ -70,6 +70,7 @@ config/locales/
 ├── locale_manager.py    # Основной класс LocaleManager
 ├── ru.py               # Русские переводы
 ├── en.py               # Английские переводы
+├── id.py               # Индонезийские переводы
 └── README.md           # Документация
 ```
 
@@ -84,12 +85,18 @@ RU_TRANSLATIONS = {
 }
 ```
 
-2. Добавьте соответствующий перевод в `en.py`:
+2. Добавьте соответствующий перевод в `en.py` и `id.py`:
 ```python
 EN_TRANSLATIONS = {
     # ... существующие переводы ...
     'new_key': 'New text',
     'new_key_with_vars': 'Text with {variable}',
+}
+
+ID_TRANSLATIONS = {
+    # ... существующие переводы ...
+    'new_key': 'Teks baru',
+    'new_key_with_vars': 'Teks dengan {variable}',
 }
 ```
 
@@ -101,6 +108,7 @@ EN_TRANSLATIONS = {
 
 - `ru` - Русский (язык по умолчанию)
 - `en` - Английский
+- `id` - Индонезийский
 
 ## Примеры использования в коде
 
