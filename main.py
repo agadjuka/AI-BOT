@@ -41,7 +41,10 @@ except Exception as e:
     print("💡 Firestore может быть недоступен, но бот будет работать без сохранения языков")
     db = None
 
-# LocaleManager будет инициализирован в create_application() после импорта всех модулей
+# КРИТИЧЕСКИ ВАЖНО: Инициализируем LocaleManager СРАЗУ после Firestore
+# Это должно произойти ДО импорта handlers, чтобы избежать race condition
+from config.locales.locale_manager import initialize_locale_manager
+initialize_locale_manager(db)
 
 # Проверяем совместимость numpy/pandas перед импортом других модулей
 try:
@@ -115,10 +118,7 @@ def create_application() -> Application:
     ai_service = AIService(config, prompt_manager)
     analysis_service = ReceiptAnalysisService(ai_service)
     
-    # КРИТИЧЕСКИ ВАЖНО: Инициализируем LocaleManager ПЕРЕД созданием handlers
-    # Это должно произойти ДО импорта handlers, чтобы избежать race condition
-    from config.locales.locale_manager import initialize_locale_manager
-    initialize_locale_manager(db)
+    # LocaleManager уже инициализирован глобально с Firestore instance
     
     # Initialize handlers AFTER LocaleManager is initialized
     message_handlers = MessageHandlers(config, analysis_service)
@@ -253,6 +253,18 @@ async def initialize_bot():
     await application.initialize()
     print("✅ Telegram application инициализирован")
     
+    # Проверяем, что LocaleManager работает
+    try:
+        from config.locales.locale_manager import get_global_locale_manager
+        lm = get_global_locale_manager()
+        print(f"✅ LocaleManager проверен: {lm}")
+        if hasattr(lm, 'language_service') and lm.language_service and lm.language_service.db:
+            print("✅ LocaleManager подключен к Firestore")
+        else:
+            print("⚠️ LocaleManager НЕ подключен к Firestore")
+    except Exception as e:
+        print(f"❌ Ошибка проверки LocaleManager: {e}")
+    
     print("🚀 Бот инициализирован для webhook режима")
 
 @app.on_event("startup")
@@ -319,10 +331,25 @@ async def get_webhook():
 @app.get("/debug")
 async def debug_info():
     """Debug information endpoint"""
+    from config.locales.locale_manager import get_global_locale_manager
+    
+    locale_manager_status = "Not initialized"
+    try:
+        lm = get_global_locale_manager()
+        locale_manager_status = "Initialized"
+        if hasattr(lm, 'language_service') and lm.language_service:
+            if lm.language_service.db:
+                locale_manager_status += " with Firestore"
+            else:
+                locale_manager_status += " without Firestore"
+    except Exception as e:
+        locale_manager_status = f"Error: {str(e)}"
+    
     return {
         "application_initialized": application is not None,
         "firestore_connected": db is not None,
         "bot_token_set": TOKEN is not None,
+        "locale_manager_status": locale_manager_status,
         "environment_vars": {
             "BOT_TOKEN": "***" if os.getenv("BOT_TOKEN") else "NOT SET",
             "PROJECT_ID": "***" if os.getenv("PROJECT_ID") else "NOT SET",
@@ -358,6 +385,15 @@ async def webhook(request: Request):
         print(f"🔍 application.bot = {application.bot}")
         print(f"🔍 application.bot.token = {'***' if application.bot.token else 'None'}")
         
+        # Проверяем LocaleManager
+        try:
+            from config.locales.locale_manager import get_global_locale_manager
+            lm = get_global_locale_manager()
+            print(f"✅ LocaleManager доступен: {lm}")
+        except Exception as e:
+            print(f"❌ Ошибка с LocaleManager: {e}")
+            return {"ok": True, "error": f"LocaleManager error: {str(e)}"}
+        
         update = Update.de_json(update_data, application.bot)
         print(f"📊 Parsed update: {update}")
         
@@ -367,9 +403,15 @@ async def webhook(request: Request):
         
         # Process the update
         print("🔄 Обрабатываем update...")
-        await application.process_update(update)
+        try:
+            await application.process_update(update)
+            print("✅ Update обработан успешно")
+        except Exception as e:
+            print(f"❌ Ошибка при обработке update: {e}")
+            import traceback
+            traceback.print_exc()
+            return {"ok": True, "error": f"Processing error: {str(e)}"}
         
-        print("✅ Update обработан успешно")
         return {"ok": True}
         
     except Exception as e:
