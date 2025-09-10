@@ -85,7 +85,21 @@ EN_TRANSLATIONS = {
         "invalid_line_format": "Invalid format. Enter only line number (e.g.: `3`):",
         "negative_value": "Value cannot be negative. Please try again.",
         "negative_total": "Total amount cannot be negative. Please try again.",
-        "try_again": "Please try again:"
+        "try_again": "Please try again:",
+        "no_items": "No product items",
+        "incorrect_line_numbering": "Incorrect line numbering: {line_numbers}, expected: {expected_numbers}",
+        "missing_name_field": "Missing name field in line {line_number}",
+        "missing_status_field": "Missing status field in line {line_number}",
+        "missing_quantity_field": "Missing quantity field in line {line_number}",
+        "missing_price_field": "Missing price field in line {line_number}",
+        "missing_total_field": "Missing total field in line {line_number}",
+        "calculation_warning": "Warning: Line {line_number} - calculations don't match: {quantity} * {price} = {expected_total}, but receipt shows {total}",
+        "data_correct": "Data is correct",
+        "line_number_correct": "Line number is correct",
+        "field_cannot_be_empty": "{field_name} cannot be empty",
+        "invalid_numeric_format": "Invalid {field_name} format. Enter a number",
+        "value_correct": "Value is correct",
+        "field_too_long": "{field_name} is too long (maximum 100 characters)"
     },
     
     # Status messages
@@ -127,7 +141,8 @@ EN_TRANSLATIONS = {
             "total": "amount"
         },
         "field_edit_input": "✏️ Editing {field_name} for line {line_number}\n\nEnter new value:",
-        "new_item_name": "New item"
+        "new_item_name": "New item",
+        "deleting_item_confirmation": "🗑️ Deleting item {item_number}\n\nConfirm deletion (yes/no):"
     },
     
     # Ingredient matching messages
@@ -216,7 +231,11 @@ EN_TRANSLATIONS = {
             "matched_percentage": "📈 Percentage: {percentage:.1f}%\n\n",
             "all_matched": "🎯 All positions successfully matched!",
             "remaining_items": "⚠️ Remaining to match: {count} positions",
-            "back_to_editing": "◀️ Back to editing"
+            "back_to_editing": "◀️ Back to editing",
+            "changes_applied": "✅ Matching changes applied!\n\nMoving to next step...",
+            "search_ingredient": "🔍 Search ingredient\n\nEnter ingredient name for search:",
+            "back_without_changes": "✅ Back without saving changes\n\nChanges were not saved.",
+            "cancel_back": "❌ Cancel back\n\nContinuing with current data."
         }
     },
     
@@ -246,6 +265,7 @@ EN_TRANSLATIONS = {
             "upload_successful": "Upload successful",
             "upload_error": "❌ Upload error: {message}",
             "matching_data_not_found": "Error: matching data not found.",
+            "dictionary_not_loaded": "Failed to load Google Sheets ingredients dictionary.\nCheck configuration settings.",
             "all_positions_processed": "✅ All positions processed!",
             "choose_position_for_matching": "**Choose position for matching**",
             "matching_updated": "✅ Matching updated!",
@@ -253,14 +273,14 @@ EN_TRANSLATIONS = {
             "no_upload_data_for_undo": "No data about last upload to undo",
             "no_data_to_undo": "No data to undo",
             "undo_upload_failed": "Failed to undo upload: {message}",
-            "unexpected_error": "Unexpected error occurred: {error}",
+            "unexpected_error": "❌ **Critical error**\n\nUnexpected error occurred while uploading to Google Sheets:\n`{error}`",
             "no_receipt_data_for_file": "❌ No receipt data for file generation.",
             "no_matching_data_for_file": "❌ No Google Sheets matching data for file generation.",
             "excel_generation_error": "❌ Error creating Excel file.",
             "excel_generation_error_detailed": "❌ Error creating Excel file: {error}",
             "matching_table_title": "**Matching with Google Sheets ingredients:**",
             "no_ingredients_for_matching": "No ingredients for matching.",
-            "table_header": "{'№':<2} | {'Name':<20} | {'Google Sheets':<20} | {'Status':<4}",
+            "table_header": "№ | Name                 | Google Sheets        | Status",
             "manual_matching_editor_title": "**Google Sheets matching editor**",
             "current_item": "**Item:** {item_name}",
             "choose_suitable_ingredient": "**Choose suitable ingredient:**",
@@ -308,5 +328,71 @@ EN_TRANSLATIONS = {
         "table_header": "{'№':^{number_width}} | {'Product':<{product_width}} | {'Qty':^{quantity_width}} | {'Price':^{price_width}} | {'Amount':>{total_width}} | {'':^{status_width}}",
         "total_label": "Total:"
     },
+    
+    # File generation messages
+    "file_generation": {
+        "generating_file": "📄 Generating file...",
+        "file_ready": "📄 File for {file_type} upload ready!",
+        "success_title": "✅ **{file_type} file successfully generated!**",
+        "filename": "📁 **Filename:** {filename}",
+        "positions_count": "📊 **Positions:** {count}",
+        "generation_date": "📅 **Date:** {date}",
+        "show_table": "📊 Show table",
+        "back_to_edit": "◀️ Back to editing",
+        "download_poster_file": "📄 Download poster file",
+        "download_google_sheets_file": "📊 Download Google Sheets file",
+        "matching_table_title": "📊 **Ingredient matching table:**",
+        "table_header": "| № | Receipt item | Ingredient | Status | Similarity |",
+        "table_separator": "|---|---|---|---|---|",
+        "legend_title": "💡 **Legend:**",
+        "legend_matched": "✅ - Matched",
+        "legend_partial": "⚠️ - Partially matched",
+        "legend_not_matched": "❌ - Not matched",
+        "not_matched": "Not matched",
+        "error_generating_file": "❌ Error generating file: {error}",
+        "google_sheets_handler_unavailable": "❌ Google Sheets handler not available for Excel generation",
+        "ingredient_matching_handler_unavailable": "❌ Ingredient matching handler not available",
+        "matching_results_not_found": "❌ Matching results not found",
+        "receipt_data_not_found": "❌ Receipt data not found"
+    },
+    
+    # Common messages and helpers
+    "common": {
+        "no_data_to_display": "No data to display",
+        "page": "Page {page}",
+        "unknown_ingredient_type": "DEBUG: Unknown ingredient type: {ingredient_type}",
+        "loaded_poster_ingredients": "DEBUG: Loaded {count} poster ingredients",
+        "loaded_google_sheets_ingredients": "✅ Loaded {count} Google Sheets ingredients on demand",
+        "debug_first_ingredients": "DEBUG: First 5 ingredients: {ingredients}",
+        "navigation_buttons": {
+            "first_page": "⏮️",
+            "previous_page": "◀️", 
+            "next_page": "▶️",
+            "last_page": "⏭️"
+        },
+        "status_emojis": {
+            "confirmed": "✅",
+            "error": "🔴",
+            "partial": "⚠️",
+            "no_match": "❌",
+            "exact_match": "🟢",
+            "matched": "✅",
+            "partial_match": "🟡",
+            "unknown": "❓"
+        }
+    },
+    
+    # Formatting messages
+    "formatters": {
+        "no_data_to_display": "No data to display",
+        "table_headers": {
+            "number": "№",
+            "product": "Product",
+            "quantity": "Qty",
+            "price": "Price",
+            "amount": "Amount"
+        },
+        "total_label": "Total:"
+    }
     
 }

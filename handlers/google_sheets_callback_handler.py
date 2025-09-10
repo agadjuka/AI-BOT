@@ -42,21 +42,20 @@ class GoogleSheetsCallbackHandler(BaseCallbackHandler):
         )
         
         if not matching_result:
-            text = self.locale_manager.get_text(context, "sheets.callback.matching_results_not_found")
+            text = self.locale_manager.get_text("sheets.callback.matching_results_not_found", context)
             await query.edit_message_text(text)
             return
         
         # Use the same table formatting as the editor
         table_text = self._format_google_sheets_matching_table(matching_result, context)
-        choose_action_text = self.locale_manager.get_text(context, "sheets.callback.choose_action_for_matching")
+        choose_action_text = self.locale_manager.get_text("sheets.callback.choose_action_for_matching", context)
         schema_text = table_text + "\n\n" + choose_action_text
         
         # Create action buttons
-        keyboard = self._create_action_keyboard()
+        keyboard = self._create_action_keyboard(context)
         reply_markup = InlineKeyboardMarkup(keyboard)
         
-        # Save data for future use
-        self._save_pending_data(context, receipt_data, matching_result)
+        # Data is already saved in dispatcher, no need to save again
         
         await query.edit_message_text(schema_text, reply_markup=reply_markup, parse_mode='Markdown')
     
@@ -72,20 +71,19 @@ class GoogleSheetsCallbackHandler(BaseCallbackHandler):
         )
         
         if not matching_result or not receipt_data:
-            text = self.locale_manager.get_text(context, "sheets.callback.preview_data_not_found")
+            text = self.locale_manager.get_text("sheets.callback.preview_data_not_found", context)
             await query.edit_message_text(text)
             return
         
         # Create table preview with Google Sheets data
         table_preview = self._format_google_sheets_table_preview(receipt_data, matching_result, context)
-        preview_title = self.locale_manager.get_text(context, "sheets.callback.upload_preview_title")
+        preview_title = self.locale_manager.get_text("sheets.callback.upload_preview_title", context)
         text = f"{preview_title}\n\n```\n{table_preview}\n```"
         
-        keyboard = self._create_preview_keyboard()
+        keyboard = self._create_preview_keyboard(context)
         reply_markup = InlineKeyboardMarkup(keyboard)
         
-        # Save data for upload
-        self._save_pending_data(context, receipt_data, matching_result)
+        # Data is already saved in dispatcher, no need to save again
         
         try:
             await query.edit_message_text(text, reply_markup=reply_markup, parse_mode='Markdown')
@@ -102,25 +100,25 @@ class GoogleSheetsCallbackHandler(BaseCallbackHandler):
         print(f"DEBUG: _upload_to_google_sheets called with matching_result: {matching_result}")
         
         try:
-            uploading_text = self.locale_manager.get_text(context, "sheets.callback.uploading_data")
+            uploading_text = self.locale_manager.get_text("sheets.callback.uploading_data", context)
             await query.edit_message_text(uploading_text)
             
             receipt_data = context.user_data.get('receipt_data')
             if receipt_data:
                 success, message = self.google_sheets_service.upload_receipt_data(receipt_data, matching_result)
             else:
-                success, message = False, self.locale_manager.get_text(context, "sheets.callback.receipt_data_not_found")
+                success, message = False, self.locale_manager.get_text("sheets.callback.receipt_data_not_found", context)
             
             if success:
-                success_text = self.locale_manager.get_text(context, "sheets.callback.upload_successful")
+                success_text = self.locale_manager.get_text("sheets.callback.upload_successful", context)
                 await self._show_upload_success_page(update, context, success_text, message)
             else:
-                error_text = self.locale_manager.get_text(context, "sheets.callback.upload_error").format(message=message)
+                error_text = self.locale_manager.get_text("sheets.callback.upload_error", context).format(message=message)
                 await query.edit_message_text(error_text)
                 
         except Exception as e:
             print(f"DEBUG: Error uploading to Google Sheets: {e}")
-            error_text = self.locale_manager.get_text(context, "sheets.callback.upload_error").format(message=str(e))
+            error_text = self.locale_manager.get_text("sheets.callback.upload_error", context).format(message=str(e))
             await query.edit_message_text(error_text)
     
     # ==================== NAVIGATION METHODS ====================
@@ -137,7 +135,7 @@ class GoogleSheetsCallbackHandler(BaseCallbackHandler):
         """Unified method for handling item navigation (skip/next)"""
         pending_data = context.user_data.get('pending_google_sheets_upload')
         if not pending_data:
-            error_text = self.locale_manager.get_text(context, "sheets.callback.matching_data_not_found")
+            error_text = self.locale_manager.get_text("sheets.callback.matching_data_not_found", context)
             await self.ui_manager.send_temp(update, context, error_text, duration=5)
             return
         
@@ -148,7 +146,7 @@ class GoogleSheetsCallbackHandler(BaseCallbackHandler):
         next_item = self._find_next_unmatched_item(matching_result, current_item)
         
         if next_item is None:
-            success_text = self.locale_manager.get_text(context, "sheets.callback.all_positions_processed")
+            success_text = self.locale_manager.get_text("sheets.callback.all_positions_processed", context)
             await self.ui_manager.send_temp(update, context, success_text, duration=5)
             await self._show_google_sheets_matching_table(update, context)
             return
@@ -174,7 +172,7 @@ class GoogleSheetsCallbackHandler(BaseCallbackHandler):
                 receipt_data = pending_data['receipt_data']
                 matching_result = pending_data['matching_result']
             else:
-                text = self.locale_manager.get_text(context, "sheets.callback.matching_results_not_found")
+                text = self.locale_manager.get_text("sheets.callback.matching_results_not_found", context)
                 await query.edit_message_text(text)
                 return
         
@@ -182,7 +180,7 @@ class GoogleSheetsCallbackHandler(BaseCallbackHandler):
         table_text = self._format_google_sheets_matching_table(matching_result, context)
         
         # Create buttons for items that need matching
-        keyboard = self._create_matching_table_keyboard(matching_result)
+        keyboard = self._create_matching_table_keyboard(matching_result, context)
         reply_markup = InlineKeyboardMarkup(keyboard)
         
         await self._send_long_message_with_keyboard_callback(query.message, table_text, reply_markup)
@@ -194,7 +192,7 @@ class GoogleSheetsCallbackHandler(BaseCallbackHandler):
         
         pending_data = context.user_data.get('pending_google_sheets_upload')
         if not pending_data:
-            error_text = self.locale_manager.get_text(context, "sheets.callback.matching_data_not_found")
+            error_text = self.locale_manager.get_text("sheets.callback.matching_data_not_found", context)
             await self.ui_manager.send_temp(
                 update, context, error_text, duration=5
             )
@@ -204,11 +202,11 @@ class GoogleSheetsCallbackHandler(BaseCallbackHandler):
         
         # Format the matching table for Google Sheets (same as in editor)
         table_text = self._format_google_sheets_matching_table(matching_result, context)
-        instruction_text = "\n\n" + self.locale_manager.get_text(context, "sheets.callback.choose_position_for_matching") + "\n\n"
+        instruction_text = "\n\n" + self.locale_manager.get_text("sheets.callback.choose_position_for_matching", context) + "\n\n"
         full_text = table_text + instruction_text
         
         # Create buttons for each item
-        keyboard = self._create_position_selection_keyboard(matching_result)
+        keyboard = self._create_position_selection_keyboard(matching_result, context)
         reply_markup = InlineKeyboardMarkup(keyboard)
         
         await self._send_long_message_with_keyboard_callback(query.message, full_text, reply_markup)
@@ -228,10 +226,10 @@ class GoogleSheetsCallbackHandler(BaseCallbackHandler):
         current_match = matching_result.matches[item_index]
         
         # Show current match info
-        progress_text = self._format_matching_progress_text(current_match)
+        progress_text = self._format_matching_progress_text(current_match, context)
         
         # Create buttons
-        keyboard = self._create_manual_matching_keyboard(current_match, item_index)
+        keyboard = self._create_manual_matching_keyboard(current_match, item_index, context)
         reply_markup = InlineKeyboardMarkup(keyboard)
         
         await self.ui_manager.send_menu(update, context, progress_text, reply_markup, 'Markdown')
@@ -242,7 +240,7 @@ class GoogleSheetsCallbackHandler(BaseCallbackHandler):
                                                        item_index: int, suggestion_index: int):
         """Handle Google Sheets suggestion selection"""
         query = update.callback_query
-        answer_text = self.locale_manager.get_text(context, "sheets.callback.matching_updated")
+        answer_text = self.locale_manager.get_text("sheets.callback.matching_updated", context)
         await query.answer(answer_text)
         
         # Validate data and indices
@@ -269,7 +267,7 @@ class GoogleSheetsCallbackHandler(BaseCallbackHandler):
                                                    item_index: int, result_index: int):
         """Handle Google Sheets search result selection"""
         query = update.callback_query
-        answer_text = self.locale_manager.get_text(context, "sheets.callback.matching_updated")
+        answer_text = self.locale_manager.get_text("sheets.callback.matching_updated", context)
         await query.answer(answer_text)
         
         # Validate data and indices
@@ -304,10 +302,10 @@ class GoogleSheetsCallbackHandler(BaseCallbackHandler):
         await self.ui_manager.cleanup_all_except_anchor(update, context)
         
         # Create success message with only the header
-        success_text = self.locale_manager.get_text(context, "sheets.callback.data_successfully_uploaded")
+        success_text = self.locale_manager.get_text("sheets.callback.data_successfully_uploaded", context)
         
         # Create new button layout
-        keyboard = self._create_success_keyboard()
+        keyboard = self._create_success_keyboard(context)
         reply_markup = InlineKeyboardMarkup(keyboard)
         
         await self.ui_manager.send_menu(update, context, success_text, reply_markup, 'Markdown')
@@ -318,8 +316,8 @@ class GoogleSheetsCallbackHandler(BaseCallbackHandler):
             # Get last upload data
             last_upload = context.user_data.get('last_google_sheets_upload')
             if not last_upload:
-                error_text = self.locale_manager.get_text(context, "sheets.callback.no_upload_data_for_undo")
-                await self._show_undo_error(update, error_text)
+                error_text = self.locale_manager.get_text("sheets.callback.no_upload_data_for_undo", context)
+                await self._show_undo_error(update, error_text, context)
                 return self.config.AWAITING_CORRECTION
             
             # Get upload details
@@ -327,8 +325,8 @@ class GoogleSheetsCallbackHandler(BaseCallbackHandler):
             row_count = last_upload.get('row_count', 0)
             
             if row_count <= 0:
-                error_text = self.locale_manager.get_text(context, "sheets.callback.no_data_to_undo")
-                await self._show_undo_error(update, error_text)
+                error_text = self.locale_manager.get_text("sheets.callback.no_data_to_undo", context)
+                await self._show_undo_error(update, error_text, context)
                 return self.config.AWAITING_CORRECTION
             
             # Attempt to delete the uploaded rows
@@ -338,13 +336,13 @@ class GoogleSheetsCallbackHandler(BaseCallbackHandler):
                 context.user_data.pop('last_google_sheets_upload', None)
                 await self._handle_successful_undo(update, context, worksheet_name, row_count)
             else:
-                error_text = self.locale_manager.get_text(context, "sheets.callback.undo_upload_failed").format(message=message)
-                await self._show_undo_error(update, error_text)
+                error_text = self.locale_manager.get_text("sheets.callback.undo_upload_failed", context).format(message=message)
+                await self._show_undo_error(update, error_text, context)
                 
         except Exception as e:
             print(f"DEBUG: Error undoing Google Sheets upload: {e}")
-            error_text = self.locale_manager.get_text(context, "sheets.callback.unexpected_error").format(error=str(e))
-            await self._show_undo_error(update, error_text)
+            error_text = self.locale_manager.get_text("sheets.callback.unexpected_error", context).format(error=str(e))
+            await self._show_undo_error(update, error_text, context)
     
     async def _generate_excel_file(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         """Generate Excel file with the same data that was uploaded to Google Sheets"""
@@ -354,12 +352,12 @@ class GoogleSheetsCallbackHandler(BaseCallbackHandler):
             matching_result = context.user_data.get('google_sheets_matching_result')
             
             if not receipt_data:
-                error_text = self.locale_manager.get_text(context, "sheets.callback.no_receipt_data_for_file")
+                error_text = self.locale_manager.get_text("sheets.callback.no_receipt_data_for_file", context)
                 await self.ui_manager.send_temp(update, context, error_text, duration=5)
                 return
             
             if not matching_result:
-                error_text = self.locale_manager.get_text(context, "sheets.callback.no_matching_data_for_file")
+                error_text = self.locale_manager.get_text("sheets.callback.no_matching_data_for_file", context)
                 await self.ui_manager.send_temp(update, context, error_text, duration=5)
                 return
             
@@ -371,12 +369,12 @@ class GoogleSheetsCallbackHandler(BaseCallbackHandler):
                 await self._schedule_file_cleanup(file_path)
                 await self._show_excel_success(update, context)
             else:
-                error_text = self.locale_manager.get_text(context, "sheets.callback.excel_generation_error")
+                error_text = self.locale_manager.get_text("sheets.callback.excel_generation_error", context)
                 await self.ui_manager.send_temp(update, context, error_text, duration=5)
                 
         except Exception as e:
             print(f"Error generating Excel file: {e}")
-            error_text = self.locale_manager.get_text(context, "sheets.callback.excel_generation_error_detailed").format(error=str(e))
+            error_text = self.locale_manager.get_text("sheets.callback.excel_generation_error_detailed", context).format(error=str(e))
             await self.ui_manager.send_temp(update, context, error_text, duration=5)
     
     # ==================== HELPER METHODS ====================
@@ -408,12 +406,12 @@ class GoogleSheetsCallbackHandler(BaseCallbackHandler):
         """Validate matching data and item index"""
         pending_data = context.user_data.get('pending_google_sheets_upload')
         if not pending_data:
-            error_text = self.locale_manager.get_text(context, 'sheets.callback.matching_data_not_found')
+            error_text = self.locale_manager.get_text('sheets.callback.matching_data_not_found', context)
             return {'valid': False, 'error': error_text}
         
         matching_result = pending_data['matching_result']
         if item_index >= len(matching_result.matches):
-            error_text = self.locale_manager.get_text(context, 'sheets.callback.invalid_item_index')
+            error_text = self.locale_manager.get_text('sheets.callback.invalid_item_index', context)
             return {'valid': False, 'error': error_text}
         
         return {'valid': True, 'matching_result': matching_result}
@@ -422,17 +420,17 @@ class GoogleSheetsCallbackHandler(BaseCallbackHandler):
         """Validate suggestion data and indices"""
         pending_data = context.user_data.get('pending_google_sheets_upload')
         if not pending_data:
-            error_text = self.locale_manager.get_text(context, 'sheets.callback.matching_data_not_found')
+            error_text = self.locale_manager.get_text('sheets.callback.matching_data_not_found', context)
             return {'valid': False, 'error': error_text}
         
         matching_result = pending_data['matching_result']
         if item_index >= len(matching_result.matches):
-            error_text = self.locale_manager.get_text(context, 'sheets.callback.invalid_item_index')
+            error_text = self.locale_manager.get_text('sheets.callback.invalid_item_index', context)
             return {'valid': False, 'error': error_text}
         
         current_match = matching_result.matches[item_index]
         if not current_match.suggested_matches or suggestion_index >= len(current_match.suggested_matches):
-            error_text = self.locale_manager.get_text(context, 'sheets.callback.invalid_suggestion_index')
+            error_text = self.locale_manager.get_text('sheets.callback.invalid_suggestion_index', context)
             return {'valid': False, 'error': error_text}
         
         selected_suggestion = current_match.suggested_matches[suggestion_index]
@@ -442,18 +440,18 @@ class GoogleSheetsCallbackHandler(BaseCallbackHandler):
         """Validate search data and indices"""
         pending_data = context.user_data.get('pending_google_sheets_upload')
         if not pending_data:
-            error_text = self.locale_manager.get_text(context, 'sheets.callback.matching_data_not_found')
+            error_text = self.locale_manager.get_text('sheets.callback.matching_data_not_found', context)
             return {'valid': False, 'error': error_text}
         
         matching_result = pending_data['matching_result']
         if item_index >= len(matching_result.matches):
-            error_text = self.locale_manager.get_text(context, 'sheets.callback.invalid_item_index')
+            error_text = self.locale_manager.get_text('sheets.callback.invalid_item_index', context)
             return {'valid': False, 'error': error_text}
         
         current_match = matching_result.matches[item_index]
         search_results = context.user_data.get('google_sheets_search_results', [])
         if not search_results or result_index >= len(search_results):
-            error_text = self.locale_manager.get_text(context, 'sheets.callback.invalid_search_result_index')
+            error_text = self.locale_manager.get_text('sheets.callback.invalid_search_result_index', context)
             return {'valid': False, 'error': error_text}
         
         selected_result = search_results[result_index]
@@ -487,7 +485,7 @@ class GoogleSheetsCallbackHandler(BaseCallbackHandler):
         except Exception as e:
             print(f"DEBUG: Error deleting message: {e}")
         
-        success_text = self.locale_manager.get_text(context, "sheets.callback.matched_successfully").format(
+        success_text = self.locale_manager.get_text("sheets.callback.matched_successfully", context).format(
             receipt_item=current_match.receipt_item_name,
             ingredient_name=selected_item['name']
         )
@@ -499,25 +497,23 @@ class GoogleSheetsCallbackHandler(BaseCallbackHandler):
     
     # ==================== KEYBOARD CREATION METHODS ====================
     
-    def _create_action_keyboard(self) -> List[List[InlineKeyboardButton]]:
+    def _create_action_keyboard(self, context) -> List[List[InlineKeyboardButton]]:
         """Create action keyboard for matching page"""
-        # Note: This method doesn't have access to context, so we'll use hardcoded Russian for now
         return [
-            [InlineKeyboardButton("✏️ Редактировать сопоставление", callback_data="edit_google_sheets_matching")],
-            [InlineKeyboardButton("👁️ Предпросмотр", callback_data="preview_google_sheets_upload")],
-            [InlineKeyboardButton("◀️ Вернуться к чеку", callback_data="back_to_receipt")]
+            [InlineKeyboardButton(self.locale_manager.get_text("sheets.callback.edit_matching", context), callback_data="edit_google_sheets_matching")],
+            [InlineKeyboardButton(self.locale_manager.get_text("sheets.callback.preview", context), callback_data="preview_google_sheets_upload")],
+            [InlineKeyboardButton(self.locale_manager.get_text("sheets.callback.back_to_receipt", context), callback_data="back_to_receipt")]
         ]
     
-    def _create_preview_keyboard(self) -> List[List[InlineKeyboardButton]]:
+    def _create_preview_keyboard(self, context) -> List[List[InlineKeyboardButton]]:
         """Create preview keyboard"""
-        # Note: This method doesn't have access to context, so we'll use hardcoded Russian for now
         return [
-            [InlineKeyboardButton("✅ Загрузить в Google Таблицы", callback_data="confirm_google_sheets_upload")],
-            [InlineKeyboardButton("✏️ Редактировать сопоставление", callback_data="edit_google_sheets_matching")],
-            [InlineKeyboardButton("◀️ Назад", callback_data="upload_to_google_sheets")]
+            [InlineKeyboardButton(self.locale_manager.get_text("sheets.callback.upload_to_google_sheets", context), callback_data="confirm_google_sheets_upload")],
+            [InlineKeyboardButton(self.locale_manager.get_text("sheets.callback.edit_matching", context), callback_data="edit_google_sheets_matching")],
+            [InlineKeyboardButton(self.locale_manager.get_text("sheets.callback.back", context), callback_data="upload_to_google_sheets")]
         ]
     
-    def _create_matching_table_keyboard(self, matching_result: IngredientMatchingResult) -> List[List[InlineKeyboardButton]]:
+    def _create_matching_table_keyboard(self, matching_result: IngredientMatchingResult, context) -> List[List[InlineKeyboardButton]]:
         """Create keyboard for matching table"""
         keyboard = []
         
@@ -538,14 +534,14 @@ class GoogleSheetsCallbackHandler(BaseCallbackHandler):
         
         # Add control buttons
         keyboard.extend([
-            [InlineKeyboardButton("🔍 Выбрать позицию для сопоставления", callback_data="select_google_sheets_position")],
-            [InlineKeyboardButton("👁️ Предпросмотр", callback_data="preview_google_sheets_upload")],
-            [InlineKeyboardButton("◀️ Назад", callback_data="upload_to_google_sheets")]
+            [InlineKeyboardButton(self.locale_manager.get_text("sheets.callback.select_position_for_matching", context), callback_data="select_google_sheets_position")],
+            [InlineKeyboardButton(self.locale_manager.get_text("sheets.callback.preview", context), callback_data="preview_google_sheets_upload")],
+            [InlineKeyboardButton(self.locale_manager.get_text("sheets.callback.back", context), callback_data="upload_to_google_sheets")]
         ])
         
         return keyboard
     
-    def _create_position_selection_keyboard(self, matching_result: IngredientMatchingResult) -> List[List[InlineKeyboardButton]]:
+    def _create_position_selection_keyboard(self, matching_result: IngredientMatchingResult, context) -> List[List[InlineKeyboardButton]]:
         """Create keyboard for position selection"""
         keyboard = []
         for i, match in enumerate(matching_result.matches, 1):
@@ -553,10 +549,10 @@ class GoogleSheetsCallbackHandler(BaseCallbackHandler):
             button_text = f"{i}. {status_emoji} {self._truncate_name(match.receipt_item_name, 20)}"
             keyboard.append([InlineKeyboardButton(button_text, callback_data=f"select_google_sheets_line_{i}")])
         
-        keyboard.append([InlineKeyboardButton("◀️ Назад", callback_data="back_to_google_sheets_matching")])
+        keyboard.append([InlineKeyboardButton(self.locale_manager.get_text("sheets.callback.back", context), callback_data="back_to_google_sheets_matching")])
         return keyboard
     
-    def _create_manual_matching_keyboard(self, current_match: IngredientMatch, item_index: int) -> List[List[InlineKeyboardButton]]:
+    def _create_manual_matching_keyboard(self, current_match: IngredientMatch, item_index: int, context) -> List[List[InlineKeyboardButton]]:
         """Create keyboard for manual matching"""
         keyboard = []
         
@@ -571,44 +567,59 @@ class GoogleSheetsCallbackHandler(BaseCallbackHandler):
         
         # Add search and control buttons
         keyboard.extend([
-            [InlineKeyboardButton("🔍 Поиск", callback_data=f"search_google_sheets_ingredient_{item_index}")],
-            [InlineKeyboardButton("◀️ Назад", callback_data="back_to_google_sheets_matching")]
+            [InlineKeyboardButton(self.locale_manager.get_text("sheets.callback.search", context), callback_data=f"search_google_sheets_ingredient_{item_index}")],
+            [InlineKeyboardButton(self.locale_manager.get_text("sheets.callback.back", context), callback_data="back_to_google_sheets_matching")]
         ])
         
         return keyboard
     
-    def _create_success_keyboard(self) -> List[List[InlineKeyboardButton]]:
+    def _create_success_keyboard(self, context) -> List[List[InlineKeyboardButton]]:
         """Create success page keyboard"""
         return [
-            [InlineKeyboardButton("↩️ Отменить загрузку", callback_data="undo_google_sheets_upload")],
-            [InlineKeyboardButton("📄 Сгенерировать файл", callback_data="generate_excel_file")],
-            [InlineKeyboardButton("📋 Вернуться к чеку", callback_data="back_to_receipt")],
-            [InlineKeyboardButton("📸 Загрузить новый чек", callback_data="start_new_receipt")]
+            [InlineKeyboardButton(self.locale_manager.get_text("sheets.callback.undo_upload", context), callback_data="undo_google_sheets_upload")],
+            [InlineKeyboardButton(self.locale_manager.get_text("sheets.callback.generate_file", context), callback_data="generate_excel_file")],
+            [InlineKeyboardButton(self.locale_manager.get_text("sheets.callback.back_to_receipt_button", context), callback_data="back_to_receipt")],
+            [InlineKeyboardButton(self.locale_manager.get_text("sheets.callback.upload_new_receipt", context), callback_data="start_new_receipt")]
         ]
     
     # ==================== TEXT FORMATTING METHODS ====================
     
-    def _format_matching_progress_text(self, current_match: IngredientMatch) -> str:
+    def _format_matching_progress_text(self, current_match: IngredientMatch, context=None) -> str:
         """Format matching progress text"""
-        # Note: This method doesn't have access to context, so we'll use hardcoded Russian for now
-        # In a real implementation, you'd need to pass context to this method
-        progress_text = f"**Редактор сопоставления для Google Таблиц**\n\n"
-        progress_text += f"**Товар:** {current_match.receipt_item_name}\n\n"
-        progress_text += "**Выберите подходящий ингредиент:**\n\n"
-        
-        if not current_match.suggested_matches:
-            progress_text += "❌ **Подходящих вариантов не найдено**\n\n"
+        if context:
+            progress_text = self.locale_manager.get_text("sheets.callback.manual_matching_editor_title", context) + "\n\n"
+            progress_text += self.locale_manager.get_text("sheets.callback.current_item", context).format(item_name=current_match.receipt_item_name) + "\n"
+            progress_text += self.locale_manager.get_text("sheets.callback.choose_suitable_ingredient", context) + "\n\n"
+            
+            if not current_match.suggested_matches:
+                progress_text += self.locale_manager.get_text("sheets.callback.no_suitable_options", context) + "\n\n"
+        else:
+            # Fallback to Russian if no context
+            progress_text = f"**Редактор сопоставления для Google Таблиц**\n\n"
+            progress_text += f"**Товар:** {current_match.receipt_item_name}\n\n"
+            progress_text += "**Выберите подходящий ингредиент:**\n\n"
+            
+            if not current_match.suggested_matches:
+                progress_text += "❌ **Подходящих вариантов не найдено**\n\n"
         
         return progress_text
     
-    async def _show_undo_error(self, update: Update, error_message: str):
+    async def _show_undo_error(self, update: Update, error_message: str, context=None):
         """Show undo error message"""
-        # Note: This method doesn't have access to context, so we'll use hardcoded Russian for now
-        # In a real implementation, you'd need to pass context to this method
+        if context:
+            error_title = self.locale_manager.get_text("sheets.callback.undo_error_title", context).format(error_message=error_message)
+            error_info = self.locale_manager.get_text("sheets.callback.undo_error_info", context)
+            back_button_text = self.locale_manager.get_text("sheets.callback.back_to_receipt", context)
+        else:
+            # Fallback to Russian if no context
+            error_title = f"❌ **{error_message}**"
+            error_info = "Информация о последней загрузке не найдена."
+            back_button_text = "📋 Вернуться к чеку"
+        
         await update.callback_query.edit_message_text(
-            f"❌ **{error_message}**\n\nИнформация о последней загрузке не найдена.",
+            f"{error_title}\n\n{error_info}",
             reply_markup=InlineKeyboardMarkup([
-                [InlineKeyboardButton("📋 Вернуться к чеку", callback_data="back_to_receipt")]
+                [InlineKeyboardButton(back_button_text, callback_data="back_to_receipt")]
             ]),
             parse_mode='Markdown'
         )
@@ -622,16 +633,19 @@ class GoogleSheetsCallbackHandler(BaseCallbackHandler):
             matching_result = pending_data['matching_result']
             await self._show_google_sheets_preview(update, context, receipt_data, matching_result)
         else:
-            undo_successful = self.locale_manager.get_text(context, "sheets.callback.undo_successful")
-            cancelled_rows = self.locale_manager.get_text(context, "sheets.callback.cancelled_rows").format(row_count=row_count)
-            worksheet_name_text = self.locale_manager.get_text(context, "sheets.callback.worksheet_name").format(worksheet_name=worksheet_name)
-            undo_time = self.locale_manager.get_text(context, "sheets.callback.undo_time").format(time=datetime.now().strftime('%Y-%m-%d %H:%M:%S'))
-            data_deleted = self.locale_manager.get_text(context, "sheets.callback.data_deleted_from_sheets")
+            undo_successful = self.locale_manager.get_text("sheets.callback.undo_successful", context)
+            cancelled_rows = self.locale_manager.get_text("sheets.callback.cancelled_rows", context).format(row_count=row_count)
+            worksheet_name_text = self.locale_manager.get_text("sheets.callback.worksheet_name", context).format(worksheet_name=worksheet_name)
+            undo_time = self.locale_manager.get_text("sheets.callback.undo_time", context).format(time=datetime.now().strftime('%Y-%m-%d %H:%M:%S'))
+            data_deleted = self.locale_manager.get_text("sheets.callback.data_deleted_from_sheets", context)
+            back_to_receipt_text = self.locale_manager.get_text("sheets.callback.back_to_receipt", context)
+            upload_new_receipt_text = self.locale_manager.get_text("sheets.callback.upload_new_receipt", context)
+            
             await update.callback_query.edit_message_text(
                 f"{undo_successful}\n\n{cancelled_rows}\n{worksheet_name_text}\n{undo_time}\n\n{data_deleted}",
                 reply_markup=InlineKeyboardMarkup([
-                    [InlineKeyboardButton("📋 Вернуться к чеку", callback_data="back_to_receipt")],
-                    [InlineKeyboardButton("📸 Загрузить новый чек", callback_data="start_new_receipt")]
+                    [InlineKeyboardButton(back_to_receipt_text, callback_data="back_to_receipt")],
+                    [InlineKeyboardButton(upload_new_receipt_text, callback_data="start_new_receipt")]
                 ]),
                 parse_mode='Markdown'
             )
@@ -642,7 +656,7 @@ class GoogleSheetsCallbackHandler(BaseCallbackHandler):
             file_message = await update.callback_query.message.reply_document(
                 document=file,
                 filename=f"receipt_data_{datetime.now().strftime('%Y%m%d_%H%M%S')}.xlsx",
-                caption=self.locale_manager.get_text(context, "sheets.callback.excel_file_created")
+                caption=self.locale_manager.get_text("sheets.callback.excel_file_created", context)
             )
             
             # Save file message ID for cleanup
@@ -665,14 +679,17 @@ class GoogleSheetsCallbackHandler(BaseCallbackHandler):
     
     async def _show_excel_success(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         """Show Excel file generation success message"""
-        success_title = self.locale_manager.get_text(context, "sheets.callback.excel_success_title")
-        success_description = self.locale_manager.get_text(context, "sheets.callback.excel_success_description")
-        file_available = self.locale_manager.get_text(context, "sheets.callback.file_available_for_download")
+        success_title = self.locale_manager.get_text("sheets.callback.excel_success_title", context)
+        success_description = self.locale_manager.get_text("sheets.callback.excel_success_description", context)
+        file_available = self.locale_manager.get_text("sheets.callback.file_available_for_download", context)
+        preview_text = self.locale_manager.get_text("sheets.callback.preview_google_sheets", context)
+        back_to_receipt_text = self.locale_manager.get_text("sheets.callback.back_to_receipt", context)
+        
         await update.callback_query.edit_message_text(
             f"{success_title}\n\n{success_description}\n\n{file_available}",
             reply_markup=InlineKeyboardMarkup([
-                [InlineKeyboardButton("👁️ Предпросмотр Google Sheets", callback_data="preview_google_sheets_upload")],
-                [InlineKeyboardButton("📋 Вернуться к чеку", callback_data="back_to_receipt")]
+                [InlineKeyboardButton(preview_text, callback_data="preview_google_sheets_upload")],
+                [InlineKeyboardButton(back_to_receipt_text, callback_data="back_to_receipt")]
             ]),
             parse_mode='Markdown'
         )
@@ -683,7 +700,7 @@ class GoogleSheetsCallbackHandler(BaseCallbackHandler):
         """Format table preview for Google Sheets upload"""
         if not receipt_data.items or not matching_result.matches:
             if context:
-                return self.locale_manager.get_text(context, "sheets.callback.no_data_to_display")
+                return self.locale_manager.get_text("sheets.callback.no_data_to_display", context)
             return "Нет данных для отображения"
         
         # Set fixed column widths (total max 58 characters)
@@ -694,10 +711,10 @@ class GoogleSheetsCallbackHandler(BaseCallbackHandler):
         
         # Create header using the new format
         if context:
-            date_header = self.locale_manager.get_text(context, "sheets.callback.date_header")
-            volume_header = self.locale_manager.get_text(context, "sheets.callback.volume_header")
-            price_header = self.locale_manager.get_text(context, "sheets.callback.price_header")
-            product_header = self.locale_manager.get_text(context, "sheets.callback.product_header")
+            date_header = self.locale_manager.get_text("sheets.callback.date_header", context)
+            volume_header = self.locale_manager.get_text("sheets.callback.volume_header", context)
+            price_header = self.locale_manager.get_text("sheets.callback.price_header", context)
+            product_header = self.locale_manager.get_text("sheets.callback.product_header", context)
         else:
             date_header = "Date"
             volume_header = "Vol"
@@ -771,13 +788,13 @@ class GoogleSheetsCallbackHandler(BaseCallbackHandler):
         """Format Google Sheets matching table for editing"""
         if not matching_result.matches:
             if context:
-                return self.locale_manager.get_text(context, "sheets.callback.no_ingredients_for_matching")
+                return self.locale_manager.get_text("sheets.callback.no_ingredients_for_matching", context)
             return "Нет ингредиентов для сопоставления."
         
         # Create table header
         table_lines = []
         if context:
-            title = self.locale_manager.get_text(context, "sheets.callback.matching_table_title")
+            title = self.locale_manager.get_text("sheets.callback.matching_table_title", context)
         else:
             title = "**Сопоставление с ингредиентами Google Таблиц:**"
         table_lines.append(f"{title}\n")
@@ -798,13 +815,13 @@ class GoogleSheetsCallbackHandler(BaseCallbackHandler):
     def _create_google_sheets_table_header(self, context=None) -> str:
         """Create Google Sheets table header"""
         if context:
-            header_template = self.locale_manager.get_text(context, "sheets.callback.table_header")
+            header_template = self.locale_manager.get_text("sheets.callback.table_header", context)
             return header_template
         return f"{'№':<2} | {'Наименование':<20} | {'Google Таблицы':<20} | {'Статус':<4}"
     
     def _create_google_sheets_table_separator(self) -> str:
         """Create Google Sheets table separator"""
-        return "-" * 50
+        return "-" * 50  # Fixed width to match table structure (2 + 20 + 20 + 4 + 4 = 50)
     
     def _create_google_sheets_table_row(self, row_number: int, match: IngredientMatch) -> str:
         """Create a Google Sheets table row for a match"""

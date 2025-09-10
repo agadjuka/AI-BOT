@@ -11,6 +11,7 @@ from services.ai_service import ReceiptAnalysisService
 from models.receipt import ReceiptData
 from handlers.base_callback_handler import BaseCallbackHandler
 from handlers.receipt_edit_callback_handler import ReceiptEditCallbackHandler
+from config.locales.locale_manager import locale_manager
 
 
 class ReceiptEditDispatcher(BaseCallbackHandler):
@@ -31,17 +32,24 @@ class ReceiptEditDispatcher(BaseCallbackHandler):
         elif action == "auto_calculate_total":
             await self.receipt_edit_handler._auto_calculate_total(update, context)
         elif action == "finish_editing":
-            await self.receipt_edit_handler._show_final_report_with_edit_button_callback(update, context)
+            # Use photo_handler method which has proper localization
+            from handlers.photo_handler import PhotoHandler
+            photo_handler = PhotoHandler(self.config, self.analysis_service)
+            await photo_handler.show_final_report_with_edit_button(update, context)
         elif action == "edit_receipt":
             await self.receipt_edit_handler._send_edit_menu(update, context)
         elif action == "back_to_edit":
             await self.receipt_edit_handler._send_edit_menu(update, context)
-        elif action.startswith("edit_item_") or action.startswith("edit_"):
-            # Handle both "edit_item_X" and "edit_X" patterns
-            if action.startswith("edit_item_"):
-                item_number = int(action.split("_")[-1])
-            else:  # action.startswith("edit_")
-                item_number = int(action.split("_")[-1])
+        elif action.startswith("edit_item_"):
+            # Handle "edit_item_X" pattern
+            item_number = int(action.split("_")[-1])
+            
+            context.user_data['line_to_edit'] = item_number
+            await self.ui_manager.cleanup_all_except_anchor(update, context)
+            await self.receipt_edit_handler._send_edit_menu(update, context)
+        elif action.startswith("edit_") and action != "edit_line_number" and not action.startswith("edit_google_sheets_"):
+            # Handle "edit_X" pattern (but not edit_line_number or Google Sheets actions)
+            item_number = int(action.split("_")[-1])
             
             context.user_data['line_to_edit'] = item_number
             await self.ui_manager.cleanup_all_except_anchor(update, context)
@@ -50,40 +58,36 @@ class ReceiptEditDispatcher(BaseCallbackHandler):
             item_number = int(action.split("_")[-1])
             context.user_data['deleting_item'] = item_number
             await update.callback_query.edit_message_text(
-                f"🗑️ Удаление позиции {item_number}\n\n"
-                "Подтвердите удаление (да/нет):"
+                locale_manager.get_text("analysis.deleting_item_confirmation", context, item_number=item_number)
             )
             return self.config.AWAITING_DELETE_LINE_NUMBER
         elif action == "delete_row":
             await self.ui_manager.send_temp(
                 update, context,
-                "🗑️ Удаление строки\n\n"
-                "Введите номер строки для удаления:",
+                locale_manager.get_text("analysis.deleting_line", context),
                 duration=30
             )
             return self.config.AWAITING_DELETE_LINE_NUMBER
         elif action == "edit_line_number":
             await self.ui_manager.send_temp(
                 update, context,
-                "✏️ Редактирование строки\n\n"
-                "Введите номер строки для редактирования:",
+                locale_manager.get_text("analysis.editing_line_input", context),
                 duration=30
             )
             return self.config.AWAITING_LINE_NUMBER
         elif action == "manual_edit_total":
             await self.ui_manager.send_temp(
                 update, context,
-                "💰 Редактирование общей суммы\n\n"
-                "Введите новую общую сумму:",
+                locale_manager.get_text("analysis.editing_total_input", context),
                 duration=30
             )
             return self.config.AWAITING_TOTAL_EDIT
         elif action == "reanalyze":
-            await update.callback_query.answer("🔄 Анализирую фото заново...")
+            await update.callback_query.answer(locale_manager.get_text("status.analyzing_receipt", context))
             
             await self.ui_manager.send_temp(
                 update, context,
-                "🔄 Обрабатываю квитанцию...",
+                locale_manager.get_text("status.processing_receipt", context),
                 duration=10
             )
             
@@ -96,7 +100,7 @@ class ReceiptEditDispatcher(BaseCallbackHandler):
                 
                 is_valid, message = self.validator.validate_receipt_data(receipt_data)
                 if not is_valid:
-                    print(f"Предупреждение валидации: {message}")
+                    print(f"Validation warning: {message}")
                 
                 context.user_data['receipt_data'] = receipt_data
                 context.user_data['original_data'] = ReceiptData.from_dict(receipt_data.to_dict())
@@ -107,8 +111,8 @@ class ReceiptEditDispatcher(BaseCallbackHandler):
                 return self.config.AWAITING_CORRECTION
                 
             except (json.JSONDecodeError, KeyError, IndexError, ValueError) as e:
-                print(f"Ошибка парсинга JSON или структуры данных от Gemini: {e}")
-                await update.callback_query.message.reply_text("Не удалось распознать структуру чека. Попробуйте сделать фото более четким.")
+                print(f"JSON parsing error or data structure from Gemini: {e}")
+                await update.callback_query.message.reply_text(locale_manager.get_text("errors.parsing_error", context))
                 return self.config.AWAITING_CORRECTION
         elif action == "back_to_receipt":
             try:
@@ -122,15 +126,17 @@ class ReceiptEditDispatcher(BaseCallbackHandler):
             else:
                 receipt_data = context.user_data.get('receipt_data')
                 if not receipt_data:
-                    await update.callback_query.edit_message_text("❌ Данные чека не найдены")
+                    await update.callback_query.edit_message_text(locale_manager.get_text("errors.receipt_data_not_found", context))
                     return self.config.AWAITING_CORRECTION
             
             await self.ui_manager.back_to_receipt(update, context)
-            await self.receipt_edit_handler._show_final_report_with_edit_button_callback(update, context)
+            # Use photo_handler method which has proper localization
+            from handlers.photo_handler import PhotoHandler
+            photo_handler = PhotoHandler(self.config, self.analysis_service)
+            await photo_handler.show_final_report_with_edit_button(update, context)
         elif action == "back_to_main_menu":
             await update.callback_query.edit_message_text(
-                "🏠 Главное меню\n\n"
-                "Используйте /start для начала новой работы."
+                locale_manager.get_text("welcome.main_menu", context)
             )
             return self.config.AWAITING_CORRECTION
         elif action.startswith("field_"):
@@ -146,18 +152,11 @@ class ReceiptEditDispatcher(BaseCallbackHandler):
                     context.user_data['edit_menu_message_id'] = update.callback_query.message.message_id
                     print(f"DEBUG: Saved edit_menu_message_id = {update.callback_query.message.message_id}")
                 
-                field_display_names = {
-                    'name': 'название товара',
-                    'quantity': 'количество',
-                    'price': 'цену',
-                    'total': 'сумму'
-                }
-                
-                field_name_display = field_display_names.get(field_name, field_name)
+                field_name_display = locale_manager.get_text(f"analysis.field_display_names.{field_name}", context)
                 temp_message = await self.ui_manager.send_temp(
                     update, context,
-                    f"✏️ Редактирование {field_name_display} для строки {line_number}\n\n"
-                    f"Введите новое значение:",
+                    locale_manager.get_text("analysis.field_edit_input", context, 
+                                          field_name=field_name_display, line_number=line_number),
                     duration=30
                 )
                 
@@ -176,7 +175,10 @@ class ReceiptEditDispatcher(BaseCallbackHandler):
             context.user_data.pop('field_to_edit', None)
             context.user_data.pop('line_to_edit', None)
             
-            await self.receipt_edit_handler._show_final_report_with_edit_button_callback(update, context)
+            # Use photo_handler method which has proper localization
+            from handlers.photo_handler import PhotoHandler
+            photo_handler = PhotoHandler(self.config, self.analysis_service)
+            await photo_handler.show_final_report_with_edit_button(update, context)
             return self.config.AWAITING_CORRECTION
         
         return self.config.AWAITING_CORRECTION

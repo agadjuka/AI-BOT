@@ -54,7 +54,15 @@ class CallbackHandlers(BaseCallbackHandler):
         print(f"DEBUG: Callback received: {action}")
         
         # Route to appropriate handler based on action
-        if action in ["add_row", "edit_total", "auto_calculate_total", "finish_editing", "edit_receipt", 
+        # Google Sheets actions must be checked first to avoid conflicts with general edit_ actions
+        if action in ["google_sheets_matching", "gs_upload", "upload_to_google_sheets", "gs_show_table",
+                     "edit_google_sheets_matching", "preview_google_sheets_upload", "confirm_google_sheets_upload",
+                     "select_google_sheets_position", "back_to_google_sheets_matching",
+                     "back_to_google_sheets_preview", "undo_google_sheets_upload", "generate_excel_file",
+                     "gs_skip_item", "gs_next_item", "skip_ingredient", "next_ingredient_match"] or action.startswith("edit_google_sheets_item_") or action.startswith("select_google_sheets_line_") or action.startswith("select_google_sheets_suggestion_") or action.startswith("search_google_sheets_ingredient_") or action.startswith("select_google_sheets_search_") or action.startswith("select_google_sheets_position_match_"):
+            return await self.google_sheets_dispatcher._handle_google_sheets_actions(update, context, action)
+        
+        elif action in ["add_row", "edit_total", "auto_calculate_total", "finish_editing", "edit_receipt", 
                      "back_to_edit", "delete_row", "edit_line_number", "manual_edit_total", "reanalyze", 
                      "back_to_receipt", "back_to_main_menu"] or action.startswith("field_") or action.startswith("apply_") or action.startswith("edit_item_") or action.startswith("edit_") or action.startswith("delete_item_"):
             return await self.receipt_edit_dispatcher._handle_receipt_edit_actions(update, context, action)
@@ -66,13 +74,6 @@ class CallbackHandlers(BaseCallbackHandler):
                        "skip_ingredient", "next_ingredient_match", "confirm_back_without_changes",
                        "cancel_back"]:
             return await self.ingredient_matching_dispatcher._handle_ingredient_matching_actions(update, context, action)
-        
-        elif action in ["google_sheets_matching", "gs_upload", "upload_to_google_sheets", "gs_show_table",
-                       "edit_google_sheets_matching", "preview_google_sheets_upload", "confirm_google_sheets_upload",
-                       "select_google_sheets_position", "back_to_google_sheets_matching",
-                       "back_to_google_sheets_preview", "undo_google_sheets_upload", "generate_excel_file",
-                       "gs_skip_item", "gs_next_item", "skip_ingredient", "next_ingredient_match"] or action.startswith("edit_google_sheets_item_") or action.startswith("select_google_sheets_line_") or action.startswith("select_google_sheets_suggestion_") or action.startswith("search_google_sheets_ingredient_") or action.startswith("select_google_sheets_search_") or action.startswith("select_google_sheets_position_match_"):
-            return await self.google_sheets_dispatcher._handle_google_sheets_actions(update, context, action)
         
         elif action in ["generate_supply_file", "generate_poster_file", "generate_google_sheets_file",
                        "generate_file_xlsx", "generate_file_from_table", "match_ingredients"]:

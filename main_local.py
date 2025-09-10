@@ -149,6 +149,12 @@ def main() -> None:
                 MessageHandler(filters.TEXT & ~filters.COMMAND, message_handlers.handle_user_input),  # Add text handler for search
                 MessageHandler(filters.PHOTO, message_handlers.handle_photo)  # Add photo handler
             ],
+            config.AWAITING_DASHBOARD: [
+                CallbackQueryHandler(callback_handlers.handle_correction_choice),
+                CommandHandler("dashboard", message_handlers.dashboard),
+                MessageHandler(filters.TEXT & ~filters.COMMAND, message_handlers.handle_user_input),
+                MessageHandler(filters.PHOTO, message_handlers.handle_photo)
+            ],
             config.AWAITING_INPUT: [
                 CommandHandler("dashboard", message_handlers.dashboard),
                 MessageHandler(filters.TEXT & ~filters.COMMAND, message_handlers.handle_user_input),
@@ -187,7 +193,10 @@ def main() -> None:
                 MessageHandler(filters.PHOTO, message_handlers.handle_photo)  # Add photo handler
             ],
         },
-        fallbacks=[CommandHandler("cancel", message_handlers.start)],  # Use start as cancel fallback
+        fallbacks=[
+            CommandHandler("cancel", message_handlers.start),
+            CommandHandler("dashboard", message_handlers.dashboard)
+        ],  # Use start as cancel fallback and dashboard as universal access
         per_message=False
     )
 

@@ -9,6 +9,7 @@ from telegram.ext import ContextTypes
 
 from config.settings import BotConfig
 from services.ai_service import ReceiptAnalysisService
+from config.locales.locale_manager import LocaleManager
 
 
 class CommonHandlers:
@@ -17,6 +18,7 @@ class CommonHandlers:
     def __init__(self, config: BotConfig, analysis_service: ReceiptAnalysisService):
         self.config = config
         self.analysis_service = analysis_service
+        self.locale_manager = LocaleManager()
     
     async def send_long_message_with_keyboard(self, message, text: str, reply_markup) -> None:
         """
@@ -59,7 +61,9 @@ class CommonHandlers:
         elif ingredient_type == "google_sheets":
             return await self._ensure_google_sheets_ingredients_loaded(context)
         else:
-            print(f"DEBUG: Unknown ingredient type: {ingredient_type}")
+            debug_message = self.locale_manager.get_text("common.unknown_ingredient_type", 
+                                                       context, ingredient_type=ingredient_type)
+            print(debug_message)
             return False
     
     async def _ensure_poster_ingredients_loaded(self, context: ContextTypes.DEFAULT_TYPE) -> bool:
@@ -76,7 +80,9 @@ class CommonHandlers:
             
             # Сохраняем ингредиенты в данные бота для будущего использования
             context.bot_data["poster_ingredients"] = poster_ingredients
-            print(f"DEBUG: Loaded {len(poster_ingredients)} poster ingredients")
+            debug_message = self.locale_manager.get_text("common.loaded_poster_ingredients", 
+                                                       context, count=len(poster_ingredients))
+            print(debug_message)
         
         return True
     
@@ -94,15 +100,21 @@ class CommonHandlers:
             
             # Сохраняем ингредиенты в данные бота для будущего использования
             context.bot_data["google_sheets_ingredients"] = google_sheets_ingredients
-            print(f"✅ Загружено {len(google_sheets_ingredients)} ингредиентов Google Sheets по требованию")
-            print(f"DEBUG: Первые 5 ингредиентов: {list(google_sheets_ingredients.keys())[:5]}")
+            loaded_message = self.locale_manager.get_text("common.loaded_google_sheets_ingredients", 
+                                                        context, count=len(google_sheets_ingredients))
+            print(loaded_message)
+            
+            debug_message = self.locale_manager.get_text("common.debug_first_ingredients", 
+                                                       context, ingredients=list(google_sheets_ingredients.keys())[:5])
+            print(debug_message)
         
         return True
     
     def format_table_with_pagination(self, data: List[Dict[str, Any]], 
                                    page: int = 1, 
                                    items_per_page: int = 10,
-                                   table_formatter: callable = None) -> Tuple[str, InlineKeyboardMarkup]:
+                                   table_formatter: callable = None,
+                                   context: Optional[ContextTypes.DEFAULT_TYPE] = None) -> Tuple[str, InlineKeyboardMarkup]:
         """
         Форматирует таблицу с пагинацией
         
@@ -111,12 +123,14 @@ class CommonHandlers:
             page: Номер страницы (начиная с 1)
             items_per_page: Количество элементов на странице
             table_formatter: Функция для форматирования строки таблицы
+            context: Контекст для определения языка
             
         Returns:
             Tuple[str, InlineKeyboardMarkup]: Текст таблицы и клавиатура навигации
         """
         if not data:
-            return "Нет данных для отображения", InlineKeyboardMarkup([])
+            no_data_text = self.locale_manager.get_text("common.no_data_to_display", context)
+            return no_data_text, InlineKeyboardMarkup([])
         
         total_items = len(data)
         total_pages = (total_items + items_per_page - 1) // items_per_page
@@ -138,28 +152,31 @@ class CommonHandlers:
         if table_formatter:
             table_text = table_formatter(page_data, page, start_idx)
         else:
-            table_text = self._default_table_formatter(page_data, page, start_idx)
+            table_text = self._default_table_formatter(page_data, page, start_idx, context)
         
         # Создаем клавиатуру навигации
-        navigation_keyboard = self.create_navigation_buttons(page, total_pages)
+        navigation_keyboard = self.create_navigation_buttons(page, total_pages, context=context)
         
         return table_text, navigation_keyboard
     
     def _default_table_formatter(self, data: List[Dict[str, Any]], 
-                                page: int, start_idx: int) -> str:
+                                page: int, start_idx: int, 
+                                context: Optional[ContextTypes.DEFAULT_TYPE] = None) -> str:
         """Форматирование таблицы по умолчанию"""
         if not data:
-            return "Нет данных для отображения"
+            return self.locale_manager.get_text("common.no_data_to_display", context)
         
         # Простое форматирование - можно переопределить в наследниках
-        lines = [f"Страница {page}:"]
+        page_text = self.locale_manager.get_text("common.page", context, page=page)
+        lines = [page_text]
         for i, item in enumerate(data, start_idx + 1):
             lines.append(f"{i}. {str(item)}")
         
         return "\n".join(lines)
     
     def create_navigation_buttons(self, current_page: int, total_pages: int, 
-                                base_callback: str = "page") -> InlineKeyboardMarkup:
+                                base_callback: str = "page", 
+                                context: Optional[ContextTypes.DEFAULT_TYPE] = None) -> InlineKeyboardMarkup:
         """
         Создает стандартные кнопки навигации для пагинации
         
@@ -167,6 +184,7 @@ class CommonHandlers:
             current_page: Текущая страница
             total_pages: Общее количество страниц
             base_callback: Базовое имя callback для кнопок
+            context: Контекст для определения языка
             
         Returns:
             InlineKeyboardMarkup: Клавиатура с кнопками навигации
@@ -179,24 +197,30 @@ class CommonHandlers:
         # Кнопки навигации
         nav_buttons = []
         
+        # Получаем локализованные эмодзи для кнопок навигации
+        first_page_emoji = self.locale_manager.get_text("common.navigation_buttons.first_page", context)
+        previous_page_emoji = self.locale_manager.get_text("common.navigation_buttons.previous_page", context)
+        next_page_emoji = self.locale_manager.get_text("common.navigation_buttons.next_page", context)
+        last_page_emoji = self.locale_manager.get_text("common.navigation_buttons.last_page", context)
+        
         # Кнопка "Первая страница"
         if current_page > 1:
-            nav_buttons.append(InlineKeyboardButton("⏮️", callback_data=f"{base_callback}_1"))
+            nav_buttons.append(InlineKeyboardButton(first_page_emoji, callback_data=f"{base_callback}_1"))
         
         # Кнопка "Предыдущая страница"
         if current_page > 1:
-            nav_buttons.append(InlineKeyboardButton("◀️", callback_data=f"{base_callback}_{current_page - 1}"))
+            nav_buttons.append(InlineKeyboardButton(previous_page_emoji, callback_data=f"{base_callback}_{current_page - 1}"))
         
         # Информация о текущей странице
         nav_buttons.append(InlineKeyboardButton(f"{current_page}/{total_pages}", callback_data="noop"))
         
         # Кнопка "Следующая страница"
         if current_page < total_pages:
-            nav_buttons.append(InlineKeyboardButton("▶️", callback_data=f"{base_callback}_{current_page + 1}"))
+            nav_buttons.append(InlineKeyboardButton(next_page_emoji, callback_data=f"{base_callback}_{current_page + 1}"))
         
         # Кнопка "Последняя страница"
         if current_page < total_pages:
-            nav_buttons.append(InlineKeyboardButton("⏭️", callback_data=f"{base_callback}_{total_pages}"))
+            nav_buttons.append(InlineKeyboardButton(last_page_emoji, callback_data=f"{base_callback}_{total_pages}"))
         
         if nav_buttons:
             keyboard.append(nav_buttons)
@@ -288,27 +312,26 @@ class CommonHandlers:
         
         return lines
     
-    def get_status_emoji(self, status: str) -> str:
+    def get_status_emoji(self, status: str, context: Optional[ContextTypes.DEFAULT_TYPE] = None) -> str:
         """
         Возвращает эмодзи для статуса
         
         Args:
             status: Статус (confirmed, error, partial, no_match, exact_match, matched)
+            context: Контекст для определения языка
             
         Returns:
             str: Эмодзи для статуса
         """
-        status_emojis = {
-            'confirmed': '✅',
-            'error': '🔴',
-            'partial': '⚠️',
-            'no_match': '❌',
-            'exact_match': '🟢',
-            'matched': '✅',
-            'partial_match': '🟡'
-        }
+        # Получаем локализованные эмодзи для статусов
+        status_emoji_key = f"common.status_emojis.{status}"
+        emoji = self.locale_manager.get_text(status_emoji_key, context)
         
-        return status_emojis.get(status, '❓')
+        # Если эмодзи не найден, возвращаем эмодзи по умолчанию
+        if emoji == status_emoji_key:  # Если ключ не найден, get_text возвращает сам ключ
+            emoji = self.locale_manager.get_text("common.status_emojis.unknown", context)
+        
+        return emoji
     
     def format_number_with_spaces(self, number: Optional[float]) -> str:
         """

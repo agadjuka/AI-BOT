@@ -85,7 +85,21 @@ ID_TRANSLATIONS = {
         "invalid_line_format": "Format tidak valid. Masukkan hanya nomor baris (contoh: `3`):",
         "negative_value": "Nilai tidak bisa negatif. Coba lagi.",
         "negative_total": "Total tidak bisa negatif. Coba lagi.",
-        "try_again": "Coba lagi:"
+        "try_again": "Coba lagi:",
+        "no_items": "Tidak ada item produk",
+        "incorrect_line_numbering": "Penomoran baris salah: {line_numbers}, diharapkan: {expected_numbers}",
+        "missing_name_field": "Field name hilang di baris {line_number}",
+        "missing_status_field": "Field status hilang di baris {line_number}",
+        "missing_quantity_field": "Field quantity hilang di baris {line_number}",
+        "missing_price_field": "Field price hilang di baris {line_number}",
+        "missing_total_field": "Field total hilang di baris {line_number}",
+        "calculation_warning": "Peringatan: Baris {line_number} - perhitungan tidak cocok: {quantity} * {price} = {expected_total}, tapi struk menunjukkan {total}",
+        "data_correct": "Data benar",
+        "line_number_correct": "Nomor baris benar",
+        "field_cannot_be_empty": "{field_name} tidak bisa kosong",
+        "invalid_numeric_format": "Format {field_name} tidak valid. Masukkan angka",
+        "value_correct": "Nilai benar",
+        "field_too_long": "{field_name} terlalu panjang (maksimal 100 karakter)"
     },
     
     # Pesan status
@@ -127,7 +141,8 @@ ID_TRANSLATIONS = {
             "total": "jumlah"
         },
         "field_edit_input": "✏️ Edit {field_name} untuk baris {line_number}\n\nMasukkan nilai baru:",
-        "new_item_name": "Barang baru"
+        "new_item_name": "Barang baru",
+        "deleting_item_confirmation": "🗑️ Hapus item {item_number}\n\nKonfirmasi penghapusan (ya/tidak):"
     },
     
     # Pesan pencocokan bahan
@@ -216,7 +231,11 @@ ID_TRANSLATIONS = {
             "matched_percentage": "📈 Persentase: {percentage:.1f}%\n\n",
             "all_matched": "🎯 Semua posisi berhasil dicocokkan!",
             "remaining_items": "⚠️ Masih perlu dicocokkan: {count} posisi",
-            "back_to_editing": "◀️ Kembali ke edit"
+            "back_to_editing": "◀️ Kembali ke edit",
+            "changes_applied": "✅ Perubahan pencocokan diterapkan!\n\nPindah ke langkah berikutnya...",
+            "search_ingredient": "🔍 Cari bahan\n\nMasukkan nama bahan untuk pencarian:",
+            "back_without_changes": "✅ Kembali tanpa menyimpan perubahan\n\nPerubahan tidak disimpan.",
+            "cancel_back": "❌ Batalkan kembali\n\nMelanjutkan dengan data saat ini."
         }
     },
     
@@ -246,6 +265,7 @@ ID_TRANSLATIONS = {
             "upload_successful": "Upload berhasil",
             "upload_error": "❌ Error upload: {message}",
             "matching_data_not_found": "Error: data pencocokan tidak ditemukan.",
+            "dictionary_not_loaded": "Gagal memuat kamus bahan Google Sheets.\nPeriksa pengaturan konfigurasi.",
             "all_positions_processed": "✅ Semua posisi diproses!",
             "choose_position_for_matching": "**Pilih posisi untuk pencocokan**",
             "matching_updated": "✅ Pencocokan diperbarui!",
@@ -253,14 +273,14 @@ ID_TRANSLATIONS = {
             "no_upload_data_for_undo": "Tidak ada data tentang upload terakhir untuk dibatalkan",
             "no_data_to_undo": "Tidak ada data untuk dibatalkan",
             "undo_upload_failed": "Gagal membatalkan upload: {message}",
-            "unexpected_error": "Terjadi error tak terduga: {error}",
+            "unexpected_error": "❌ **Error kritis**\n\nTerjadi error tak terduga saat mengupload ke Google Sheets:\n`{error}`",
             "no_receipt_data_for_file": "❌ Tidak ada data struk untuk pembuatan file.",
             "no_matching_data_for_file": "❌ Tidak ada data pencocokan Google Sheets untuk pembuatan file.",
             "excel_generation_error": "❌ Error membuat file Excel.",
             "excel_generation_error_detailed": "❌ Error membuat file Excel: {error}",
             "matching_table_title": "**Pencocokan dengan bahan Google Sheets:**",
             "no_ingredients_for_matching": "Tidak ada bahan untuk dicocokkan.",
-            "table_header": "{'№':<2} | {'Nama':<20} | {'Google Sheets':<20} | {'Status':<4}",
+            "table_header": "№ | Nama                 | Google Sheets        | Status",
             "manual_matching_editor_title": "**Editor pencocokan Google Sheets**",
             "current_item": "**Barang:** {item_name}",
             "choose_suitable_ingredient": "**Pilih bahan yang sesuai:**",
@@ -308,5 +328,71 @@ ID_TRANSLATIONS = {
         "table_header": "{'№':^{number_width}} | {'Barang':<{product_width}} | {'Jml':^{quantity_width}} | {'Harga':^{price_width}} | {'Jumlah':>{total_width}} | {'':^{status_width}}",
         "total_label": "Total:"
     },
+    
+    # Pesan pembuatan file
+    "file_generation": {
+        "generating_file": "📄 Membuat file...",
+        "file_ready": "📄 File untuk upload {file_type} siap!",
+        "success_title": "✅ **File {file_type} berhasil dibuat!**",
+        "filename": "📁 **Nama file:** {filename}",
+        "positions_count": "📊 **Posisi:** {count}",
+        "generation_date": "📅 **Tanggal:** {date}",
+        "show_table": "📊 Tampilkan tabel",
+        "back_to_edit": "◀️ Kembali ke edit",
+        "download_poster_file": "📄 Download file poster",
+        "download_google_sheets_file": "📊 Download file Google Sheets",
+        "matching_table_title": "📊 **Tabel pencocokan bahan:**",
+        "table_header": "| № | Item struk | Bahan | Status | Kesamaan |",
+        "table_separator": "|---|---|---|---|---|",
+        "legend_title": "💡 **Legenda:**",
+        "legend_matched": "✅ - Dicocokkan",
+        "legend_partial": "⚠️ - Sebagian dicocokkan",
+        "legend_not_matched": "❌ - Tidak dicocokkan",
+        "not_matched": "Tidak dicocokkan",
+        "error_generating_file": "❌ Error membuat file: {error}",
+        "google_sheets_handler_unavailable": "❌ Google Sheets handler tidak tersedia untuk pembuatan Excel",
+        "ingredient_matching_handler_unavailable": "❌ Ingredient matching handler tidak tersedia",
+        "matching_results_not_found": "❌ Hasil pencocokan tidak ditemukan",
+        "receipt_data_not_found": "❌ Data struk tidak ditemukan"
+    },
+    
+    # Pesan umum dan helper
+    "common": {
+        "no_data_to_display": "Tidak ada data untuk ditampilkan",
+        "page": "Halaman {page}",
+        "unknown_ingredient_type": "DEBUG: Tipe bahan tidak dikenal: {ingredient_type}",
+        "loaded_poster_ingredients": "DEBUG: Dimuat {count} bahan poster",
+        "loaded_google_sheets_ingredients": "✅ Dimuat {count} bahan Google Sheets sesuai permintaan",
+        "debug_first_ingredients": "DEBUG: 5 bahan pertama: {ingredients}",
+        "navigation_buttons": {
+            "first_page": "⏮️",
+            "previous_page": "◀️", 
+            "next_page": "▶️",
+            "last_page": "⏭️"
+        },
+        "status_emojis": {
+            "confirmed": "✅",
+            "error": "🔴",
+            "partial": "⚠️",
+            "no_match": "❌",
+            "exact_match": "🟢",
+            "matched": "✅",
+            "partial_match": "🟡",
+            "unknown": "❓"
+        }
+    },
+    
+    # Pesan pemformatan
+    "formatters": {
+        "no_data_to_display": "Tidak ada data untuk ditampilkan",
+        "table_headers": {
+            "number": "№",
+            "product": "Barang",
+            "quantity": "Jml",
+            "price": "Harga",
+            "amount": "Jumlah"
+        },
+        "total_label": "Total:"
+    }
     
 }

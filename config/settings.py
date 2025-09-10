@@ -40,6 +40,7 @@ class BotConfig:
         self.AWAITING_TOTAL_EDIT = 5
         self.AWAITING_INGREDIENT_MATCHING = 6
         self.AWAITING_MANUAL_MATCH = 7
+        self.AWAITING_DASHBOARD = 8
         
         # Message settings
         self.MAX_MESSAGE_LENGTH = 4096

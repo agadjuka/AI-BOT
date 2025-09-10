@@ -128,9 +128,20 @@ def create_application() -> Application:
 
     # Create conversation handler
     conv_handler = ConversationHandler(
-        entry_points=[MessageHandler(filters.PHOTO, message_handlers.handle_photo)],
+        entry_points=[
+            CommandHandler("start", message_handlers.start),
+            CommandHandler("reset_language", message_handlers.reset_language),
+            CommandHandler("dashboard", message_handlers.dashboard),
+            MessageHandler(filters.PHOTO, message_handlers.handle_photo)
+        ],
         states={
             config.AWAITING_CORRECTION: [
+                CallbackQueryHandler(callback_handlers.handle_correction_choice),
+                CommandHandler("dashboard", message_handlers.dashboard),
+                MessageHandler(filters.TEXT & ~filters.COMMAND, message_handlers.handle_user_input),
+                MessageHandler(filters.PHOTO, message_handlers.handle_photo)
+            ],
+            config.AWAITING_DASHBOARD: [
                 CallbackQueryHandler(callback_handlers.handle_correction_choice),
                 CommandHandler("dashboard", message_handlers.dashboard),
                 MessageHandler(filters.TEXT & ~filters.COMMAND, message_handlers.handle_user_input),
@@ -174,13 +185,14 @@ def create_application() -> Application:
                 MessageHandler(filters.PHOTO, message_handlers.handle_photo)
             ],
         },
-        fallbacks=[CommandHandler("cancel", message_handlers.start)],
+        fallbacks=[
+            CommandHandler("cancel", message_handlers.start),
+            CommandHandler("dashboard", message_handlers.dashboard)
+        ],
         per_message=False
     )
 
     # Add handlers
-    application.add_handler(CommandHandler("start", message_handlers.start))
-    application.add_handler(CommandHandler("dashboard", message_handlers.dashboard))
     application.add_handler(conv_handler)
     
     return application
