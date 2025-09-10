@@ -22,6 +22,21 @@ from telegram.ext import (
 )
 from telegram.error import Conflict, NetworkError
 
+# Инициализация клиента Firestore
+# Этот код будет работать автоматически в Cloud Run
+# и при локальной настройке с переменной окружения.
+from google.cloud import firestore
+
+# Инициализация клиента Firestore с обработкой ошибок
+try:
+    db = firestore.Client(database='billscaner')
+    print("✅ Firestore клиент инициализирован успешно (база: billscaner)")
+except Exception as e:
+    print(f"❌ Ошибка инициализации Firestore: {e}")
+    print("💡 Убедитесь, что переменная GOOGLE_APPLICATION_CREDENTIALS установлена")
+    print(f"💡 Текущее значение: {os.environ.get('GOOGLE_APPLICATION_CREDENTIALS', 'НЕ УСТАНОВЛЕНО')}")
+    db = None
+
 # Проверяем совместимость numpy/pandas перед импортом других модулей
 try:
     import numpy as np
@@ -117,35 +132,43 @@ def create_application() -> Application:
         states={
             config.AWAITING_CORRECTION: [
                 CallbackQueryHandler(callback_handlers.handle_correction_choice),
+                CommandHandler("dashboard", message_handlers.dashboard),
                 MessageHandler(filters.TEXT & ~filters.COMMAND, message_handlers.handle_user_input),
                 MessageHandler(filters.PHOTO, message_handlers.handle_photo)
             ],
             config.AWAITING_INPUT: [
+                CommandHandler("dashboard", message_handlers.dashboard),
                 MessageHandler(filters.TEXT & ~filters.COMMAND, message_handlers.handle_user_input),
                 MessageHandler(filters.PHOTO, message_handlers.handle_photo)
             ],
             config.AWAITING_LINE_NUMBER: [
+                CommandHandler("dashboard", message_handlers.dashboard),
                 MessageHandler(filters.TEXT & ~filters.COMMAND, message_handlers.handle_line_number_input),
                 MessageHandler(filters.PHOTO, message_handlers.handle_photo)
             ],
             config.AWAITING_FIELD_EDIT: [
                 CallbackQueryHandler(callback_handlers.handle_correction_choice), 
+                CommandHandler("dashboard", message_handlers.dashboard),
                 MessageHandler(filters.TEXT & ~filters.COMMAND, message_handlers.handle_user_input),
                 MessageHandler(filters.PHOTO, message_handlers.handle_photo)
             ],
             config.AWAITING_DELETE_LINE_NUMBER: [
+                CommandHandler("dashboard", message_handlers.dashboard),
                 MessageHandler(filters.TEXT & ~filters.COMMAND, message_handlers.handle_delete_line_number_input),
                 MessageHandler(filters.PHOTO, message_handlers.handle_photo)
             ],
             config.AWAITING_TOTAL_EDIT: [
+                CommandHandler("dashboard", message_handlers.dashboard),
                 MessageHandler(filters.TEXT & ~filters.COMMAND, message_handlers.handle_total_edit_input),
                 MessageHandler(filters.PHOTO, message_handlers.handle_photo)
             ],
             config.AWAITING_INGREDIENT_MATCHING: [
                 CallbackQueryHandler(callback_handlers.handle_correction_choice),
+                CommandHandler("dashboard", message_handlers.dashboard),
                 MessageHandler(filters.PHOTO, message_handlers.handle_photo)
             ],
             config.AWAITING_MANUAL_MATCH: [
+                CommandHandler("dashboard", message_handlers.dashboard),
                 MessageHandler(filters.TEXT & ~filters.COMMAND, message_handlers.handle_ingredient_matching_input),
                 CallbackQueryHandler(callback_handlers.handle_correction_choice),
                 MessageHandler(filters.PHOTO, message_handlers.handle_photo)
@@ -157,6 +180,7 @@ def create_application() -> Application:
 
     # Add handlers
     application.add_handler(CommandHandler("start", message_handlers.start))
+    application.add_handler(CommandHandler("dashboard", message_handlers.dashboard))
     application.add_handler(conv_handler)
     
     return application

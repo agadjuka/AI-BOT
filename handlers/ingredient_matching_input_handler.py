@@ -7,6 +7,7 @@ from telegram.ext import ContextTypes
 from models.receipt import ReceiptData
 from models.ingredient_matching import IngredientMatchingResult
 from handlers.base_message_handler import BaseMessageHandler
+from config.locales.locale_manager import LocaleManager
 
 
 class IngredientMatchingInputHandler(BaseMessageHandler):
@@ -23,7 +24,7 @@ class IngredientMatchingInputHandler(BaseMessageHandler):
                 message_id=update.message.message_id
             )
         except Exception as e:
-            print(f"Не удалось удалить сообщение пользователя: {e}")
+            print(f"Failed to delete user message: {e}")
         
         # Check if we're waiting for search input
         if context.user_data.get('awaiting_search'):
@@ -56,7 +57,7 @@ class IngredientMatchingInputHandler(BaseMessageHandler):
         
         if not matching_result or current_match_index >= len(matching_result.matches):
             await self.ui_manager.send_temp(
-                update, context, "Ошибка: данные сопоставления не найдены.", duration=5
+                update, context, self.locale_manager.get_text("matching.matching_data_not_found", context), duration=5
             )
             return self.config.AWAITING_CORRECTION
         
@@ -66,7 +67,7 @@ class IngredientMatchingInputHandler(BaseMessageHandler):
             if user_input == "0":
                 # Skip this ingredient
                 await self.ui_manager.send_temp(
-                    update, context, f"✅ Пропущен ингредиент: {current_match.receipt_item_name}", duration=2
+                    update, context, self.locale_manager.get_text("matching.ingredient_skipped", context, ingredient_name=current_match.receipt_item_name), duration=2
                 )
                 await self._process_next_ingredient_match(update, context)
                 
@@ -75,7 +76,7 @@ class IngredientMatchingInputHandler(BaseMessageHandler):
                 query = user_input[7:].strip()
                 if not query:
                     await self.ui_manager.send_temp(
-                        update, context, "Введите поисковый запрос после 'search:'", duration=5
+                        update, context, self.locale_manager.get_text("matching.enter_search_query", context), duration=5
                     )
                     return self.config.AWAITING_MANUAL_MATCH
                 
@@ -99,26 +100,26 @@ class IngredientMatchingInputHandler(BaseMessageHandler):
                         context.user_data['ingredient_matching_result'] = matching_result
                         
                         await self.ui_manager.send_temp(
-                            update, context, f"✅ Сопоставлено: {current_match.receipt_item_name} → {selected_suggestion['name']}", duration=2
+                            update, context, self.locale_manager.get_text("matching.ingredient_matched", context, receipt_item=current_match.receipt_item_name, matched_ingredient=selected_suggestion['name']), duration=2
                         )
                         await self._process_next_ingredient_match(update, context)
                         
                     else:
                         await self.ui_manager.send_temp(
-                            update, context, f"Неверный номер. Введите число от 1 до {len(current_match.suggested_matches)} или 0 для пропуска.", duration=5
+                            update, context, self.locale_manager.get_text("matching.invalid_suggestion_number", context, max_number=len(current_match.suggested_matches)), duration=5
                         )
                         return self.config.AWAITING_MANUAL_MATCH
                         
                 except ValueError:
                     await self.ui_manager.send_temp(
-                        update, context, "Неверный формат. Введите номер предложения, 0 для пропуска или 'search: запрос' для поиска.", duration=5
+                        update, context, self.locale_manager.get_text("matching.invalid_format", context), duration=5
                     )
                     return self.config.AWAITING_MANUAL_MATCH
                     
         except Exception as e:
-            print(f"Ошибка при обработке ручного сопоставления: {e}")
+            print(f"Error processing manual matching: {e}")
             await self.ui_manager.send_temp(
-                update, context, "Произошла ошибка. Попробуйте еще раз.", duration=5
+                update, context, self.locale_manager.get_text("matching.try_again", context), duration=5
             )
             return self.config.AWAITING_MANUAL_MATCH
         
@@ -131,7 +132,7 @@ class IngredientMatchingInputHandler(BaseMessageHandler):
         
         if not matching_result:
             await self.ui_manager.send_temp(
-                update, context, "Ошибка: данные сопоставления не найдены.", duration=5
+                update, context, self.locale_manager.get_text("matching.matching_data_not_found", context), duration=5
             )
             return self.config.AWAITING_CORRECTION
         
@@ -146,9 +147,9 @@ class IngredientMatchingInputHandler(BaseMessageHandler):
             
             if filtered_results:
                 # Show search results with buttons
-                search_text = f"**Результаты поиска для '{query}':**\n\n"
-                search_text += f"Найдено вариантов: **{len(filtered_results)}**\n\n"
-                search_text += "**Выберите ингредиент для сопоставления:**\n"
+                search_text = self.locale_manager.get_text("matching.search_results_title", context, query=query)
+                search_text += self.locale_manager.get_text("matching.found_variants", context, count=len(filtered_results))
+                search_text += self.locale_manager.get_text("matching.select_ingredient", context)
                 
                 # Create horizontal buttons for search results (max 2 per row)
                 keyboard = []
@@ -166,8 +167,8 @@ class IngredientMatchingInputHandler(BaseMessageHandler):
                 
                 # Add control buttons
                 keyboard.extend([
-                    [InlineKeyboardButton("🔍 Новый поиск", callback_data="select_position_for_matching")],
-                    [InlineKeyboardButton("📋 Назад к обзору", callback_data="back_to_receipt")]
+                    [InlineKeyboardButton(self.locale_manager.get_text("matching.new_search", context), callback_data="select_position_for_matching")],
+                    [InlineKeyboardButton(self.locale_manager.get_text("matching.back_to_receipt", context), callback_data="back_to_receipt")]
                 ])
                 
                 reply_markup = InlineKeyboardMarkup(keyboard)
@@ -181,22 +182,20 @@ class IngredientMatchingInputHandler(BaseMessageHandler):
             else:
                 await self.ui_manager.send_menu(
                     update, context,
-                    f"❌ **По запросу '{query}' не найдено подходящих вариантов**\n\n"
-                    "Попробуйте другой поисковый запрос или вернитесь к обзору.",
+                    self.locale_manager.get_text("matching.no_suitable_variants", context, query=query),
                     InlineKeyboardMarkup([
-                        [InlineKeyboardButton("🔍 Новый поиск", callback_data="select_position_for_matching")],
-                        [InlineKeyboardButton("📋 Назад к обзору", callback_data="back_to_receipt")]
+                        [InlineKeyboardButton(self.locale_manager.get_text("matching.new_search", context), callback_data="select_position_for_matching")],
+                        [InlineKeyboardButton(self.locale_manager.get_text("matching.back_to_receipt", context), callback_data="back_to_receipt")]
                     ]),
                     'Markdown'
                 )
         else:
             await self.ui_manager.send_menu(
                 update, context,
-                f"❌ **По запросу '{query}' ничего не найдено**\n\n"
-                "Попробуйте другой поисковый запрос или вернитесь к обзору.",
+                self.locale_manager.get_text("matching.nothing_found", context, query=query),
                 InlineKeyboardMarkup([
-                    [InlineKeyboardButton("🔍 Новый поиск", callback_data="select_position_for_matching")],
-                    [InlineKeyboardButton("📋 Назад к обзору", callback_data="back_to_receipt")]
+                    [InlineKeyboardButton(self.locale_manager.get_text("matching.new_search", context), callback_data="select_position_for_matching")],
+                    [InlineKeyboardButton(self.locale_manager.get_text("matching.back_to_receipt", context), callback_data="back_to_receipt")]
                 ]),
                 'Markdown'
             )
@@ -211,7 +210,7 @@ class IngredientMatchingInputHandler(BaseMessageHandler):
         
         if not matching_result or current_match_index >= len(matching_result.matches):
             await self.ui_manager.send_temp(
-                update, context, "Ошибка: данные сопоставления не найдены.", duration=5
+                update, context, self.locale_manager.get_text("matching.matching_data_not_found", context), duration=5
             )
             return self.config.AWAITING_CORRECTION
         
@@ -228,9 +227,9 @@ class IngredientMatchingInputHandler(BaseMessageHandler):
             
             if filtered_results:
                 # Show search results with buttons
-                progress_text = f"**Результаты поиска для '{query}':**\n\n"
-                progress_text += f"**Текущий товар:** {current_match.receipt_item_name}\n\n"
-                progress_text += "**Выберите подходящий ингредиент:**\n"
+                progress_text = self.locale_manager.get_text("matching.search_results_title", context, query=query)
+                progress_text += self.locale_manager.get_text("matching.current_item", context, item_name=current_match.receipt_item_name)
+                progress_text += self.locale_manager.get_text("matching.select_ingredient", context)
                 
                 # Create buttons for search results (max 4 buttons)
                 keyboard = []
@@ -241,8 +240,8 @@ class IngredientMatchingInputHandler(BaseMessageHandler):
                     keyboard.append([InlineKeyboardButton(button_text, callback_data=f"select_search_{i}")])
                 
                 # Add control buttons
-                keyboard.append([InlineKeyboardButton("🔍 Новый поиск", callback_data="search_ingredient")])
-                keyboard.append([InlineKeyboardButton("⏭️ Пропустить", callback_data="skip_ingredient")])
+                keyboard.append([InlineKeyboardButton(self.locale_manager.get_text("matching.new_search", context), callback_data="search_ingredient")])
+                keyboard.append([InlineKeyboardButton(self.locale_manager.get_text("matching.skip_ingredient", context), callback_data="skip_ingredient")])
                 
                 reply_markup = InlineKeyboardMarkup(keyboard)
                 
@@ -254,11 +253,11 @@ class IngredientMatchingInputHandler(BaseMessageHandler):
                 context.user_data['search_results'] = filtered_results
             else:
                 await self.ui_manager.send_temp(
-                    update, context, f"По запросу '{query}' не найдено подходящих вариантов (с вероятностью > 50%).", duration=5
+                    update, context, self.locale_manager.get_text("matching.no_suitable_results", context, query=query), duration=5
                 )
         else:
             await self.ui_manager.send_temp(
-                update, context, f"По запросу '{query}' ничего не найдено.", duration=5
+                update, context, self.locale_manager.get_text("matching.search_nothing_found", context, query=query), duration=5
             )
         
         return self.config.AWAITING_MANUAL_MATCH
@@ -272,7 +271,7 @@ class IngredientMatchingInputHandler(BaseMessageHandler):
             matching_result = context.user_data.get('ingredient_matching_result')
             if not matching_result or line_number < 1 or line_number > len(matching_result.matches):
                 await self.ui_manager.send_temp(
-                    update, context, f"Неверный номер строки. Введите число от 1 до {len(matching_result.matches) if matching_result else 0}", duration=5
+                    update, context, self.locale_manager.get_text("matching.invalid_line_number", context, max_lines=len(matching_result.matches) if matching_result else 0), duration=5
                 )
                 return self.config.AWAITING_MANUAL_MATCH
             
@@ -284,7 +283,7 @@ class IngredientMatchingInputHandler(BaseMessageHandler):
             
             # Show instruction to enter ingredient name
             await self.ui_manager.send_temp(
-                update, context, f"Выбрана строка {line_number}. Теперь введите название ингредиента из постер для поиска:", duration=10
+                update, context, self.locale_manager.get_text("matching.line_selected", context, line_number=line_number), duration=10
             )
             context.user_data['awaiting_ingredient_name_for_position'] = True
             
@@ -292,7 +291,7 @@ class IngredientMatchingInputHandler(BaseMessageHandler):
             
         except ValueError:
             await self.ui_manager.send_temp(
-                update, context, "Неверный формат. Введите только номер строки (например: `3`):", duration=5
+                update, context, self.locale_manager.get_text("matching.invalid_line_format", context), duration=5
             )
             return self.config.AWAITING_MANUAL_MATCH
     
@@ -303,7 +302,7 @@ class IngredientMatchingInputHandler(BaseMessageHandler):
         
         if not matching_result:
             await self.ui_manager.send_temp(
-                update, context, "Ошибка: данные сопоставления не найдены.", duration=5
+                update, context, self.locale_manager.get_text("matching.matching_data_not_found", context), duration=5
             )
             return self.config.AWAITING_MANUAL_MATCH
         
@@ -318,9 +317,9 @@ class IngredientMatchingInputHandler(BaseMessageHandler):
             
             if filtered_results:
                 # Show search results with buttons
-                search_text = f"**Результаты поиска для '{user_input}':**\n\n"
-                search_text += f"Найдено вариантов: **{len(filtered_results)}**\n\n"
-                search_text += "**Выберите ингредиент для сопоставления:**\n"
+                search_text = self.locale_manager.get_text("matching.search_results_title", context, query=user_input)
+                search_text += self.locale_manager.get_text("matching.found_variants", context, count=len(filtered_results))
+                search_text += self.locale_manager.get_text("matching.select_ingredient", context)
                 
                 # Create horizontal buttons for search results (max 2 per row)
                 keyboard = []
@@ -338,7 +337,7 @@ class IngredientMatchingInputHandler(BaseMessageHandler):
                 
                 # Add control buttons
                 keyboard.extend([
-                    [InlineKeyboardButton("◀️ Назад", callback_data="back_to_receipt")]
+                    [InlineKeyboardButton(self.locale_manager.get_text("matching.back", context), callback_data="back_to_receipt")]
                 ])
                 
                 reply_markup = InlineKeyboardMarkup(keyboard)
@@ -352,20 +351,18 @@ class IngredientMatchingInputHandler(BaseMessageHandler):
             else:
                 await self.ui_manager.send_menu(
                     update, context,
-                    f"❌ **По запросу '{user_input}' не найдено подходящих вариантов**\n\n"
-                    "Попробуйте другой поисковый запрос или вернитесь к обзору.",
+                    self.locale_manager.get_text("matching.no_suitable_variants", context, query=user_input),
                     InlineKeyboardMarkup([
-                        [InlineKeyboardButton("◀️ Назад", callback_data="back_to_receipt")]
+                        [InlineKeyboardButton(self.locale_manager.get_text("matching.back", context), callback_data="back_to_receipt")]
                     ]),
                     'Markdown'
                 )
         else:
             await self.ui_manager.send_menu(
                 update, context,
-                f"❌ **По запросу '{user_input}' ничего не найдено**\n\n"
-                "Попробуйте другой поисковый запрос или вернитесь к обзору.",
+                self.locale_manager.get_text("matching.nothing_found", context, query=user_input),
                 InlineKeyboardMarkup([
-                    [InlineKeyboardButton("◀️ Назад", callback_data="back_to_receipt")]
+                    [InlineKeyboardButton(self.locale_manager.get_text("matching.back", context), callback_data="back_to_receipt")]
                 ]),
                 'Markdown'
             )
@@ -401,13 +398,13 @@ class IngredientMatchingInputHandler(BaseMessageHandler):
         current_match = matching_result.matches[current_match_index]
         
         # Show current match info
-        progress_text = f"**Сопоставление ингредиентов** ({current_match_index + 1}/{len(matching_result.matches)})\n\n"
-        progress_text += f"**Текущий товар:** {current_match.receipt_item_name}\n\n"
+        progress_text = self.locale_manager.get_text("matching.matching_progress", context, current=current_match_index + 1, total=len(matching_result.matches))
+        progress_text += self.locale_manager.get_text("matching.current_item", context, item_name=current_match.receipt_item_name)
         
         if current_match.match_status.value == "exact":
             # Already matched, show confirmation
-            progress_text += f"✅ **Автоматически сопоставлено:** {current_match.matched_ingredient_name}\n\n"
-            progress_text += "Нажмите /continue для перехода к следующему товару."
+            progress_text += self.locale_manager.get_text("matching.auto_matched", context, ingredient_name=current_match.matched_ingredient_name)
+            progress_text += self.locale_manager.get_text("matching.continue_instruction", context)
         else:
             # Show suggestions for manual matching
             if current_match.suggested_matches:
@@ -427,7 +424,7 @@ class IngredientMatchingInputHandler(BaseMessageHandler):
         
         if not matching_result:
             await self.ui_manager.send_temp(
-                update, context, "Ошибка: данные сопоставления не найдены.", duration=5
+                update, context, self.locale_manager.get_text("matching.matching_data_not_found", context), duration=5
             )
             return
         
@@ -436,8 +433,8 @@ class IngredientMatchingInputHandler(BaseMessageHandler):
         
         # Add action buttons
         keyboard = [
-            [InlineKeyboardButton("🔄 Сопоставить заново", callback_data="rematch_ingredients")],
-            [InlineKeyboardButton("📋 Вернуться к чеку", callback_data="back_to_receipt")]
+            [InlineKeyboardButton(self.locale_manager.get_text("matching.rematch_ingredients", context), callback_data="rematch_ingredients")],
+            [InlineKeyboardButton(self.locale_manager.get_text("matching.back_to_receipt_final", context), callback_data="back_to_receipt")]
         ]
         
         reply_markup = InlineKeyboardMarkup(keyboard)

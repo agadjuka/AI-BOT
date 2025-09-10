@@ -13,6 +13,8 @@ from handlers.input_handler import InputHandler
 from handlers.ingredient_matching_input_handler import IngredientMatchingInputHandler
 from handlers.google_sheets_input_handler import GoogleSheetsInputHandler
 from utils.common_handlers import CommonHandlers
+from config.locales.locale_manager import LocaleManager
+from config.locales.language_buttons import get_language_keyboard
 
 
 class MessageHandlers(BaseMessageHandler):
@@ -20,6 +22,9 @@ class MessageHandlers(BaseMessageHandler):
     
     def __init__(self, config: BotConfig, analysis_service: ReceiptAnalysisService):
         super().__init__(config, analysis_service)
+        
+        # Initialize LocaleManager
+        self.locale_manager = LocaleManager()
         
         # Initialize specialized handlers
         self.photo_handler = PhotoHandler(config, analysis_service)
@@ -30,22 +35,54 @@ class MessageHandlers(BaseMessageHandler):
     
     async def start(self, update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         """Handle /start command"""
-        # Create start menu with buttons
+        # Always show language selection on /start command
+        # This ensures users can change language anytime
+        language_keyboard = get_language_keyboard()
+        await update.message.reply_html(
+            self.locale_manager.get_text("welcome.choose_language", context),
+            reply_markup=language_keyboard
+        )
+        return self.config.AWAITING_CORRECTION
+    
+    async def reset_language(self, update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+        """Handle /reset_language command - reset language and show selection"""
+        # Clear language from user_data
+        context.user_data.pop('language', None)
+        
+        # Show language selection
+        language_keyboard = get_language_keyboard()
+        await update.message.reply_html(
+            self.locale_manager.get_text("welcome.choose_language", context),
+            reply_markup=language_keyboard
+        )
+        return self.config.AWAITING_CORRECTION
+    
+    async def dashboard(self, update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
+        """Handle /dashboard command - show user dashboard"""
+        # Set anchor message for dashboard
+        self.ui_manager.set_anchor(context, update.message.message_id)
+        
+        # Create dashboard keyboard
         keyboard = [
-            [InlineKeyboardButton("📸 Анализировать чек", callback_data="analyze_receipt")],
-            [InlineKeyboardButton("📄 Получить файл для загрузки в постер", callback_data="generate_supply_file")]
+            [InlineKeyboardButton(
+                self.locale_manager.get_text("welcome.dashboard.buttons.language_settings", context), 
+                callback_data="dashboard_language_settings"
+            )],
+            [InlineKeyboardButton(
+                self.locale_manager.get_text("buttons.back_to_main_menu", context), 
+                callback_data="back_to_main_menu"
+            )]
         ]
         
-        # Add back button if there's existing receipt data
-        if context.user_data.get('receipt_data'):
-            keyboard.append([InlineKeyboardButton("◀️ Вернуться к чеку", callback_data="back_to_receipt")])
         reply_markup = InlineKeyboardMarkup(keyboard)
         
+        # Send dashboard message
         await update.message.reply_html(
-            f"Привет, {update.effective_user.mention_html()}! 👋\n\n"
-            "Выберите действие:",
+            self.locale_manager.get_text("welcome.dashboard.welcome_message", context, 
+                                       user=update.effective_user.mention_html()),
             reply_markup=reply_markup
         )
+        
         return self.config.AWAITING_CORRECTION
     
     async def handle_photo(self, update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
@@ -124,7 +161,7 @@ class MessageHandlers(BaseMessageHandler):
                         context.user_data['changed_ingredient_indices'] = changed_indices
             
             if not matching_result:
-                print(f"DEBUG: No matching result found to update after {change_type}")
+                print(self.locale_manager.get_text("debug.no_matching_result", context, change_type=change_type))
                 return
             
             # For different change types, we need different handling
@@ -135,7 +172,7 @@ class MessageHandlers(BaseMessageHandler):
                 # Add a new empty match for the new item
                 from models.ingredient_matching import IngredientMatch, MatchStatus
                 new_match = IngredientMatch(
-                    receipt_item_name="Новый товар",
+                    receipt_item_name=self.locale_manager.get_text("analysis.new_item_name", context),
                     matched_ingredient_name="",
                     matched_ingredient_id="",
                     match_status=MatchStatus.NO_MATCH,
@@ -148,7 +185,7 @@ class MessageHandlers(BaseMessageHandler):
                 # For item edits, we need to regenerate matching for that specific item
                 # This is more complex, so for now we'll just mark that matching needs to be redone
                 # The user will need to redo ingredient matching if they want accurate results
-                print("DEBUG: Item edited - ingredient matching may need to be redone")
+                print(self.locale_manager.get_text("debug.item_edited", context))
                 return
                 
             # Update context
@@ -166,10 +203,10 @@ class MessageHandlers(BaseMessageHandler):
                 if old_receipt_hash != new_receipt_hash:
                     self.ingredient_storage.clear_matching_result(user_id, old_receipt_hash)
             
-            print(f"DEBUG: Updated ingredient matching after {change_type}, new hash: {new_receipt_hash}, success: {success}")
+            print(self.locale_manager.get_text("debug.matching_updated", context, change_type=change_type, new_receipt_hash=new_receipt_hash, success=success))
                 
         except Exception as e:
-            print(f"DEBUG: Error updating ingredient matching after {change_type}: {e}")
+            print(self.locale_manager.get_text("debug.matching_update_error", context, change_type=change_type, error=e))
     
     async def _update_ingredient_matching_after_deletion(self, update: Update, context: ContextTypes.DEFAULT_TYPE, 
                                                        receipt_data, deleted_line_number: int) -> None:
@@ -193,7 +230,7 @@ class MessageHandlers(BaseMessageHandler):
                         context.user_data['changed_ingredient_indices'] = changed_indices
             
             if not matching_result:
-                print("DEBUG: No matching result found to update after deletion")
+                print(self.locale_manager.get_text("debug.no_matching_result_deletion", context))
                 return
             
             # Find the index of the deleted item in the matching result
@@ -234,12 +271,12 @@ class MessageHandlers(BaseMessageHandler):
                     if old_receipt_hash != new_receipt_hash:
                         self.ingredient_storage.clear_matching_result(user_id, old_receipt_hash)
                 
-                print(f"DEBUG: Updated ingredient matching after deletion, new hash: {new_receipt_hash}, success: {success}")
+                print(self.locale_manager.get_text("debug.matching_updated_deletion", context, new_receipt_hash=new_receipt_hash, success=success))
             else:
-                print(f"DEBUG: Could not find matching index for deleted line {deleted_line_number}")
+                print(self.locale_manager.get_text("debug.deleted_line_not_found", context, deleted_line_number=deleted_line_number))
                 
         except Exception as e:
-            print(f"DEBUG: Error updating ingredient matching after deletion: {e}")
+            print(self.locale_manager.get_text("debug.deletion_error", context, error=e))
     
     # Additional utility methods that were in the original file
     async def _send_long_message_with_keyboard(self, message, text: str, reply_markup):

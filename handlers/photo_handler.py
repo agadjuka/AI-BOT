@@ -7,10 +7,15 @@ from telegram.ext import ContextTypes
 
 from models.receipt import ReceiptData
 from handlers.base_message_handler import BaseMessageHandler
+from config.locales.locale_manager import LocaleManager
 
 
 class PhotoHandler(BaseMessageHandler):
     """Handler for photo upload and processing"""
+    
+    def __init__(self, config, analysis_service):
+        super().__init__(config, analysis_service)
+        self.locale_manager = LocaleManager()
     
     async def handle_photo(self, update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
         """Handle photo upload"""
@@ -21,19 +26,19 @@ class PhotoHandler(BaseMessageHandler):
         self._clear_receipt_data(context)
         print(f"DEBUG: Cleared all data for new receipt upload")
         
-        processing_message = await self.ui_manager.send_temp(update, context, "Обрабатываю квитанцию", duration=10)
+        processing_message = await self.ui_manager.send_temp(update, context, self.locale_manager.get_text("status.processing_receipt", context), duration=10)
         
         photo_file = await update.message.photo[-1].get_file()
         await photo_file.download_to_drive(self.config.PHOTO_FILE_NAME)
 
         try:
-            print("🔍 Начинаем анализ чека...")
+            print(f"🔍 {self.locale_manager.get_text('status.starting_analysis', context)}")
             analysis_data = self.analysis_service.analyze_receipt(self.config.PHOTO_FILE_NAME)
-            print(f"✅ Анализ завершен, получены данные: {len(str(analysis_data))} символов")
+            print(f"✅ {self.locale_manager.get_text('status.analysis_completed', context)}")
             
             # Convert to ReceiptData model
             receipt_data = ReceiptData.from_dict(analysis_data)
-            print("✅ Данные конвертированы в ReceiptData")
+            print(f"✅ {self.locale_manager.get_text('status.converted_to_receipt_data', context)}")
             
             # Validate and correct data
             is_valid, message = self.validator.validate_receipt_data(receipt_data)
@@ -41,7 +46,7 @@ class PhotoHandler(BaseMessageHandler):
                 print(f"Предупреждение валидации: {message}")
             
             context.user_data['receipt_data'] = receipt_data
-            print("✅ Данные сохранены в user_data")
+            print(f"✅ {self.locale_manager.get_text('status.data_saved', context)}")
             # Save original data for change tracking
             context.user_data['original_data'] = ReceiptData.from_dict(receipt_data.to_dict())  # Deep copy
             
@@ -49,15 +54,15 @@ class PhotoHandler(BaseMessageHandler):
             await self._create_ingredient_matching_for_receipt(update, context, receipt_data)
             
         except (json.JSONDecodeError, KeyError, IndexError, ValueError) as e:
-            print(f"Ошибка парсинга JSON или структуры данных от Gemini: {e}")
-            await update.message.reply_text("Не удалось распознать структуру чека. Попробуйте сделать фото более четким.")
+            print(f"{self.locale_manager.get_text('errors.json_parsing_error', context)}: {e}")
+            await update.message.reply_text(self.locale_manager.get_text("errors.parsing_error", context))
             return self.config.AWAITING_CORRECTION
         
         except Exception as e:
-            print(f"❌ Критическая ошибка при обработке фото: {e}")
+            print(f"{self.locale_manager.get_text('errors.critical_photo_error', context)}: {e}")
             import traceback
             traceback.print_exc()
-            await update.message.reply_text(f"Произошла ошибка при обработке фото: {e}")
+            await update.message.reply_text(self.locale_manager.get_text("errors.critical_photo_error", context))
             return self.config.AWAITING_CORRECTION
 
         # Always show final report with edit button
@@ -119,7 +124,7 @@ class PhotoHandler(BaseMessageHandler):
         
         if not final_data:
             await self.ui_manager.send_temp(
-                update, context, "Произошла ошибка, данные не найдены.", duration=5
+                update, context, self.locale_manager.get_text("errors.data_not_found", context), duration=5
             )
             return
 
@@ -143,15 +148,15 @@ class PhotoHandler(BaseMessageHandler):
             
             # Add red marker if there are errors
             if has_errors:
-                final_report += "🔴 **Обнаружены ошибки в данных чека**\n\n"
+                final_report += self.locale_manager.get_text("analysis.errors_found", context)
             
             final_report += f"```\n{aligned_table}\n```\n\n"
             
             if abs(calculated_total - receipt_total) < 0.01:
-                final_report += "✅ **Итоговая сумма соответствует!**\n"
+                final_report += self.locale_manager.get_text("analysis.total_matches", context)
             else:
                 difference = abs(calculated_total - receipt_total)
-                final_report += f"❗ **Несоответствие итоговой суммы! Разница: {self.number_formatter.format_number_with_spaces(difference)}**\n"
+                final_report += self.locale_manager.get_text("analysis.total_mismatch", context).format(difference=self.number_formatter.format_number_with_spaces(difference))
             
             # Save report in cache for quick access
             context.user_data['cached_final_report'] = final_report
@@ -182,7 +187,7 @@ class PhotoHandler(BaseMessageHandler):
                     # If there are calculation errors, unreadable data or status not confirmed
                     if status != 'confirmed' or has_calculation_error or is_unreadable:
                         fix_buttons.append(InlineKeyboardButton(
-                            f"Исправить строку {item.line_number}",
+                            self.locale_manager.get_text("buttons.fix_line", context).format(line_number=item.line_number),
                             callback_data=f"edit_{item.line_number}"
                         ))
                 
@@ -209,27 +214,27 @@ class PhotoHandler(BaseMessageHandler):
             
             # Add line management buttons
             keyboard.append([
-                InlineKeyboardButton("➕ Добавить строку", callback_data="add_row"),
-                InlineKeyboardButton("➖ Удалить строку", callback_data="delete_row")
+                InlineKeyboardButton(self.locale_manager.get_text("buttons.add_row", context), callback_data="add_row"),
+                InlineKeyboardButton(self.locale_manager.get_text("buttons.delete_row", context), callback_data="delete_row")
             ])
             
             # Add edit line by number button under add/delete buttons
-            keyboard.append([InlineKeyboardButton("🔢 Редактировать строку по номеру", callback_data="edit_line_number")])
+            keyboard.append([InlineKeyboardButton(self.locale_manager.get_text("buttons.edit_line_number", context), callback_data="edit_line_number")])
             
             # Add total edit and reanalysis buttons in one row
             keyboard.append([
-                InlineKeyboardButton("💰 Редактировать Итого", callback_data="edit_total"),
-                InlineKeyboardButton("🔄 Проанализировать заново", callback_data="reanalyze")
+                InlineKeyboardButton(self.locale_manager.get_text("buttons.edit_total", context), callback_data="edit_total"),
+                InlineKeyboardButton(self.locale_manager.get_text("buttons.reanalyze", context), callback_data="reanalyze")
             ])
             
             # Add Google Sheets upload button
-            keyboard.append([InlineKeyboardButton("📊 Загрузить в Google Таблицы", callback_data="upload_to_google_sheets")])
+            keyboard.append([InlineKeyboardButton(self.locale_manager.get_text("buttons.upload_to_google_sheets", context), callback_data="upload_to_google_sheets")])
             
             # Add file generation button
-            keyboard.append([InlineKeyboardButton("📄 Получить файл для загрузки в постер", callback_data="generate_supply_file")])
+            keyboard.append([InlineKeyboardButton(self.locale_manager.get_text("buttons.generate_supply_file", context), callback_data="generate_supply_file")])
             
             # Add back button (required in every menu)
-            keyboard.append([InlineKeyboardButton("◀️ Вернуться к чеку", callback_data="back_to_receipt")])
+            keyboard.append([InlineKeyboardButton(self.locale_manager.get_text("buttons.back_to_receipt", context), callback_data="back_to_receipt")])
             
             reply_markup = InlineKeyboardMarkup(keyboard)
             
@@ -241,7 +246,7 @@ class PhotoHandler(BaseMessageHandler):
             print(f"DEBUG: Final report sent, message ID: {message.message_id}")
         
         except Exception as e:
-            print(f"Ошибка при формировании отчета: {e}")
+            print(f"{self.locale_manager.get_text('errors.report_formation_error', context)}: {e}")
             await self.ui_manager.send_temp(
-                update, context, f"Произошла ошибка при формировании отчета: {e}", duration=5
+                update, context, self.locale_manager.get_text("errors.field_edit_error", context).format(error=e), duration=5
             )

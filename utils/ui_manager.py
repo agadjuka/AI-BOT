@@ -8,6 +8,7 @@ from telegram import Update, InlineKeyboardMarkup, Message
 from telegram.ext import ContextTypes
 
 from config.settings import BotConfig
+from config.locales.locale_manager import LocaleManager
 
 
 class UIManager:
@@ -19,11 +20,12 @@ class UIManager:
     - Single menu: One working bot message under anchor
     - All transitions via editMessageText/editMessageReplyMarkup
     - Temporary hints/errors as ephemeral messages with auto-delete
-    - Every menu must have "◀️ Вернуться к чеку" button
+    - Every menu must have back to receipt button
     """
     
     def __init__(self, config: BotConfig):
         self.config = config
+        self.locale = LocaleManager()
         self.MAX_MESSAGE_LENGTH = config.MAX_MESSAGE_LENGTH
         self.MESSAGE_DELAY = config.MESSAGE_DELAY
     
@@ -56,7 +58,7 @@ class UIManager:
             chat_id = update.message.chat_id
             reply_method = update.message.reply_text
         else:
-            raise ValueError("Invalid update object")
+            raise ValueError(self.locale.get_text("errors.invalid_update_object", context))
         
         # Send message with keyboard
         if len(text) <= self.MAX_MESSAGE_LENGTH:
@@ -118,7 +120,7 @@ class UIManager:
             return True
             
         except Exception as e:
-            print(f"Failed to edit message {message_id}: {e}")
+            print(self.locale.get_text("errors.failed_to_edit_message", context, message_id=message_id, error=str(e)))
             return False
     
     async def send_temp(self, update: Update, context: ContextTypes.DEFAULT_TYPE,
@@ -144,7 +146,7 @@ class UIManager:
         elif hasattr(update, 'message') and update.message:
             reply_method = update.message.reply_text
         else:
-            raise ValueError("Invalid update object")
+            raise ValueError(self.locale.get_text("errors.invalid_update_object", context))
         
         # Send message
         sent_message = await reply_method(text, parse_mode=parse_mode)
@@ -160,7 +162,7 @@ class UIManager:
         """
         Clean up all messages except the anchor (first receipt message)
         
-        Architecture: This is called when "Вернуться к чеку" is pressed to clean up everything except anchor
+        Architecture: This is called when back to receipt button is pressed to clean up everything except anchor
         
         Args:
             update: Telegram update object
@@ -211,7 +213,7 @@ class UIManager:
             try:
                 await context.bot.delete_message(chat_id=chat_id, message_id=message_id)
             except Exception as e:
-                print(f"Failed to delete message {message_id}: {e}")
+                print(self.locale.get_text("errors.failed_to_delete_message", context, message_id=message_id, error=str(e)))
         
         # Clear stored message IDs
         self._clear_stored_message_ids(context)
@@ -270,7 +272,7 @@ class UIManager:
     
     async def back_to_receipt(self, update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         """
-        Handle "Вернуться к чеку" button - clean up everything and show fresh root menu
+        Handle back to receipt button - clean up everything and show fresh root menu
         
         Architecture: This is the core method that implements the "back to receipt" functionality
         
@@ -377,7 +379,7 @@ class UIManager:
             try:
                 await context.bot.delete_message(chat_id=chat_id, message_id=message_id)
             except Exception as e:
-                print(f"Failed to delete message {message_id}: {e}")
+                print(self.locale.get_text("errors.failed_to_delete_message", context, message_id=message_id, error=str(e)))
         
         # Clear all stored message IDs
         self._clear_stored_message_ids(context)
@@ -390,4 +392,4 @@ class UIManager:
         try:
             await context.bot.delete_message(chat_id=chat_id, message_id=message_id)
         except Exception as e:
-            print(f"Failed to delete temporary message {message_id}: {e}")
+            print(self.locale.get_text("errors.failed_to_delete_temporary_message", context, message_id=message_id, error=str(e)))

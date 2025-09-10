@@ -17,6 +17,22 @@ from telegram.ext import (
 )
 from telegram.error import Conflict, NetworkError
 
+# Инициализация клиента Firestore
+# Этот код будет работать автоматически в Cloud Run
+# и при локальной настройке с переменной окружения.
+from google.cloud import firestore
+import os
+
+# Инициализация клиента Firestore с обработкой ошибок
+try:
+    db = firestore.Client(database='billscaner')
+    print("✅ Firestore клиент инициализирован успешно (база: billscaner)")
+except Exception as e:
+    print(f"❌ Ошибка инициализации Firestore: {e}")
+    print("💡 Убедитесь, что переменная GOOGLE_APPLICATION_CREDENTIALS установлена")
+    print(f"💡 Текущее значение: {os.environ.get('GOOGLE_APPLICATION_CREDENTIALS', 'НЕ УСТАНОВЛЕНО')}")
+    db = None
+
 from config.settings import BotConfig
 from config.prompts import PromptManager
 from services.ai_service import AIService, ReceiptAnalysisService
@@ -120,39 +136,52 @@ def main() -> None:
 
     # Create conversation handler
     conv_handler = ConversationHandler(
-        entry_points=[MessageHandler(filters.PHOTO, message_handlers.handle_photo)],
+        entry_points=[
+            CommandHandler("start", message_handlers.start),
+            CommandHandler("reset_language", message_handlers.reset_language),
+            CommandHandler("dashboard", message_handlers.dashboard),
+            MessageHandler(filters.PHOTO, message_handlers.handle_photo)
+        ],
         states={
             config.AWAITING_CORRECTION: [
                 CallbackQueryHandler(callback_handlers.handle_correction_choice),
+                CommandHandler("dashboard", message_handlers.dashboard),
                 MessageHandler(filters.TEXT & ~filters.COMMAND, message_handlers.handle_user_input),  # Add text handler for search
                 MessageHandler(filters.PHOTO, message_handlers.handle_photo)  # Add photo handler
             ],
             config.AWAITING_INPUT: [
+                CommandHandler("dashboard", message_handlers.dashboard),
                 MessageHandler(filters.TEXT & ~filters.COMMAND, message_handlers.handle_user_input),
                 MessageHandler(filters.PHOTO, message_handlers.handle_photo)  # Add photo handler
             ],
             config.AWAITING_LINE_NUMBER: [
+                CommandHandler("dashboard", message_handlers.dashboard),
                 MessageHandler(filters.TEXT & ~filters.COMMAND, message_handlers.handle_line_number_input),
                 MessageHandler(filters.PHOTO, message_handlers.handle_photo)  # Add photo handler
             ],
             config.AWAITING_FIELD_EDIT: [
                 CallbackQueryHandler(callback_handlers.handle_correction_choice), 
+                CommandHandler("dashboard", message_handlers.dashboard),
                 MessageHandler(filters.TEXT & ~filters.COMMAND, message_handlers.handle_user_input),
                 MessageHandler(filters.PHOTO, message_handlers.handle_photo)  # Add photo handler
             ],
             config.AWAITING_DELETE_LINE_NUMBER: [
+                CommandHandler("dashboard", message_handlers.dashboard),
                 MessageHandler(filters.TEXT & ~filters.COMMAND, message_handlers.handle_delete_line_number_input),
                 MessageHandler(filters.PHOTO, message_handlers.handle_photo)  # Add photo handler
             ],
             config.AWAITING_TOTAL_EDIT: [
+                CommandHandler("dashboard", message_handlers.dashboard),
                 MessageHandler(filters.TEXT & ~filters.COMMAND, message_handlers.handle_total_edit_input),
                 MessageHandler(filters.PHOTO, message_handlers.handle_photo)  # Add photo handler
             ],
             config.AWAITING_INGREDIENT_MATCHING: [
                 CallbackQueryHandler(callback_handlers.handle_correction_choice),
+                CommandHandler("dashboard", message_handlers.dashboard),
                 MessageHandler(filters.PHOTO, message_handlers.handle_photo)  # Add photo handler
             ],
             config.AWAITING_MANUAL_MATCH: [
+                CommandHandler("dashboard", message_handlers.dashboard),
                 MessageHandler(filters.TEXT & ~filters.COMMAND, message_handlers.handle_ingredient_matching_input),
                 CallbackQueryHandler(callback_handlers.handle_correction_choice),
                 MessageHandler(filters.PHOTO, message_handlers.handle_photo)  # Add photo handler
@@ -163,7 +192,6 @@ def main() -> None:
     )
 
     # Add handlers
-    application.add_handler(CommandHandler("start", message_handlers.start))
     application.add_handler(conv_handler)
 
     # 4. Запускаем бота с улучшенной обработкой ошибок и автоочисткой

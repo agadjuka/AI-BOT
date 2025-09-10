@@ -5,6 +5,7 @@ from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import ContextTypes
 
 from handlers.base_message_handler import BaseMessageHandler
+from config.locales.locale_manager import LocaleManager
 
 
 class GoogleSheetsInputHandler(BaseMessageHandler):
@@ -18,7 +19,7 @@ class GoogleSheetsInputHandler(BaseMessageHandler):
         selected_line = context.user_data.get('selected_google_sheets_line')
         if not selected_line:
             await self.ui_manager.send_temp(
-                update, context, "Ошибка: не выбрана строка для сопоставления.", duration=5
+                update, context, self.locale_manager.get_text("sheets.no_line_selected", context), duration=5
             )
             return self.config.AWAITING_CORRECTION
         
@@ -27,7 +28,7 @@ class GoogleSheetsInputHandler(BaseMessageHandler):
         
         if not google_sheets_ingredients:
             await self.ui_manager.send_temp(
-                update, context, "Ошибка: справочник Google Таблиц не загружен.", duration=5
+                update, context, self.locale_manager.get_text("sheets.dictionary_not_loaded", context), duration=5
             )
             return self.config.AWAITING_CORRECTION
         
@@ -54,7 +55,7 @@ class GoogleSheetsInputHandler(BaseMessageHandler):
             await self._show_google_sheets_search_results(update, context, user_input, search_results, selected_line)
         else:
             await self.ui_manager.send_temp(
-                update, context, f"По запросу '{user_input}' в Google Таблицах ничего не найдено.", duration=5
+                update, context, self.locale_manager.get_text("sheets.no_search_results", context, query=user_input), duration=5
             )
         
         return self.config.AWAITING_CORRECTION
@@ -65,7 +66,7 @@ class GoogleSheetsInputHandler(BaseMessageHandler):
         item_index = context.user_data.get('google_sheets_search_item_index')
         if item_index is None:
             await self.ui_manager.send_temp(
-                update, context, "Ошибка: не выбран товар для поиска.", duration=5
+                update, context, self.locale_manager.get_text("sheets.no_item_selected", context), duration=5
             )
             return self.config.AWAITING_CORRECTION
         
@@ -79,15 +80,15 @@ class GoogleSheetsInputHandler(BaseMessageHandler):
             
             if not google_sheets_ingredients:
                 await self.ui_manager.send_temp(
-                    update, context, "Ошибка: справочник Google Таблиц не загружен.", duration=5
+                    update, context, self.locale_manager.get_text("sheets.dictionary_not_loaded", context), duration=5
                 )
                 return self.config.AWAITING_CORRECTION
             
             # Save to bot data
             context.bot_data['google_sheets_ingredients'] = google_sheets_ingredients
-            print(f"✅ Загружено {len(google_sheets_ingredients)} ингредиентов Google Sheets для поиска")
+            print(self.locale_manager.get_text("sheets.ingredients_loaded_for_search", context, count=len(google_sheets_ingredients)))
         else:
-            print(f"✅ Используем уже загруженные {len(google_sheets_ingredients)} ингредиентов Google Sheets")
+            print(self.locale_manager.get_text("sheets.using_cached_ingredients", context, count=len(google_sheets_ingredients)))
         
         # Convert format from {id: {'name': name}} to {name: id} for search service
         google_sheets_ingredients_for_search = {}
@@ -118,7 +119,7 @@ class GoogleSheetsInputHandler(BaseMessageHandler):
             await self._show_google_sheets_item_search_results(update, context, user_input, search_results, item_index)
         else:
             await self.ui_manager.send_temp(
-                update, context, f"По запросу '{user_input}' в Google Таблицах ничего не найдено.", duration=5
+                update, context, self.locale_manager.get_text("sheets.no_search_results", context, query=user_input), duration=5
             )
         
         return self.config.AWAITING_CORRECTION
@@ -128,16 +129,17 @@ class GoogleSheetsInputHandler(BaseMessageHandler):
         """Show Google Sheets search results for position selection"""
         from telegram import InlineKeyboardButton, InlineKeyboardMarkup
         
-        text = f"**Результаты поиска в Google Таблицах для '{query}':**\n\n"
+        text = self.locale_manager.get_text("sheets.search_results_title", context, query=query)
         
         # Create buttons for results
         keyboard = []
         for i, result in enumerate(results[:10], 1):  # Show max 10 results
-            button_text = f"{i}. {self._truncate_name(result['name'], 25)}"
+            button_text = self.locale_manager.get_text("sheets.search_result_button", context, 
+                                                      number=i, name=self._truncate_name(result['name'], 25))
             keyboard.append([InlineKeyboardButton(button_text, callback_data=f"select_google_sheets_position_match_{selected_line}_{i}")])
         
         # Add back button
-        keyboard.append([InlineKeyboardButton("◀️ Назад", callback_data="back_to_google_sheets_matching")])
+        keyboard.append([InlineKeyboardButton(self.locale_manager.get_text("sheets.back_button", context), callback_data="back_to_google_sheets_matching")])
         
         reply_markup = InlineKeyboardMarkup(keyboard)
         
@@ -151,7 +153,7 @@ class GoogleSheetsInputHandler(BaseMessageHandler):
         from telegram import InlineKeyboardButton, InlineKeyboardMarkup
         
         print(f"DEBUG: _show_google_sheets_item_search_results called with {len(results)} results for query '{query}'")
-        text = f"**Результаты поиска в Google Таблицах для '{query}':**\n\n"
+        text = self.locale_manager.get_text("sheets.search_results_title", context, query=query)
         
         # Save search results for callback handling
         context.user_data['google_sheets_search_results'] = results
@@ -159,7 +161,8 @@ class GoogleSheetsInputHandler(BaseMessageHandler):
         # Create buttons for results in two columns
         keyboard = []
         for i, result in enumerate(results[:10], 1):  # Show max 10 results
-            button_text = f"{i}. {self._truncate_name(result['name'], 20)}"
+            button_text = self.locale_manager.get_text("sheets.search_result_button", context, 
+                                                      number=i, name=self._truncate_name(result['name'], 20))
             if i % 2 == 1:
                 # Start new row
                 keyboard.append([InlineKeyboardButton(button_text, callback_data=f"select_google_sheets_search_{item_index}_{i-1}")])
@@ -168,7 +171,7 @@ class GoogleSheetsInputHandler(BaseMessageHandler):
                 keyboard[-1].append(InlineKeyboardButton(button_text, callback_data=f"select_google_sheets_search_{item_index}_{i-1}"))
         
         # Add back button
-        keyboard.append([InlineKeyboardButton("◀️ Назад", callback_data="back_to_google_sheets_matching")])
+        keyboard.append([InlineKeyboardButton(self.locale_manager.get_text("sheets.back_button", context), callback_data="back_to_google_sheets_matching")])
         
         reply_markup = InlineKeyboardMarkup(keyboard)
         
