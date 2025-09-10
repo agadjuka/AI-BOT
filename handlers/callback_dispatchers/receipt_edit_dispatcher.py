@@ -11,7 +11,7 @@ from services.ai_service import ReceiptAnalysisService
 from models.receipt import ReceiptData
 from handlers.base_callback_handler import BaseCallbackHandler
 from handlers.receipt_edit_callback_handler import ReceiptEditCallbackHandler
-from config.locales.locale_manager import locale_manager
+from config.locales.locale_manager import get_global_locale_manager
 
 
 class ReceiptEditDispatcher(BaseCallbackHandler):
@@ -19,6 +19,7 @@ class ReceiptEditDispatcher(BaseCallbackHandler):
     
     def __init__(self, config: BotConfig, analysis_service: ReceiptAnalysisService):
         super().__init__(config, analysis_service)
+        self.locale_manager = get_global_locale_manager()
         
         # Initialize specialized handler
         self.receipt_edit_handler = ReceiptEditCallbackHandler(config, analysis_service)
@@ -58,36 +59,36 @@ class ReceiptEditDispatcher(BaseCallbackHandler):
             item_number = int(action.split("_")[-1])
             context.user_data['deleting_item'] = item_number
             await update.callback_query.edit_message_text(
-                locale_manager.get_text("analysis.deleting_item_confirmation", context, item_number=item_number)
+                self.locale_manager.get_text("analysis.deleting_item_confirmation", context, item_number=item_number)
             )
             return self.config.AWAITING_DELETE_LINE_NUMBER
         elif action == "delete_row":
             await self.ui_manager.send_temp(
                 update, context,
-                locale_manager.get_text("analysis.deleting_line", context),
+                self.locale_manager.get_text("analysis.deleting_line", context),
                 duration=30
             )
             return self.config.AWAITING_DELETE_LINE_NUMBER
         elif action == "edit_line_number":
             await self.ui_manager.send_temp(
                 update, context,
-                locale_manager.get_text("analysis.editing_line_input", context),
+                self.locale_manager.get_text("analysis.editing_line_input", context),
                 duration=30
             )
             return self.config.AWAITING_LINE_NUMBER
         elif action == "manual_edit_total":
             await self.ui_manager.send_temp(
                 update, context,
-                locale_manager.get_text("analysis.editing_total_input", context),
+                self.locale_manager.get_text("analysis.editing_total_input", context),
                 duration=30
             )
             return self.config.AWAITING_TOTAL_EDIT
         elif action == "reanalyze":
-            await update.callback_query.answer(locale_manager.get_text("status.analyzing_receipt", context))
+            await update.callback_query.answer(self.locale_manager.get_text("status.analyzing_receipt", context))
             
             await self.ui_manager.send_temp(
                 update, context,
-                locale_manager.get_text("status.processing_receipt", context),
+                self.locale_manager.get_text("status.processing_receipt", context),
                 duration=10
             )
             
@@ -112,7 +113,7 @@ class ReceiptEditDispatcher(BaseCallbackHandler):
                 
             except (json.JSONDecodeError, KeyError, IndexError, ValueError) as e:
                 print(f"JSON parsing error or data structure from Gemini: {e}")
-                await update.callback_query.message.reply_text(locale_manager.get_text("errors.parsing_error", context))
+                await update.callback_query.message.reply_text(self.locale_manager.get_text("errors.parsing_error", context))
                 return self.config.AWAITING_CORRECTION
         elif action == "back_to_receipt":
             try:
@@ -126,7 +127,7 @@ class ReceiptEditDispatcher(BaseCallbackHandler):
             else:
                 receipt_data = context.user_data.get('receipt_data')
                 if not receipt_data:
-                    await update.callback_query.edit_message_text(locale_manager.get_text("errors.receipt_data_not_found", context))
+                    await update.callback_query.edit_message_text(self.locale_manager.get_text("errors.receipt_data_not_found", context))
                     return self.config.AWAITING_CORRECTION
             
             await self.ui_manager.back_to_receipt(update, context)
@@ -136,7 +137,7 @@ class ReceiptEditDispatcher(BaseCallbackHandler):
             await photo_handler.show_final_report_with_edit_button(update, context)
         elif action == "back_to_main_menu":
             await update.callback_query.edit_message_text(
-                locale_manager.get_text("welcome.main_menu", context)
+                self.locale_manager.get_text("welcome.main_menu", context)
             )
             return self.config.AWAITING_CORRECTION
         elif action.startswith("field_"):
@@ -152,10 +153,10 @@ class ReceiptEditDispatcher(BaseCallbackHandler):
                     context.user_data['edit_menu_message_id'] = update.callback_query.message.message_id
                     print(f"DEBUG: Saved edit_menu_message_id = {update.callback_query.message.message_id}")
                 
-                field_name_display = locale_manager.get_text(f"analysis.field_display_names.{field_name}", context)
+                field_name_display = self.locale_manager.get_text(f"analysis.field_display_names.{field_name}", context)
                 temp_message = await self.ui_manager.send_temp(
                     update, context,
-                    locale_manager.get_text("analysis.field_edit_input", context, 
+                    self.locale_manager.get_text("analysis.field_edit_input", context, 
                                           field_name=field_name_display, line_number=line_number),
                     duration=30
                 )

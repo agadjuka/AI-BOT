@@ -8,7 +8,7 @@ from handlers.base_callback_handler import BaseCallbackHandler
 from models.ingredient_matching import IngredientMatchingResult
 from services.file_generator_service import FileGeneratorService
 from utils.common_handlers import CommonHandlers
-from config.locales.locale_manager import locale_manager
+from config.locales.locale_manager import get_global_locale_manager
 
 
 class FileGenerationDispatcher(BaseCallbackHandler):
@@ -16,6 +16,7 @@ class FileGenerationDispatcher(BaseCallbackHandler):
     
     def __init__(self, config, analysis_service, google_sheets_handler=None, ingredient_matching_handler=None):
         super().__init__(config, analysis_service)
+        self.locale_manager = get_global_locale_manager()
         self.file_generator = FileGeneratorService()
         self.common_handlers = CommonHandlers(config, analysis_service)
         self.google_sheets_handler = google_sheets_handler
@@ -37,11 +38,11 @@ class FileGenerationDispatcher(BaseCallbackHandler):
                     await self.google_sheets_handler._generate_excel_file(update, context)
                 else:
                     await update.callback_query.edit_message_text(
-                        locale_manager.get_text("file_generation.google_sheets_handler_unavailable", context)
+                        self.locale_manager.get_text("file_generation.google_sheets_handler_unavailable", context)
                     )
             else:
                 await update.callback_query.edit_message_text(
-                    locale_manager.get_text("file_generation.matching_results_not_found", context)
+                    self.locale_manager.get_text("file_generation.matching_results_not_found", context)
                 )
         elif action == "generate_file_from_table":
             matching_result = context.user_data.get('ingredient_matching_result')
@@ -52,7 +53,7 @@ class FileGenerationDispatcher(BaseCallbackHandler):
                 await self.ingredient_matching_handler._show_ingredient_matching_results(update, context)
             else:
                 await update.callback_query.edit_message_text(
-                    locale_manager.get_text("file_generation.ingredient_matching_handler_unavailable", context)
+                    self.locale_manager.get_text("file_generation.ingredient_matching_handler_unavailable", context)
                 )
         
         return self.config.AWAITING_CORRECTION
@@ -68,20 +69,20 @@ class FileGenerationDispatcher(BaseCallbackHandler):
         
         if not receipt_data:
             await query.edit_message_text(
-                locale_manager.get_text("file_generation.receipt_data_not_found", context)
+                self.locale_manager.get_text("file_generation.receipt_data_not_found", context)
             )
             return
         
         if not matching_result:
             await query.edit_message_text(
-                locale_manager.get_text("file_generation.matching_results_not_found", context)
+                self.locale_manager.get_text("file_generation.matching_results_not_found", context)
             )
             return
         
         try:
             # Show generating message
             await query.edit_message_text(
-                locale_manager.get_text("file_generation.generating_file", context)
+                self.locale_manager.get_text("file_generation.generating_file", context)
             )
             
             if file_type == "poster":
@@ -100,22 +101,22 @@ class FileGenerationDispatcher(BaseCallbackHandler):
             await query.message.reply_document(
                 document=file_obj,
                 filename=filename,
-                caption=locale_manager.get_text("file_generation.file_ready", context, file_type=file_type)
+                caption=self.locale_manager.get_text("file_generation.file_ready", context, file_type=file_type)
             )
             
             # Show success message
-            success_text = locale_manager.get_text("file_generation.success_title", context, file_type=file_type) + "\n\n"
-            success_text += locale_manager.get_text("file_generation.filename", context, filename=filename) + "\n"
-            success_text += locale_manager.get_text("file_generation.positions_count", context, count=len(matching_result.matches)) + "\n"
-            success_text += locale_manager.get_text("file_generation.generation_date", context, date=receipt_data.timestamp.strftime('%d.%m.%Y %H:%M'))
+            success_text = self.locale_manager.get_text("file_generation.success_title", context, file_type=file_type) + "\n\n"
+            success_text += self.locale_manager.get_text("file_generation.filename", context, filename=filename) + "\n"
+            success_text += self.locale_manager.get_text("file_generation.positions_count", context, count=len(matching_result.matches)) + "\n"
+            success_text += self.locale_manager.get_text("file_generation.generation_date", context, date=receipt_data.timestamp.strftime('%d.%m.%Y %H:%M'))
             
             keyboard = [
                 [InlineKeyboardButton(
-                    locale_manager.get_text("file_generation.show_table", context), 
+                    self.locale_manager.get_text("file_generation.show_table", context), 
                     callback_data="show_matching_table"
                 )],
                 [InlineKeyboardButton(
-                    locale_manager.get_text("file_generation.back_to_edit", context), 
+                    self.locale_manager.get_text("file_generation.back_to_edit", context), 
                     callback_data="back_to_edit"
                 )]
             ]
@@ -126,7 +127,7 @@ class FileGenerationDispatcher(BaseCallbackHandler):
         except Exception as e:
             print(f"DEBUG: Error generating {file_type} file: {e}")
             await query.edit_message_text(
-                locale_manager.get_text("file_generation.error_generating_file", context, error=str(e))
+                self.locale_manager.get_text("file_generation.error_generating_file", context, error=str(e))
             )
     
     async def _show_matching_table_with_edit_button(self, update: Update, context: ContextTypes.DEFAULT_TYPE, 
@@ -140,15 +141,15 @@ class FileGenerationDispatcher(BaseCallbackHandler):
         
         keyboard = [
             [InlineKeyboardButton(
-                locale_manager.get_text("file_generation.download_poster_file", context), 
+                self.locale_manager.get_text("file_generation.download_poster_file", context), 
                 callback_data="generate_poster_file"
             )],
             [InlineKeyboardButton(
-                locale_manager.get_text("file_generation.download_google_sheets_file", context), 
+                self.locale_manager.get_text("file_generation.download_google_sheets_file", context), 
                 callback_data="generate_google_sheets_file"
             )],
             [InlineKeyboardButton(
-                locale_manager.get_text("file_generation.back_to_edit", context), 
+                self.locale_manager.get_text("file_generation.back_to_edit", context), 
                 callback_data="back_to_edit"
             )]
         ]
@@ -158,27 +159,27 @@ class FileGenerationDispatcher(BaseCallbackHandler):
     
     def _format_matching_table(self, matching_result: IngredientMatchingResult, context) -> str:
         """Format matching table for display"""
-        table_text = locale_manager.get_text("file_generation.matching_table_title", context) + "\n\n"
+        table_text = self.locale_manager.get_text("file_generation.matching_table_title", context) + "\n\n"
         
         # Create table header
-        table_text += locale_manager.get_text("file_generation.table_header", context) + "\n"
-        table_text += locale_manager.get_text("file_generation.table_separator", context) + "\n"
+        table_text += self.locale_manager.get_text("file_generation.table_header", context) + "\n"
+        table_text += self.locale_manager.get_text("file_generation.table_separator", context) + "\n"
         
         # Add table rows
         for i, match in enumerate(matching_result.matches):
             status_emoji = self._get_status_emoji(match.match_status)
             ingredient_name = self.common_handlers.truncate_name(
-                match.matched_ingredient_name or locale_manager.get_text("file_generation.not_matched", context), 
+                match.matched_ingredient_name or self.locale_manager.get_text("file_generation.not_matched", context), 
                 20
             )
             item_name = self.common_handlers.truncate_name(match.receipt_item_name, 25)
             
             table_text += f"| {i+1} | {item_name} | {ingredient_name} | {status_emoji} | {match.similarity_score:.2f} |\n"
         
-        table_text += "\n" + locale_manager.get_text("file_generation.legend_title", context) + "\n"
-        table_text += locale_manager.get_text("file_generation.legend_matched", context) + "\n"
-        table_text += locale_manager.get_text("file_generation.legend_partial", context) + "\n"
-        table_text += locale_manager.get_text("file_generation.legend_not_matched", context) + "\n"
+        table_text += "\n" + self.locale_manager.get_text("file_generation.legend_title", context) + "\n"
+        table_text += self.locale_manager.get_text("file_generation.legend_matched", context) + "\n"
+        table_text += self.locale_manager.get_text("file_generation.legend_partial", context) + "\n"
+        table_text += self.locale_manager.get_text("file_generation.legend_not_matched", context) + "\n"
         
         return table_text
     

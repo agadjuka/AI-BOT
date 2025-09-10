@@ -15,7 +15,7 @@ from handlers.callback_dispatchers.file_generation_dispatcher import FileGenerat
 from handlers.ingredient_matching_callback_handler import IngredientMatchingCallbackHandler
 from handlers.google_sheets_callback_handler import GoogleSheetsCallbackHandler
 from handlers.file_generation_callback_handler import FileGenerationCallbackHandler
-from config.locales.locale_manager import LocaleManager
+from config.locales.locale_manager import get_global_locale_manager
 from config.locales.language_buttons import get_language_keyboard
 
 
@@ -26,7 +26,7 @@ class CallbackHandlers(BaseCallbackHandler):
         super().__init__(config, analysis_service)
         
         # Initialize LocaleManager
-        self.locale_manager = LocaleManager()
+        self.locale_manager = get_global_locale_manager()
         
         # Initialize services
         self.google_sheets_service = GoogleSheetsService(
@@ -49,6 +49,11 @@ class CallbackHandlers(BaseCallbackHandler):
         """Handle correction choice callback - main dispatcher"""
         query = update.callback_query
         await query.answer()
+        
+        # Save user_id to context for language loading
+        self.save_user_context(update, context)
+        
+        # Language will be automatically loaded by get_text() calls
         
         action = query.data
         print(f"DEBUG: Callback received: {action}")
@@ -80,7 +85,7 @@ class CallbackHandlers(BaseCallbackHandler):
             return await self.file_generation_dispatcher._handle_file_generation_actions(update, context, action)
         
         elif action == "finish":
-            await query.answer(self.locale_manager.get_text("buttons.finish", context))
+            await query.answer(self.get_text("buttons.finish", context, update=update))
             return self.config.AWAITING_CORRECTION
         
         elif action == "cancel":
@@ -88,7 +93,7 @@ class CallbackHandlers(BaseCallbackHandler):
         
         elif action == "analyze_receipt":
             await update.callback_query.edit_message_text(
-                self.locale_manager.get_text("welcome.analyze_receipt", context)
+                self.get_text("welcome.analyze_receipt", context, update=update)
             )
             return self.config.AWAITING_CORRECTION
         
@@ -109,7 +114,7 @@ class CallbackHandlers(BaseCallbackHandler):
             return self.config.AWAITING_CORRECTION
         
         else:
-            await query.answer(self.locale_manager.get_text("errors.unknown_action", context))
+            await query.answer(self.get_text("errors.unknown_action", context, update=update))
             return self.config.AWAITING_CORRECTION
     
     async def _handle_language_selection(self, update: Update, context: ContextTypes.DEFAULT_TYPE, action: str) -> int:
@@ -123,11 +128,11 @@ class CallbackHandlers(BaseCallbackHandler):
         
         # Validate language code
         if not self.locale_manager.is_language_supported(language_code):
-            await query.answer(self.locale_manager.get_text("errors.unsupported_language", context))
+            await query.answer(self.get_text("errors.unsupported_language", context, update=update))
             return self.config.AWAITING_CORRECTION
         
         # Set user language
-        success = self.locale_manager.set_user_language(context, language_code)
+        success = self.locale_manager.set_user_language(update, context, language_code)
         
         if success:
             # Show main menu in selected language
@@ -135,15 +140,15 @@ class CallbackHandlers(BaseCallbackHandler):
             # Create main menu with localized buttons
             keyboard = [
                 [InlineKeyboardButton(
-                    self.locale_manager.get_text("buttons.analyze_receipt", context), 
+                    self.get_text("buttons.analyze_receipt", context, update=update), 
                     callback_data="analyze_receipt"
                 )],
                 [InlineKeyboardButton(
-                    self.locale_manager.get_text("buttons.generate_supply_file", context), 
+                    self.get_text("buttons.generate_supply_file", context, update=update), 
                     callback_data="generate_supply_file"
                 )],
                 [InlineKeyboardButton(
-                    self.locale_manager.get_text("buttons.dashboard", context), 
+                    self.get_text("buttons.dashboard", context, update=update), 
                     callback_data="dashboard_main"
                 )]
             ]
@@ -151,14 +156,14 @@ class CallbackHandlers(BaseCallbackHandler):
             # Add back button if there's existing receipt data
             if context.user_data.get('receipt_data'):
                 keyboard.append([InlineKeyboardButton(
-                    self.locale_manager.get_text("buttons.back_to_receipt", context), 
+                    self.get_text("buttons.back_to_receipt", context, update=update), 
                     callback_data="back_to_receipt"
                 )])
             
             reply_markup = InlineKeyboardMarkup(keyboard)
             
             await query.edit_message_text(
-                self.locale_manager.get_text("welcome.start_message", context, user=update.effective_user.mention_html()),
+                self.get_text("welcome.start_message", context, update=update, user=update.effective_user.mention_html()),
                 reply_markup=reply_markup,
                 parse_mode='HTML'
             )
@@ -167,7 +172,7 @@ class CallbackHandlers(BaseCallbackHandler):
         else:
             # Fallback to Russian if language not supported
             await query.edit_message_text(
-                self.locale_manager.get_text("errors.language_fallback", context)
+                self.get_text("errors.language_fallback", context, update=update)
             )
             return self.config.AWAITING_CORRECTION
     
@@ -181,7 +186,7 @@ class CallbackHandlers(BaseCallbackHandler):
         
         # Show start message - avoid circular import
         await query.edit_message_text(
-            self.locale_manager.get_text("errors.operation_cancelled", context)
+            self.get_text("errors.operation_cancelled", context, update=update)
         )
         
         return self.config.AWAITING_CORRECTION
@@ -195,7 +200,7 @@ class CallbackHandlers(BaseCallbackHandler):
         language_keyboard = get_language_keyboard()
         
         await query.edit_message_text(
-            self.locale_manager.get_text("welcome.choose_language", context),
+            self.get_text("welcome.choose_language", context, update=update),
             reply_markup=language_keyboard
         )
         
@@ -209,11 +214,11 @@ class CallbackHandlers(BaseCallbackHandler):
         # Create dashboard keyboard
         keyboard = [
             [InlineKeyboardButton(
-                self.locale_manager.get_text("welcome.dashboard.buttons.language_settings", context), 
+                self.get_text("welcome.dashboard.buttons.language_settings", context, update=update), 
                 callback_data="dashboard_language_settings"
             )],
             [InlineKeyboardButton(
-                self.locale_manager.get_text("buttons.back_to_main_menu", context), 
+                self.get_text("buttons.back_to_main_menu", context, update=update), 
                 callback_data="back_to_main_menu"
             )]
         ]
@@ -221,8 +226,8 @@ class CallbackHandlers(BaseCallbackHandler):
         reply_markup = InlineKeyboardMarkup(keyboard)
         
         await query.edit_message_text(
-            self.locale_manager.get_text("welcome.dashboard.welcome_message", context, 
-                                       user=update.effective_user.mention_html()),
+            self.get_text("welcome.dashboard.welcome_message", context, update=update, 
+                         user=update.effective_user.mention_html()),
             reply_markup=reply_markup,
             parse_mode='HTML'
         )
@@ -237,30 +242,30 @@ class CallbackHandlers(BaseCallbackHandler):
         # Show main menu
         keyboard = [
             [InlineKeyboardButton(
-                self.locale_manager.get_text("buttons.analyze_receipt", context), 
+                self.get_text("buttons.analyze_receipt", context, update=update), 
                 callback_data="analyze_receipt"
             )],
             [InlineKeyboardButton(
-                self.locale_manager.get_text("buttons.generate_supply_file", context), 
+                self.get_text("buttons.generate_supply_file", context, update=update), 
                 callback_data="generate_supply_file"
             )],
             [InlineKeyboardButton(
-                self.locale_manager.get_text("buttons.dashboard", context), 
+                self.get_text("buttons.dashboard", context, update=update), 
                 callback_data="dashboard_main"
             )]
         ]
         
         if context.user_data.get('receipt_data'):
             keyboard.append([InlineKeyboardButton(
-                self.locale_manager.get_text("buttons.back_to_receipt", context), 
+                self.get_text("buttons.back_to_receipt", context, update=update), 
                 callback_data="back_to_receipt"
             )])
         
         reply_markup = InlineKeyboardMarkup(keyboard)
         
         await query.edit_message_text(
-            self.locale_manager.get_text("welcome.start_message", context, 
-                                       user=update.effective_user.mention_html()),
+            self.get_text("welcome.start_message", context, update=update, 
+                         user=update.effective_user.mention_html()),
             reply_markup=reply_markup,
             parse_mode='HTML'
         )

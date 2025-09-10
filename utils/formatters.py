@@ -3,7 +3,7 @@ Formatting utilities for receipt data
 """
 from typing import Dict, Any, List, Optional
 from models.receipt import ReceiptData, ReceiptItem
-from config.locales.locale_manager import locale_manager
+from config.locales.locale_manager import get_global_locale_manager
 
 
 class NumberFormatter:
@@ -175,7 +175,7 @@ class ReceiptFormatter:
         items = data.items
         
         if not items:
-            return locale_manager.get_text("formatters.no_data_to_display", context)
+            return get_global_locale_manager().get_text("formatters.no_data_to_display", context)
         
         # Determine optimal width for each column based on data
         # Consider real emoji width in display
@@ -193,11 +193,11 @@ class ReceiptFormatter:
         status_width = 2    # Fixed width 2 characters for status
         
         # Create header with optimal widths
-        number_header = locale_manager.get_text("formatters.table_headers.number", context)
-        product_header = locale_manager.get_text("formatters.table_headers.product", context)
-        quantity_header = locale_manager.get_text("formatters.table_headers.quantity", context)
-        price_header = locale_manager.get_text("formatters.table_headers.price", context)
-        amount_header = locale_manager.get_text("formatters.table_headers.amount", context)
+        number_header = get_global_locale_manager().get_text("formatters.table_headers.number", context)
+        product_header = get_global_locale_manager().get_text("formatters.table_headers.product", context)
+        quantity_header = get_global_locale_manager().get_text("formatters.table_headers.quantity", context)
+        price_header = get_global_locale_manager().get_text("formatters.table_headers.price", context)
+        amount_header = get_global_locale_manager().get_text("formatters.table_headers.amount", context)
         
         header = f"{number_header:^{number_width}} | {product_header:<{product_width}} | {quantity_header:^{quantity_width}} | {price_header:^{price_width}} | {amount_header:>{total_width}} | {'':^{status_width}}"
         separator = "─" * (number_width + product_width + quantity_width + price_width + total_width + status_width + 10)  # 10 characters for separators
@@ -304,7 +304,7 @@ class ReceiptFormatter:
         total_table_width = number_width + product_width + quantity_width + price_width + total_width + status_width + 10
         
         # Create "Total" block with right alignment
-        total_label = locale_manager.get_text("formatters.total_label", context)
+        total_label = get_global_locale_manager().get_text("formatters.total_label", context)
         total_value = formatted_receipt_total
         
         # Calculate position for total block right alignment

@@ -13,7 +13,7 @@ from handlers.input_handler import InputHandler
 from handlers.ingredient_matching_input_handler import IngredientMatchingInputHandler
 from handlers.google_sheets_input_handler import GoogleSheetsInputHandler
 from utils.common_handlers import CommonHandlers
-from config.locales.locale_manager import LocaleManager
+from config.locales.locale_manager import get_global_locale_manager
 from config.locales.language_buttons import get_language_keyboard
 
 
@@ -24,7 +24,7 @@ class MessageHandlers(BaseMessageHandler):
         super().__init__(config, analysis_service)
         
         # Initialize LocaleManager
-        self.locale_manager = LocaleManager()
+        self.locale_manager = get_global_locale_manager()
         
         # Initialize specialized handlers
         self.photo_handler = PhotoHandler(config, analysis_service)
@@ -35,13 +35,52 @@ class MessageHandlers(BaseMessageHandler):
     
     async def start(self, update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         """Handle /start command"""
-        # Always show language selection on /start command
-        # This ensures users can change language anytime
-        language_keyboard = get_language_keyboard()
-        await update.message.reply_html(
-            self.locale_manager.get_text("welcome.choose_language", context),
-            reply_markup=language_keyboard
-        )
+        print(f"DEBUG: Start command received from user {update.effective_user.id}")
+        
+        # Save user_id to context for language loading
+        self.save_user_context(update, context)
+        
+        # Get current language - this will automatically load from Firestore if needed
+        current_language = self.locale_manager.get_language_from_context(context, update)
+        print(f"DEBUG: Current language: '{current_language}' for user {update.effective_user.id}")
+        
+        if current_language and current_language != self.locale_manager.DEFAULT_LANGUAGE:
+            # User has a saved language, show main menu
+            print(f"DEBUG: Using saved language '{current_language}' for user {update.effective_user.id}")
+            
+            # Create main menu with localized buttons
+            keyboard = [
+                [InlineKeyboardButton(
+                    self.get_text("buttons.analyze_receipt", context, update=update), 
+                    callback_data="analyze_receipt"
+                )],
+                [InlineKeyboardButton(
+                    self.get_text("buttons.generate_supply_file", context, update=update), 
+                    callback_data="generate_supply_file"
+                )],
+                [InlineKeyboardButton(
+                    self.get_text("buttons.dashboard", context, update=update), 
+                    callback_data="dashboard_main"
+                )]
+            ]
+            
+            reply_markup = InlineKeyboardMarkup(keyboard)
+            
+            await update.message.reply_html(
+                self.get_text("welcome.start_message", context, update=update, 
+                             user=update.effective_user.mention_html()),
+                reply_markup=reply_markup
+            )
+        else:
+            # No saved language, show language selection
+            print(f"DEBUG: No saved language found for user {update.effective_user.id}, showing language selection")
+            from config.locales.language_buttons import get_language_keyboard
+            language_keyboard = get_language_keyboard()
+            await update.message.reply_html(
+                self.get_text("welcome.choose_language", context, update=update),
+                reply_markup=language_keyboard
+            )
+        
         return self.config.AWAITING_CORRECTION
     
     async def reset_language(self, update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
@@ -52,24 +91,40 @@ class MessageHandlers(BaseMessageHandler):
         # Show language selection
         language_keyboard = get_language_keyboard()
         await update.message.reply_html(
-            self.locale_manager.get_text("welcome.choose_language", context),
+            self.get_text("welcome.choose_language", context, update=update),
             reply_markup=language_keyboard
         )
         return self.config.AWAITING_CORRECTION
     
+    async def check_language(self, update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+        """Handle /check_language command - show current language settings"""
+        user_id = update.effective_user.id
+        current_language = context.user_data.get('language', 'not set')
+        stored_language = self.locale_manager.language_service.get_user_language(user_id)
+        
+        message = f"🔍 Language Debug Info:\n"
+        message += f"Current in context: {current_language}\n"
+        message += f"Stored in Firestore: {stored_language or 'not found'}\n"
+        message += f"User ID: {user_id}"
+        
+        await update.message.reply_text(message)
+        return self.config.AWAITING_CORRECTION
+    
     async def dashboard(self, update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
         """Handle /dashboard command - show user dashboard"""
+        # Language will be automatically loaded by get_text() calls
+        
         # Set anchor message for dashboard
         self.ui_manager.set_anchor(context, update.message.message_id)
         
         # Create dashboard keyboard
         keyboard = [
             [InlineKeyboardButton(
-                self.locale_manager.get_text("welcome.dashboard.buttons.language_settings", context), 
+                self.get_text("welcome.dashboard.buttons.language_settings", context, update=update), 
                 callback_data="dashboard_language_settings"
             )],
             [InlineKeyboardButton(
-                self.locale_manager.get_text("buttons.back_to_main_menu", context), 
+                self.get_text("buttons.back_to_main_menu", context, update=update), 
                 callback_data="back_to_main_menu"
             )]
         ]
@@ -78,8 +133,8 @@ class MessageHandlers(BaseMessageHandler):
         
         # Send dashboard message
         await update.message.reply_html(
-            self.locale_manager.get_text("welcome.dashboard.welcome_message", context, 
-                                       user=update.effective_user.mention_html()),
+            self.get_text("welcome.dashboard.welcome_message", context, update=update, 
+                         user=update.effective_user.mention_html()),
             reply_markup=reply_markup
         )
         
@@ -87,6 +142,8 @@ class MessageHandlers(BaseMessageHandler):
     
     async def handle_photo(self, update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
         """Handle photo upload - delegate to photo handler"""
+        # Save user_id to context for language loading
+        self.save_user_context(update, context)
         return await self.photo_handler.handle_photo(update, context)
     
     async def handle_user_input(self, update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:

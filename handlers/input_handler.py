@@ -8,7 +8,7 @@ from models.receipt import ReceiptData
 from handlers.base_message_handler import BaseMessageHandler
 from handlers.google_sheets_input_handler import GoogleSheetsInputHandler
 from utils.common_handlers import CommonHandlers
-from config.locales.locale_manager import locale_manager
+from config.locales.locale_manager import get_global_locale_manager
 
 
 class InputHandler(BaseMessageHandler):
@@ -16,6 +16,7 @@ class InputHandler(BaseMessageHandler):
     
     def __init__(self, config, analysis_service):
         super().__init__(config, analysis_service)
+        self.locale_manager = get_global_locale_manager()
         self.google_sheets_input_handler = GoogleSheetsInputHandler(config, analysis_service)
         self.common_handlers = CommonHandlers(config, analysis_service)
     
@@ -54,7 +55,7 @@ class InputHandler(BaseMessageHandler):
             return await self._handle_field_edit(update, context, user_input, line_number, field_to_edit)
         else:
             # No field specified - show error
-            error_message = locale_manager.get_text("errors.field_not_specified", context)
+            error_message = self.locale_manager.get_text("errors.field_not_specified", context)
             await self.ui_manager.send_temp(
                 update, context,
                 error_message,
@@ -93,16 +94,16 @@ class InputHandler(BaseMessageHandler):
             item_to_edit = data.get_item(line_number)
             
             if not item_to_edit:
-                error_message = locale_manager.get_text("errors.line_not_found", context)
+                error_message = self.locale_manager.get_text("errors.line_not_found", context)
                 await update.message.reply_text(error_message)
                 return self.config.AWAITING_FIELD_EDIT
             
             # Process input based on field type
             if field_to_edit == 'name':
-                field_name = locale_manager.get_text("analysis.field_display_names.name", context)
+                field_name = self.locale_manager.get_text("analysis.field_display_names.name", context)
                 is_valid, message = self.validator.validate_text_input(user_input, field_name)
                 if not is_valid:
-                    error_message = locale_manager.get_text("errors.field_edit_error", context, error=message)
+                    error_message = self.locale_manager.get_text("errors.field_edit_error", context, error=message)
                     await self.ui_manager.send_temp(
                         update, context, error_message, duration=5
                     )
@@ -113,7 +114,7 @@ class InputHandler(BaseMessageHandler):
                 # Parse number, considering possible separators (including decimal fractions)
                 numeric_value = self.text_parser.parse_user_input_number(user_input)
                 if numeric_value < 0:
-                    error_message = locale_manager.get_text("validation.negative_value", context)
+                    error_message = self.locale_manager.get_text("validation.negative_value", context)
                     await self.ui_manager.send_temp(
                         update, context, error_message, duration=5
                     )
@@ -141,10 +142,10 @@ class InputHandler(BaseMessageHandler):
             
             # Show success message
             field_labels = {
-                'name': locale_manager.get_text('analysis.field_display_names.name', context),
-                'quantity': locale_manager.get_text('analysis.field_display_names.quantity', context),
-                'price': locale_manager.get_text('analysis.field_display_names.price', context),
-                'total': locale_manager.get_text('analysis.field_display_names.total', context)
+                'name': self.locale_manager.get_text('analysis.field_display_names.name', context),
+                'quantity': self.locale_manager.get_text('analysis.field_display_names.quantity', context),
+                'price': self.locale_manager.get_text('analysis.field_display_names.price', context),
+                'total': self.locale_manager.get_text('analysis.field_display_names.total', context)
             }
             
             new_value = getattr(item_to_edit, field_to_edit, '')
@@ -190,7 +191,7 @@ class InputHandler(BaseMessageHandler):
             
             if not is_valid:
                 await self.ui_manager.send_temp(
-                    update, context, f"{message}\n\n{locale_manager.get_text('validation.try_again', context)}", duration=10
+                    update, context, f"{message}\n\n{self.locale_manager.get_text('validation.try_again', context)}", duration=10
                 )
                 return self.config.AWAITING_LINE_NUMBER
             
@@ -212,7 +213,7 @@ class InputHandler(BaseMessageHandler):
             return self.config.AWAITING_FIELD_EDIT
             
         except ValueError:
-            error_message = locale_manager.get_text("validation.invalid_line_format", context)
+            error_message = self.locale_manager.get_text("validation.invalid_line_format", context)
             await self.ui_manager.send_temp(
                 update, context, error_message, duration=10
             )
@@ -231,7 +232,7 @@ class InputHandler(BaseMessageHandler):
             
             if not is_valid:
                 await self.ui_manager.send_temp(
-                    update, context, f"{message}\n\n{locale_manager.get_text('validation.try_again', context)}", duration=10
+                    update, context, f"{message}\n\n{self.locale_manager.get_text('validation.try_again', context)}", duration=10
                 )
                 return self.config.AWAITING_DELETE_LINE_NUMBER
             
@@ -256,7 +257,7 @@ class InputHandler(BaseMessageHandler):
                 await self._update_ingredient_matching_after_deletion(update, context, data, line_number)
                 
                 # Show success message
-                success_message = locale_manager.get_text("status.line_deleted", context, line_number=line_number)
+                success_message = self.locale_manager.get_text("status.line_deleted", context, line_number=line_number)
                 await self.ui_manager.send_temp(
                     update, context, success_message, duration=2
                 )
@@ -267,7 +268,7 @@ class InputHandler(BaseMessageHandler):
             return self.config.AWAITING_CORRECTION
             
         except ValueError:
-            error_message = locale_manager.get_text("validation.invalid_line_format", context)
+            error_message = self.locale_manager.get_text("validation.invalid_line_format", context)
             await self.ui_manager.send_temp(
                 update, context, error_message, duration=10
             )
@@ -292,7 +293,7 @@ class InputHandler(BaseMessageHandler):
             new_total = self.text_parser.parse_user_input_number(user_input)
             
             if new_total < 0:
-                error_message = locale_manager.get_text("validation.negative_total", context)
+                error_message = self.locale_manager.get_text("validation.negative_total", context)
                 await self.ui_manager.send_temp(
                     update, context, error_message, duration=5
                 )
@@ -311,7 +312,7 @@ class InputHandler(BaseMessageHandler):
             
             # Show success message
             formatted_total = self.number_formatter.format_number_with_spaces(new_total)
-            success_message = locale_manager.get_text("status.total_updated", context, total=formatted_total)
+            success_message = self.locale_manager.get_text("status.total_updated", context, total=formatted_total)
             await self.ui_manager.send_temp(
                 update, context, success_message, duration=2
             )
@@ -323,7 +324,7 @@ class InputHandler(BaseMessageHandler):
             
         except Exception as e:
             print(f"DEBUG: Error updating total amount: {e}")
-            error_message = locale_manager.get_text("errors.total_update_retry", context)
+            error_message = self.locale_manager.get_text("errors.total_update_retry", context)
             await self.ui_manager.send_temp(
                 update, context, error_message, duration=5
             )
@@ -336,7 +337,7 @@ class InputHandler(BaseMessageHandler):
         item_to_edit = data.get_item(line_number)
         
         if not item_to_edit:
-            error_message = locale_manager.get_text("errors.line_not_found", context)
+            error_message = self.locale_manager.get_text("errors.line_not_found", context)
             await self.ui_manager.send_temp(
                 update, context, error_message, duration=5
             )
@@ -364,13 +365,13 @@ class InputHandler(BaseMessageHandler):
         else:
             status_icon = "⚠️"
         
-        editing_line_text = locale_manager.get_text("analysis.editing_line", context, line_number=line_number, status_icon=status_icon)
-        field_name_text = locale_manager.get_text("analysis.field_name", context, name=name)
-        field_quantity_text = locale_manager.get_text("analysis.field_quantity", context, quantity=quantity)
-        field_price_text = locale_manager.get_text("analysis.field_price", context, price=price)
-        field_total_text = locale_manager.get_text("analysis.field_total", context, total=total)
-        choose_field_text = locale_manager.get_text("analysis.choose_field", context)
-        auto_calculated_text = locale_manager.get_text("analysis.auto_calculated", context)
+        editing_line_text = self.locale_manager.get_text("analysis.editing_line", context, line_number=line_number, status_icon=status_icon)
+        field_name_text = self.locale_manager.get_text("analysis.field_name", context, name=name)
+        field_quantity_text = self.locale_manager.get_text("analysis.field_quantity", context, quantity=quantity)
+        field_price_text = self.locale_manager.get_text("analysis.field_price", context, price=price)
+        field_total_text = self.locale_manager.get_text("analysis.field_total", context, total=total)
+        choose_field_text = self.locale_manager.get_text("analysis.choose_field", context)
+        auto_calculated_text = self.locale_manager.get_text("analysis.auto_calculated", context)
         
         text = editing_line_text
         text += field_name_text
@@ -379,7 +380,7 @@ class InputHandler(BaseMessageHandler):
         
         # Show sum with note about whether it was automatically calculated
         if is_auto_calculated:
-            text += f"💵 **{locale_manager.get_text('analysis.field_display_names.total', context)}:** {total} {auto_calculated_text}\n\n"
+            text += f"💵 **{self.locale_manager.get_text('analysis.field_display_names.total', context)}:** {total} {auto_calculated_text}\n\n"
         else:
             text += field_total_text
         
@@ -387,14 +388,14 @@ class InputHandler(BaseMessageHandler):
         
         keyboard = [
             [
-                InlineKeyboardButton(locale_manager.get_text("buttons.edit_name", context), callback_data=f"field_{line_number}_name"),
-                InlineKeyboardButton(locale_manager.get_text("buttons.edit_quantity", context), callback_data=f"field_{line_number}_quantity"),
-                InlineKeyboardButton(locale_manager.get_text("buttons.edit_price", context), callback_data=f"field_{line_number}_price")
+                InlineKeyboardButton(self.locale_manager.get_text("buttons.edit_name", context), callback_data=f"field_{line_number}_name"),
+                InlineKeyboardButton(self.locale_manager.get_text("buttons.edit_quantity", context), callback_data=f"field_{line_number}_quantity"),
+                InlineKeyboardButton(self.locale_manager.get_text("buttons.edit_price", context), callback_data=f"field_{line_number}_price")
             ],
             [
-                InlineKeyboardButton(locale_manager.get_text("buttons.edit_total_field", context), callback_data=f"field_{line_number}_total"),
-                InlineKeyboardButton(locale_manager.get_text("buttons.apply_changes", context), callback_data=f"apply_{line_number}"),
-                InlineKeyboardButton(locale_manager.get_text("buttons.back_to_receipt", context), callback_data="back_to_receipt")
+                InlineKeyboardButton(self.locale_manager.get_text("buttons.edit_total_field", context), callback_data=f"field_{line_number}_total"),
+                InlineKeyboardButton(self.locale_manager.get_text("buttons.apply_changes", context), callback_data=f"apply_{line_number}"),
+                InlineKeyboardButton(self.locale_manager.get_text("buttons.back_to_receipt", context), callback_data="back_to_receipt")
             ]
         ]
         
