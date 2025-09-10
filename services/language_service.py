@@ -3,15 +3,13 @@ import os
 from typing import Optional
 
 class LanguageService:
-    def __init__(self):
-        self.db = None
-        try:
-            # Use the same database as main files (billscaner)
-            self.db = firestore.Client(database='billscaner')
-            print("✅ Language service initialized with Firestore (database: billscaner)")
-        except Exception as e:
-            print(f"⚠️ Firestore not available, using local storage: {e}")
-            self.db = None
+    def __init__(self, db_instance=None):
+        # Use the global Firestore instance from main.py if available
+        self.db = db_instance
+        if self.db:
+            print("✅ Language service initialized with global Firestore instance")
+        else:
+            print("⚠️ Language service initialized without Firestore - languages won't be saved")
 
     def save_user_language(self, user_id: int, language: str) -> bool:
         """Save user language to Firestore"""
@@ -43,9 +41,9 @@ class LanguageService:
 # Global LanguageService instance
 _language_service = None
 
-def get_language_service():
+def get_language_service(db_instance=None):
     """Get the global LanguageService instance"""
     global _language_service
     if _language_service is None:
-        _language_service = LanguageService()
+        _language_service = LanguageService(db_instance)
     return _language_service

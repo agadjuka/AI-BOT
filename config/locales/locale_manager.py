@@ -334,10 +334,16 @@ def get_global_locale_manager() -> LocaleManager:
     return _global_locale_manager
 
 
-def initialize_locale_manager():
+def initialize_locale_manager(db_instance=None):
     """Initialize the global LocaleManager at startup"""
     global _global_locale_manager
     if _global_locale_manager is None:
+        # Initialize LanguageService with Firestore instance
+        from services.language_service import get_language_service
+        language_service = get_language_service(db_instance)
+        
+        # Create LocaleManager with the language service
         _global_locale_manager = LocaleManager()
+        _global_locale_manager.language_service = language_service
         print("✅ Global LocaleManager initialized")
     return _global_locale_manager

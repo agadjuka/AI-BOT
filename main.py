@@ -29,13 +29,16 @@ from config.locales.locale_manager import initialize_locale_manager
 from google.cloud import firestore
 
 # Инициализация клиента Firestore с обработкой ошибок
+# В Cloud Run используется Application Default Credentials (ADC)
+db = None
 try:
+    # Попробуем инициализировать Firestore
     db = firestore.Client(database='billscaner')
     print("✅ Firestore клиент инициализирован успешно (база: billscaner)")
 except Exception as e:
     print(f"❌ Ошибка инициализации Firestore: {e}")
-    print("💡 Убедитесь, что переменная GOOGLE_APPLICATION_CREDENTIALS установлена")
-    print(f"💡 Текущее значение: {os.environ.get('GOOGLE_APPLICATION_CREDENTIALS', 'НЕ УСТАНОВЛЕНО')}")
+    print("💡 В Cloud Run используется Application Default Credentials (ADC)")
+    print("💡 Firestore может быть недоступен, но бот будет работать без сохранения языков")
     db = None
 
 # Проверяем совместимость numpy/pandas перед импортом других модулей
@@ -120,8 +123,8 @@ def create_application() -> Application:
     # Create application
     application = Application.builder().token(TOKEN).concurrent_updates(True).build()
     
-    # Initialize global LocaleManager
-    initialize_locale_manager()
+    # Initialize global LocaleManager with Firestore instance
+    initialize_locale_manager(db)
     
     # Initialize empty poster ingredients - will be loaded on demand
     application.bot_data["poster_ingredients"] = {}
