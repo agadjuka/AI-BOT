@@ -2,6 +2,7 @@
 Google Sheets callback handler for Telegram bot - Optimized version
 """
 import asyncio
+import aiofiles
 from datetime import datetime
 from typing import Optional, Tuple, List, Dict, Any
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
@@ -361,8 +362,8 @@ class GoogleSheetsCallbackHandler(BaseCallbackHandler):
                 await self.ui_manager.send_temp(update, context, error_text, duration=5)
                 return
             
-            # Generate Excel file
-            file_path = self.file_generator.generate_excel_file(receipt_data, matching_result)
+            # Generate Excel file (use async version for better performance)
+            file_path = await self.file_generator.generate_excel_file_async(receipt_data, matching_result)
             
             if file_path:
                 await self._send_excel_file(update, context, file_path)
@@ -652,17 +653,23 @@ class GoogleSheetsCallbackHandler(BaseCallbackHandler):
     
     async def _send_excel_file(self, update: Update, context: ContextTypes.DEFAULT_TYPE, file_path: str):
         """Send Excel file to user"""
-        with open(file_path, 'rb') as file:
-            file_message = await update.callback_query.message.reply_document(
-                document=file,
-                filename=f"receipt_data_{datetime.now().strftime('%Y%m%d_%H%M%S')}.xlsx",
-                caption=self.locale_manager.get_text("sheets.callback.excel_file_created", context)
-            )
-            
-            # Save file message ID for cleanup
-            if 'messages_to_cleanup' not in context.user_data:
-                context.user_data['messages_to_cleanup'] = []
-            context.user_data['messages_to_cleanup'].append(file_message.message_id)
+        try:
+            async with aiofiles.open(file_path, 'rb') as file:
+                file_content = await file.read()
+                file_message = await update.callback_query.message.reply_document(
+                    document=file_content,
+                    filename=f"receipt_data_{datetime.now().strftime('%Y%m%d_%H%M%S')}.xlsx",
+                    caption=self.locale_manager.get_text("sheets.callback.excel_file_created", context)
+                )
+                
+                # Save file message ID for cleanup
+                if 'messages_to_cleanup' not in context.user_data:
+                    context.user_data['messages_to_cleanup'] = []
+                context.user_data['messages_to_cleanup'].append(file_message.message_id)
+        except Exception as e:
+            print(f"Error sending Excel file: {e}")
+            error_text = self.locale_manager.get_text("sheets.callback.excel_file_send_error", context).format(error=str(e))
+            await self.ui_manager.send_temp(update, context, error_text, duration=5)
     
     async def _schedule_file_cleanup(self, file_path: str):
         """Schedule file cleanup after 5 minutes"""
@@ -670,8 +677,9 @@ class GoogleSheetsCallbackHandler(BaseCallbackHandler):
             await asyncio.sleep(300)  # Wait 5 minutes before cleanup
             try:
                 import os
-                os.remove(file_path)
-                print(f"Temporary file {file_path} cleaned up")
+                if os.path.exists(file_path):
+                    os.remove(file_path)
+                    print(f"Temporary file {file_path} cleaned up")
             except Exception as e:
                 print(f"Warning: Could not remove temporary file {file_path}: {e}")
         

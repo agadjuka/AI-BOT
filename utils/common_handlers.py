@@ -8,14 +8,14 @@ from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import ContextTypes
 
 from config.settings import BotConfig
-from services.ai_service import ReceiptAnalysisService
+from services.ai_service import ReceiptAnalysisServiceCompat
 from config.locales.locale_manager import get_global_locale_manager
 
 
 class CommonHandlers:
     """Класс с общими методами для всех обработчиков"""
     
-    def __init__(self, config: BotConfig, analysis_service: ReceiptAnalysisService):
+    def __init__(self, config: BotConfig, analysis_service: ReceiptAnalysisServiceCompat):
         self.config = config
         self.analysis_service = analysis_service
         self.locale_manager = get_global_locale_manager()

@@ -73,7 +73,12 @@ EN_TRANSLATIONS = {
         "invalid_update_object": "Invalid update object",
         "failed_to_edit_message": "Failed to edit message {message_id}: {error}",
         "failed_to_delete_message": "Failed to delete message {message_id}: {error}",
-        "failed_to_delete_temporary_message": "Failed to delete temporary message {message_id}: {error}"
+        "failed_to_delete_temporary_message": "Failed to delete temporary message {message_id}: {error}",
+        "photos_already_processing": "❌ Photos are already being processed. Please wait for completion.",
+        "too_many_photos": "❌ Too many photos. Maximum {max_photos} photos allowed at once.",
+        "multiple_photos_error": "❌ Error processing multiple photos: {error}",
+        "no_successful_photos": "❌ No photos were processed successfully. Please try again with clearer photos.",
+        "no_photos_in_group": "❌ No photos found in the media group."
     },
     
     # Validation messages
@@ -112,7 +117,10 @@ EN_TRANSLATIONS = {
         "total_updated": "✅ Total amount updated: **{total}**",
         "analysis_started": "🔍 Starting receipt analysis...",
         "analysis_completed": "✅ Analysis completed",
-        "ingredients_loaded": "✅ Loaded {count} ingredients from Google Sheets"
+        "ingredients_loaded": "✅ Loaded {count} ingredients from Google Sheets",
+        "processing_multiple_photos": "📸 Processing {total} photos... ({processed}/{total})",
+        "processing_multiple_photos_progress": "📸 Processing photos...\n\n✅ Successful: {successful}\n❌ Failed: {failed}\n📊 Progress: {processed}/{total}",
+        "multiple_photos_completed": "✅ Multiple photos processing completed!\n\n📊 Results:\n• Total photos: {total}\n• Successful: {successful}\n• Failed: {failed}"
     },
     
     # Analysis messages

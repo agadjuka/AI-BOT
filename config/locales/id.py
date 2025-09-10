@@ -73,7 +73,12 @@ ID_TRANSLATIONS = {
         "invalid_update_object": "Objek update tidak valid",
         "failed_to_edit_message": "Gagal edit pesan {message_id}: {error}",
         "failed_to_delete_message": "Gagal hapus pesan {message_id}: {error}",
-        "failed_to_delete_temporary_message": "Gagal hapus pesan sementara {message_id}: {error}"
+        "failed_to_delete_temporary_message": "Gagal hapus pesan sementara {message_id}: {error}",
+        "photos_already_processing": "❌ Foto sedang diproses. Silakan tunggu selesai.",
+        "too_many_photos": "❌ Terlalu banyak foto. Maksimal {max_photos} foto sekaligus.",
+        "multiple_photos_error": "❌ Error saat memproses beberapa foto: {error}",
+        "no_successful_photos": "❌ Tidak ada foto yang berhasil diproses. Coba lagi dengan foto yang lebih jelas.",
+        "no_photos_in_group": "❌ Tidak ada foto ditemukan dalam grup media."
     },
     
     # Pesan validasi
@@ -112,7 +117,10 @@ ID_TRANSLATIONS = {
         "total_updated": "✅ Total diperbarui: **{total}**",
         "analysis_started": "🔍 Memulai analisis struk...",
         "analysis_completed": "✅ Analisis selesai",
-        "ingredients_loaded": "✅ Dimuat {count} bahan dari Google Sheets"
+        "ingredients_loaded": "✅ Dimuat {count} bahan dari Google Sheets",
+        "processing_multiple_photos": "📸 Memproses {total} foto... ({processed}/{total})",
+        "processing_multiple_photos_progress": "📸 Memproses foto...\n\n✅ Berhasil: {successful}\n❌ Gagal: {failed}\n📊 Progress: {processed}/{total}",
+        "multiple_photos_completed": "✅ Pemrosesan beberapa foto selesai!\n\n📊 Hasil:\n• Total foto: {total}\n• Berhasil: {successful}\n• Gagal: {failed}"
     },
     
     # Pesan analisis

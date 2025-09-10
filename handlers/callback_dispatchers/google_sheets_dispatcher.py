@@ -7,7 +7,7 @@ from telegram.ext import ContextTypes
 
 from config.settings import BotConfig
 from config.locales.locale_manager import get_global_locale_manager
-from services.ai_service import ReceiptAnalysisService
+from services.ai_service import ReceiptAnalysisServiceCompat
 from services.google_sheets_service import GoogleSheetsService
 from services.ingredient_matching_service import IngredientMatchingService
 from models.ingredient_matching import IngredientMatchingResult
@@ -19,7 +19,7 @@ from utils.ingredient_storage import IngredientStorage
 class GoogleSheetsDispatcher(BaseCallbackHandler):
     """Dispatcher for Google Sheets related callback actions"""
     
-    def __init__(self, config: BotConfig, analysis_service: ReceiptAnalysisService, google_sheets_handler=None):
+    def __init__(self, config: BotConfig, analysis_service: ReceiptAnalysisServiceCompat, google_sheets_handler=None):
         super().__init__(config, analysis_service)
         self.locale_manager = get_global_locale_manager()
         

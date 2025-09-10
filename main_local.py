@@ -4,8 +4,6 @@ Uses polling instead of webhook for local development
 """
 import logging
 import asyncio
-import time
-import threading
 from telegram.ext import (
     Application,
     CommandHandler,
@@ -36,7 +34,7 @@ except Exception as e:
 
 from config.settings import BotConfig
 from config.prompts import PromptManager
-from services.ai_service import AIService, ReceiptAnalysisService
+from services.ai_service import AIService, ReceiptAnalysisServiceCompat
 from handlers.message_handlers import MessageHandlers
 from handlers.callback_handlers import CallbackHandlers
 from utils.ingredient_storage import IngredientStorage
@@ -61,6 +59,7 @@ def safe_start_bot(application: Application, ingredient_storage: IngredientStora
                 print(f"⚠️ Предупреждение при сбросе webhook: {e}")
             
             # Небольшая задержка перед запуском
+            import time
             time.sleep(2)
             
             # Запуск бота
@@ -93,13 +92,16 @@ def safe_start_bot(application: Application, ingredient_storage: IngredientStora
 
 def cleanup_old_files_periodically(ingredient_storage: IngredientStorage) -> None:
     """Background task to clean up old files every 30 minutes"""
+    import time
     while True:
         try:
             time.sleep(1800)  # 30 minutes = 1800 seconds
             ingredient_storage.cleanup_old_files()
             print("🧹 Выполнена очистка старых файлов сопоставления")
         except Exception as e:
-            print(f"Ошибка при очистке файлов: {e}")
+            print(f"❌ Ошибка при очистке файлов: {e}")
+            # Продолжаем работу даже при ошибке
+            time.sleep(60)  # Ждем минуту перед следующей попыткой
 
 def main() -> None:
     """Main function to start the bot"""
@@ -109,7 +111,7 @@ def main() -> None:
     
     # Initialize services
     ai_service = AIService(config, prompt_manager)
-    analysis_service = ReceiptAnalysisService(ai_service)
+    analysis_service = ReceiptAnalysisServiceCompat(ai_service)
     
     # КРИТИЧЕСКИ ВАЖНО: Инициализируем LocaleManager ПЕРЕД созданием handlers
     initialize_locale_manager(db)
@@ -211,10 +213,11 @@ def main() -> None:
     print("🚀 Бот запускается...")
     print("🧹 Автоочистка файлов сопоставления: каждые 30 минут, файлы старше 1 часа")
     
-    # Запускаем фоновый поток для очистки
+    # Запускаем фоновую задачу для очистки
+    import threading
     cleanup_thread = threading.Thread(target=cleanup_old_files_periodically, args=(ingredient_storage,), daemon=True)
     cleanup_thread.start()
-    print("✅ Фоновый поток очистки запущен")
+    print("✅ Фоновая задача очистки запущена")
     
     try:
         safe_start_bot(application, ingredient_storage)

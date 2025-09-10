@@ -4,8 +4,6 @@ Using FastAPI for better performance and modern async support
 """
 import os
 import asyncio
-import time
-import threading
 from typing import Optional
 from fastapi import FastAPI, Request, HTTPException
 from fastapi.responses import JSONResponse
@@ -62,7 +60,7 @@ except ImportError as e:
 try:
     from config.settings import BotConfig
     from config.prompts import PromptManager
-    from services.ai_service import AIService, ReceiptAnalysisService
+    from services.ai_service import AIService, ReceiptAnalysisServiceCompat
     from handlers.message_handlers import MessageHandlers
     from handlers.callback_handlers import CallbackHandlers
     from utils.ingredient_storage import IngredientStorage
@@ -75,7 +73,7 @@ except ImportError as e:
     BotConfig = None
     PromptManager = None
     AIService = None
-    ReceiptAnalysisService = None
+    ReceiptAnalysisServiceCompat = None
     MessageHandlers = None
     CallbackHandlers = None
     IngredientStorage = None
@@ -93,20 +91,25 @@ app = FastAPI(title="AI Bot", description="Telegram Bot for receipt processing")
 application: Optional[Application] = None
 ingredient_storage: Optional[IngredientStorage] = None
 
-def cleanup_old_files_periodically(ingredient_storage: IngredientStorage) -> None:
-    """Background task to clean up old files every 30 minutes"""
+async def cleanup_old_files_periodically(ingredient_storage: IngredientStorage) -> None:
+    """Async background task to clean up old files every 30 minutes"""
     while True:
         try:
-            time.sleep(1800)  # 30 minutes = 1800 seconds
+            await asyncio.sleep(1800)  # 30 minutes = 1800 seconds
             ingredient_storage.cleanup_old_files()
             print("🧹 Выполнена очистка старых файлов сопоставления")
+        except asyncio.CancelledError:
+            print("🧹 Задача очистки файлов отменена")
+            break
         except Exception as e:
-            print(f"Ошибка при очистке файлов: {e}")
+            print(f"❌ Ошибка при очистке файлов: {e}")
+            # Продолжаем работу даже при ошибке
+            await asyncio.sleep(60)  # Ждем минуту перед следующей попыткой
 
 def create_application() -> Application:
     """Create and configure the Telegram application"""
     # Check if all required modules are available
-    if not all([BotConfig, PromptManager, AIService, ReceiptAnalysisService, 
+    if not all([BotConfig, PromptManager, AIService, ReceiptAnalysisServiceCompat, 
                 MessageHandlers, CallbackHandlers, IngredientStorage]):
         raise ImportError("Required modules are not available")
     
@@ -116,7 +119,7 @@ def create_application() -> Application:
     
     # Initialize services
     ai_service = AIService(config, prompt_manager)
-    analysis_service = ReceiptAnalysisService(ai_service)
+    analysis_service = ReceiptAnalysisServiceCompat(ai_service)
     
     # LocaleManager уже инициализирован глобально с Firestore instance
     
@@ -243,10 +246,9 @@ async def initialize_bot():
     # Initialize ingredient storage with 1 hour cleanup
     ingredient_storage = IngredientStorage(max_age_hours=1)
     
-    # Start background cleanup thread
-    cleanup_thread = threading.Thread(target=cleanup_old_files_periodically, args=(ingredient_storage,), daemon=True)
-    cleanup_thread.start()
-    print("✅ Фоновый поток очистки запущен")
+    # Start background cleanup task
+    cleanup_task = asyncio.create_task(cleanup_old_files_periodically(ingredient_storage))
+    print("✅ Фоновая задача очистки запущена")
     
     # Initialize the application
     print("🔧 Инициализируем Telegram application...")

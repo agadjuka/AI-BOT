@@ -6,7 +6,7 @@ from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import ContextTypes
 
 from config.settings import BotConfig
-from services.ai_service import ReceiptAnalysisService
+from services.ai_service import ReceiptAnalysisServiceCompat
 from handlers.base_message_handler import BaseMessageHandler
 from handlers.photo_handler import PhotoHandler
 from handlers.input_handler import InputHandler
@@ -20,7 +20,7 @@ from config.locales.language_buttons import get_language_keyboard
 class MessageHandlers(BaseMessageHandler):
     """Main message handlers coordinator - refactored version"""
     
-    def __init__(self, config: BotConfig, analysis_service: ReceiptAnalysisService):
+    def __init__(self, config: BotConfig, analysis_service: ReceiptAnalysisServiceCompat):
         super().__init__(config, analysis_service)
         
         # Initialize LocaleManager

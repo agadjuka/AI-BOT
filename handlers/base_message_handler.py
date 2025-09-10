@@ -3,7 +3,7 @@ Base message handler with common dependencies
 """
 from config.settings import BotConfig
 from config.locales.locale_manager import get_global_locale_manager
-from services.ai_service import ReceiptAnalysisService
+from services.ai_service import ReceiptAnalysisServiceCompat
 from services.ingredient_matching_service import IngredientMatchingService
 from utils.formatters import ReceiptFormatter, NumberFormatter, TextParser
 from utils.ingredient_formatter import IngredientFormatter
@@ -17,7 +17,7 @@ from validators.receipt_validator import ReceiptValidator
 class BaseMessageHandler:
     """Base class for message handlers with common dependencies"""
     
-    def __init__(self, config: BotConfig, analysis_service: ReceiptAnalysisService):
+    def __init__(self, config: BotConfig, analysis_service: ReceiptAnalysisServiceCompat):
         self.config = config
         self.analysis_service = analysis_service
         self.locale_manager = get_global_locale_manager()

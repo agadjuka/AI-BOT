@@ -5,7 +5,7 @@ from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import ContextTypes
 
 from config.settings import BotConfig
-from services.ai_service import ReceiptAnalysisService
+from services.ai_service import ReceiptAnalysisServiceCompat
 from services.google_sheets_service import GoogleSheetsService
 from handlers.base_callback_handler import BaseCallbackHandler
 from handlers.callback_dispatchers.receipt_edit_dispatcher import ReceiptEditDispatcher
@@ -22,7 +22,7 @@ from config.locales.language_buttons import get_language_keyboard
 class CallbackHandlers(BaseCallbackHandler):
     """Main callback handlers coordinator - refactored version"""
     
-    def __init__(self, config: BotConfig, analysis_service: ReceiptAnalysisService):
+    def __init__(self, config: BotConfig, analysis_service: ReceiptAnalysisServiceCompat):
         super().__init__(config, analysis_service)
         
         # Initialize LocaleManager

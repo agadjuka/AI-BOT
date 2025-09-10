@@ -7,7 +7,7 @@ from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import ContextTypes
 
 from config.settings import BotConfig
-from services.ai_service import ReceiptAnalysisService
+from services.ai_service import ReceiptAnalysisServiceCompat
 from models.receipt import ReceiptData
 from handlers.base_callback_handler import BaseCallbackHandler
 from handlers.receipt_edit_callback_handler import ReceiptEditCallbackHandler
@@ -17,7 +17,7 @@ from config.locales.locale_manager import get_global_locale_manager
 class ReceiptEditDispatcher(BaseCallbackHandler):
     """Dispatcher for receipt edit related actions"""
     
-    def __init__(self, config: BotConfig, analysis_service: ReceiptAnalysisService):
+    def __init__(self, config: BotConfig, analysis_service: ReceiptAnalysisServiceCompat):
         super().__init__(config, analysis_service)
         self.locale_manager = get_global_locale_manager()
         
@@ -96,7 +96,7 @@ class ReceiptEditDispatcher(BaseCallbackHandler):
             self._clear_receipt_data(context)
             
             try:
-                analysis_data = self.analysis_service.analyze_receipt(self.config.PHOTO_FILE_NAME)
+                analysis_data = await self.analysis_service.analyze_receipt(self.config.PHOTO_FILE_NAME)
                 receipt_data = ReceiptData.from_dict(analysis_data)
                 
                 is_valid, message = self.validator.validate_receipt_data(receipt_data)

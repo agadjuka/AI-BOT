@@ -1,8 +1,10 @@
 """
-Photo handling for Telegram bot
+Photo handling for Telegram bot with parallel processing support
 """
 import json
-from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
+import asyncio
+from typing import List, Dict, Any, Optional, Tuple
+from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup, Message
 from telegram.ext import ContextTypes
 
 from models.receipt import ReceiptData
@@ -11,14 +13,20 @@ from config.locales.locale_manager import get_global_locale_manager
 
 
 class PhotoHandler(BaseMessageHandler):
-    """Handler for photo upload and processing"""
+    """Handler for photo upload and processing with parallel processing support"""
     
     def __init__(self, config, analysis_service):
         super().__init__(config, analysis_service)
         self.locale_manager = get_global_locale_manager()
+        self.max_concurrent_photos = 3  # Maximum number of photos to process simultaneously
+        self.processing_photos: Dict[int, Dict[str, Any]] = {}  # Track processing photos by user_id
     
     async def handle_photo(self, update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
-        """Handle photo upload"""
+        """Handle single photo upload (backward compatibility)"""
+        return await self.handle_single_photo(update, context)
+    
+    async def handle_single_photo(self, update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
+        """Handle single photo upload"""
         # Set anchor message (first receipt message)
         self.ui_manager.set_anchor(context, update.message.message_id)
         
@@ -33,7 +41,7 @@ class PhotoHandler(BaseMessageHandler):
 
         try:
             print(f"🔍 {self.locale_manager.get_text('status.starting_analysis', context)}")
-            analysis_data = self.analysis_service.analyze_receipt(self.config.PHOTO_FILE_NAME)
+            analysis_data = await self.analysis_service.analyze_receipt_async(self.config.PHOTO_FILE_NAME)
             print(f"✅ {self.locale_manager.get_text('status.analysis_completed', context)}")
             
             # Convert to ReceiptData model
@@ -68,6 +76,209 @@ class PhotoHandler(BaseMessageHandler):
         # Always show final report with edit button
         await self.show_final_report_with_edit_button(update, context)
         return self.config.AWAITING_CORRECTION  # Stay in active state for button processing
+    
+    async def handle_multiple_photos(self, update: Update, context: ContextTypes.DEFAULT_TYPE, photo_messages: List[Message]) -> int:
+        """Handle multiple photos with parallel processing"""
+        user_id = update.effective_user.id
+        
+        # Check if user already has photos processing
+        if user_id in self.processing_photos:
+            await update.message.reply_text(
+                self.locale_manager.get_text("errors.photos_already_processing", context)
+            )
+            return self.config.AWAITING_CORRECTION
+        
+        # Limit number of photos
+        if len(photo_messages) > self.max_concurrent_photos:
+            await update.message.reply_text(
+                self.locale_manager.get_text("errors.too_many_photos", context, 
+                                           max_photos=self.max_concurrent_photos)
+            )
+            return self.config.AWAITING_CORRECTION
+        
+        # Set anchor message
+        self.ui_manager.set_anchor(context, update.message.message_id)
+        
+        # Clear existing data
+        self._clear_receipt_data(context)
+        
+        # Initialize processing tracking
+        self.processing_photos[user_id] = {
+            'total_photos': len(photo_messages),
+            'processed_photos': 0,
+            'successful_photos': 0,
+            'failed_photos': 0,
+            'results': [],
+            'progress_message': None
+        }
+        
+        try:
+            # Send initial progress message
+            progress_text = self.locale_manager.get_text("status.processing_multiple_photos", context, 
+                                                       total=len(photo_messages), processed=0)
+            progress_message = await self.ui_manager.send_temp(update, context, progress_text, duration=60)
+            self.processing_photos[user_id]['progress_message'] = progress_message
+            
+            # Process photos in parallel
+            await self._process_photos_parallel(update, context, photo_messages)
+            
+            # Show final results
+            await self._show_multiple_photos_results(update, context)
+            
+        except Exception as e:
+            print(f"Error in handle_multiple_photos: {e}")
+            await update.message.reply_text(
+                self.locale_manager.get_text("errors.multiple_photos_error", context, error=str(e))
+            )
+        finally:
+            # Clean up processing tracking
+            self.processing_photos.pop(user_id, None)
+        
+        return self.config.AWAITING_CORRECTION
+    
+    async def _process_photos_parallel(self, update: Update, context: ContextTypes.DEFAULT_TYPE, 
+                                     photo_messages: List[Message]) -> None:
+        """Process multiple photos in parallel with progress tracking"""
+        user_id = update.effective_user.id
+        processing_info = self.processing_photos[user_id]
+        
+        # Create tasks for parallel processing
+        tasks = []
+        for i, photo_message in enumerate(photo_messages):
+            task = self._process_single_photo_async(update, context, photo_message, i)
+            tasks.append(task)
+        
+        # Process with semaphore to limit concurrent operations
+        semaphore = asyncio.Semaphore(self.max_concurrent_photos)
+        
+        async def process_with_semaphore(task):
+            async with semaphore:
+                return await task
+        
+        # Execute all tasks
+        results = await asyncio.gather(*[process_with_semaphore(task) for task in tasks], 
+                                     return_exceptions=True)
+        
+        # Process results
+        for i, result in enumerate(results):
+            processing_info['processed_photos'] += 1
+            
+            if isinstance(result, Exception):
+                processing_info['failed_photos'] += 1
+                processing_info['results'].append({
+                    'photo_index': i,
+                    'success': False,
+                    'error': str(result),
+                    'receipt_data': None
+                })
+            else:
+                processing_info['successful_photos'] += 1
+                processing_info['results'].append({
+                    'photo_index': i,
+                    'success': True,
+                    'error': None,
+                    'receipt_data': result
+                })
+            
+            # Update progress
+            await self._update_progress_message(update, context, processing_info)
+    
+    async def _process_single_photo_async(self, update: Update, context: ContextTypes.DEFAULT_TYPE, 
+                                        photo_message: Message, photo_index: int) -> Optional[ReceiptData]:
+        """Process a single photo asynchronously"""
+        try:
+            # Download photo
+            photo_file = await photo_message.photo[-1].get_file()
+            photo_filename = f"{self.config.PHOTO_FILE_NAME}_{photo_index}"
+            await photo_file.download_to_drive(photo_filename)
+            
+            # Analyze photo
+            analysis_data = await self.analysis_service.analyze_receipt_async(photo_filename)
+            
+            # Convert to ReceiptData
+            receipt_data = ReceiptData.from_dict(analysis_data)
+            
+            # Validate data
+            is_valid, message = self.validator.validate_receipt_data(receipt_data)
+            if not is_valid:
+                print(f"Validation warning for photo {photo_index}: {message}")
+            
+            return receipt_data
+            
+        except Exception as e:
+            print(f"Error processing photo {photo_index}: {e}")
+            raise e
+    
+    async def _update_progress_message(self, update: Update, context: ContextTypes.DEFAULT_TYPE, 
+                                     processing_info: Dict[str, Any]) -> None:
+        """Update progress message for multiple photos processing"""
+        try:
+            progress_text = self.locale_manager.get_text(
+                "status.processing_multiple_photos_progress", context,
+                total=processing_info['total_photos'],
+                processed=processing_info['processed_photos'],
+                successful=processing_info['successful_photos'],
+                failed=processing_info['failed_photos']
+            )
+            
+            # Update progress message
+            if processing_info['progress_message']:
+                await processing_info['progress_message'].edit_text(progress_text)
+                
+        except Exception as e:
+            print(f"Error updating progress message: {e}")
+    
+    async def _show_multiple_photos_results(self, update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+        """Show results of multiple photos processing"""
+        user_id = update.effective_user.id
+        processing_info = self.processing_photos.get(user_id, {})
+        
+        if not processing_info:
+            return
+        
+        results = processing_info['results']
+        successful_count = processing_info['successful_photos']
+        failed_count = processing_info['failed_photos']
+        
+        # Create results summary
+        summary_text = self.locale_manager.get_text(
+            "status.multiple_photos_completed", context,
+            total=len(results),
+            successful=successful_count,
+            failed=failed_count
+        )
+        
+        # If we have successful results, show the first one as main result
+        successful_results = [r for r in results if r['success']]
+        if successful_results:
+            # Use the first successful result as the main receipt data
+            main_receipt = successful_results[0]['receipt_data']
+            context.user_data['receipt_data'] = main_receipt
+            context.user_data['original_data'] = ReceiptData.from_dict(main_receipt.to_dict())
+            
+            # Create ingredient matching for main receipt
+            await self._create_ingredient_matching_for_receipt(update, context, main_receipt)
+            
+            # Show final report
+            await self.show_final_report_with_edit_button(update, context)
+        else:
+            # No successful results
+            await update.message.reply_text(
+                self.locale_manager.get_text("errors.no_successful_photos", context)
+            )
+    
+    async def handle_media_group(self, update: Update, context: ContextTypes.DEFAULT_TYPE, media_group: List[Message]) -> int:
+        """Handle media group (multiple photos sent at once)"""
+        # Filter only photo messages
+        photo_messages = [msg for msg in media_group if msg.photo]
+        
+        if not photo_messages:
+            await update.message.reply_text(
+                self.locale_manager.get_text("errors.no_photos_in_group", context)
+            )
+            return self.config.AWAITING_CORRECTION
+        
+        return await self.handle_multiple_photos(update, context, photo_messages)
     
     async def _create_ingredient_matching_for_receipt(self, update: Update, context: ContextTypes.DEFAULT_TYPE, receipt_data: ReceiptData) -> None:
         """Automatically create ingredient matching table for the receipt"""
