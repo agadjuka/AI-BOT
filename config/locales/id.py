@@ -8,8 +8,7 @@ ID_TRANSLATIONS = {
     "welcome": {
         "start_message": "Halo, {user}! 👋\n\nPilih aksi:",
         "analyze_receipt": "📸 Analisis struk\n\nKirim foto struk untuk dianalisis:",
-        "main_menu": "🏠 Menu utama\n\nGunakan /start untuk memulai pekerjaan baru.",
-        "choose_language": "🌍 Pilih bahasa / Choose language:"
+        "main_menu": "🏠 Menu utama\n\nGunakan /start untuk memulai pekerjaan baru."
     },
     
     # Tombol antarmuka

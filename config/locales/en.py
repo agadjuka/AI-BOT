@@ -8,8 +8,7 @@ EN_TRANSLATIONS = {
     "welcome": {
         "start_message": "Hello, {user}! 👋\n\nChoose an action:",
         "analyze_receipt": "📸 Receipt Analysis\n\nSend a photo of the receipt for analysis:",
-        "main_menu": "🏠 Main Menu\n\nUse /start to begin new work.",
-        "choose_language": "🌍 Choose language / Выберите язык:"
+        "main_menu": "🏠 Main Menu\n\nUse /start to begin new work."
     },
     
     # Interface buttons

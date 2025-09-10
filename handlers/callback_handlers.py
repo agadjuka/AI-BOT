@@ -15,6 +15,8 @@ from handlers.callback_dispatchers.file_generation_dispatcher import FileGenerat
 from handlers.ingredient_matching_callback_handler import IngredientMatchingCallbackHandler
 from handlers.google_sheets_callback_handler import GoogleSheetsCallbackHandler
 from handlers.file_generation_callback_handler import FileGenerationCallbackHandler
+from config.locales.locale_manager import locale_manager
+from config.locales.language_buttons import get_language_keyboard
 
 
 class CallbackHandlers(BaseCallbackHandler):
@@ -46,6 +48,14 @@ class CallbackHandlers(BaseCallbackHandler):
         await query.answer()
         
         action = query.data
+        
+        # Handle language selection (legacy support)
+        if action.startswith("lang_"):
+            return await self._handle_language_selection(update, context, action)
+        
+        # Handle specific language selection callbacks
+        if action in ["select_language_ru", "select_language_en", "select_language_id"]:
+            return await self._handle_specific_language_selection(update, context, action)
         
         # Route to appropriate handler based on action
         if action in ["add_row", "edit_total", "auto_calculate_total", "finish_editing", "edit_receipt", 
@@ -94,6 +104,107 @@ class CallbackHandlers(BaseCallbackHandler):
             await query.answer("Неизвестное действие")
             return self.config.AWAITING_CORRECTION
     
+    
+    async def _handle_language_selection(self, update: Update, context: ContextTypes.DEFAULT_TYPE, action: str) -> int:
+        """Handle language selection callback"""
+        query = update.callback_query
+        
+        # Extract language code from action (e.g., "lang_ru" -> "ru")
+        language_code = action.replace("lang_", "")
+        
+        # Validate language code
+        if not locale_manager.is_language_supported(language_code):
+            await query.answer("❌ Неподдерживаемый язык")
+            return self.config.AWAITING_CORRECTION
+        
+        # Set user language
+        locale_manager.set_user_language(context, language_code)
+        
+        # Show main menu in selected language
+        from telegram import InlineKeyboardButton, InlineKeyboardMarkup
+        
+        keyboard = [
+            [InlineKeyboardButton(
+                locale_manager.get_text("buttons.analyze_receipt", context), 
+                callback_data="analyze_receipt"
+            )],
+            [InlineKeyboardButton(
+                locale_manager.get_text("buttons.generate_supply_file", context), 
+                callback_data="generate_supply_file"
+            )]
+        ]
+        
+        # Add back button if there's existing receipt data
+        if context.user_data.get('receipt_data'):
+            keyboard.append([InlineKeyboardButton(
+                locale_manager.get_text("buttons.back_to_receipt", context), 
+                callback_data="back_to_receipt"
+            )])
+        
+        reply_markup = InlineKeyboardMarkup(keyboard)
+        
+        await query.edit_message_text(
+            locale_manager.get_text("welcome.start_message", context, user=update.effective_user.mention_html()),
+            reply_markup=reply_markup,
+            parse_mode='HTML'
+        )
+        
+        return self.config.AWAITING_CORRECTION
+    
+    async def _handle_specific_language_selection(self, update: Update, context: ContextTypes.DEFAULT_TYPE, action: str) -> int:
+        """Handle specific language selection callbacks (select_language_ru, select_language_en, select_language_id)"""
+        query = update.callback_query
+        
+        # Map action to language code
+        language_mapping = {
+            "select_language_ru": "ru",
+            "select_language_en": "en", 
+            "select_language_id": "id"
+        }
+        
+        language_code = language_mapping.get(action)
+        if not language_code:
+            await query.answer("❌ Неизвестный язык")
+            return self.config.AWAITING_CORRECTION
+        
+        # Validate language code
+        if not locale_manager.is_language_supported(language_code):
+            await query.answer("❌ Неподдерживаемый язык")
+            return self.config.AWAITING_CORRECTION
+        
+        # Set user language in context.user_data
+        locale_manager.set_user_language(context, language_code)
+        
+        # Show main menu in selected language
+        from telegram import InlineKeyboardButton, InlineKeyboardMarkup
+        
+        keyboard = [
+            [InlineKeyboardButton(
+                locale_manager.get_text("buttons.analyze_receipt", context), 
+                callback_data="analyze_receipt"
+            )],
+            [InlineKeyboardButton(
+                locale_manager.get_text("buttons.generate_supply_file", context), 
+                callback_data="generate_supply_file"
+            )]
+        ]
+        
+        # Add back button if there's existing receipt data
+        if context.user_data.get('receipt_data'):
+            keyboard.append([InlineKeyboardButton(
+                locale_manager.get_text("buttons.back_to_receipt", context), 
+                callback_data="back_to_receipt"
+            )])
+        
+        reply_markup = InlineKeyboardMarkup(keyboard)
+        
+        await query.edit_message_text(
+            locale_manager.get_text("welcome.start_message", context, user=update.effective_user.mention_html()),
+            reply_markup=reply_markup,
+            parse_mode='HTML'
+        )
+        
+        return self.config.AWAITING_CORRECTION
     
     async def _cancel(self, update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
         """Cancel current operation"""

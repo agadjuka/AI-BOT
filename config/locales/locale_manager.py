@@ -4,8 +4,8 @@ LocaleManager - класс для управления локализацией 
 
 import re
 from typing import Dict, Any, Optional, Union
-from config.locales.ru_flat import RU_TRANSLATIONS
-from config.locales.en_flat import EN_TRANSLATIONS
+from config.locales.ru import RU_TRANSLATIONS
+from config.locales.en import EN_TRANSLATIONS
 from config.locales.id import ID_TRANSLATIONS
 
 
@@ -63,7 +63,7 @@ class LocaleManager:
         Получает переведенный текст по ключу.
         
         Args:
-            key: Ключ для поиска перевода
+            key: Ключ для поиска перевода (поддерживает вложенные ключи через точку, например "buttons.analyze_receipt")
             context: Контекст пользователя (опционально)
             language: Язык (опционально, если не указан, берется из context)
             **kwargs: Переменные для интерполяции
@@ -80,13 +80,13 @@ class LocaleManager:
         # Получаем переводы для языка
         translations = self._translations.get(language, self._translations[self._default_lang])
         
-        # Получаем текст
-        text = translations.get(key, '')
+        # Получаем текст с поддержкой вложенных ключей
+        text = self._get_nested_value(translations, key)
         
         # Если текст не найден в текущем языке, пробуем fallback
         if not text and language != self._default_lang:
             fallback_translations = self._translations[self._default_lang]
-            text = fallback_translations.get(key, key)  # Если и в fallback нет, возвращаем ключ
+            text = self._get_nested_value(fallback_translations, key)
         
         # Если текст все еще пустой, возвращаем ключ
         if not text:
@@ -97,6 +97,34 @@ class LocaleManager:
             text = self._interpolate_variables(text, kwargs)
         
         return text
+    
+    def _get_nested_value(self, data: Dict[str, Any], key: str) -> str:
+        """
+        Получает значение из вложенного словаря по ключу с поддержкой точечной нотации.
+        
+        Args:
+            data: Словарь с переводами
+            key: Ключ для поиска (например, "buttons.analyze_receipt")
+            
+        Returns:
+            str: Найденное значение или пустая строка
+        """
+        if not key:
+            return ""
+        
+        keys = key.split('.')
+        current = data
+        
+        try:
+            for k in keys:
+                if isinstance(current, dict) and k in current:
+                    current = current[k]
+                else:
+                    return ""
+            
+            return str(current) if current is not None else ""
+        except (TypeError, AttributeError):
+            return ""
     
     def _interpolate_variables(self, text: str, variables: Dict[str, Any]) -> str:
         """

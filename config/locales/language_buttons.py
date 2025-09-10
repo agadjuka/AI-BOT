@@ -3,23 +3,31 @@ Language selection buttons for the AI Bot application.
 These buttons are the same for all language versions and are not translated.
 """
 
-from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
+try:
+    from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
+except ImportError:
+    # Для тестирования без aiogram
+    InlineKeyboardMarkup = None
+    InlineKeyboardButton = None
 
 
-def get_language_keyboard() -> InlineKeyboardMarkup:
+def get_language_keyboard():
     """
     Create language selection keyboard with flags and language names.
     
     Returns:
         InlineKeyboardMarkup: Keyboard with language selection buttons
     """
+    if InlineKeyboardMarkup is None or InlineKeyboardButton is None:
+        raise ImportError("aiogram is required for get_language_keyboard function")
+    
     keyboard = InlineKeyboardMarkup(row_width=1)
     
     # Language buttons with flags and names (not translated)
     keyboard.add(
-        InlineKeyboardButton("🇷🇺 Русский", callback_data="lang_ru"),
-        InlineKeyboardButton("🇺🇸 English", callback_data="lang_en"),
-        InlineKeyboardButton("🇮🇩 Bahasa Indonesia", callback_data="lang_id")
+        InlineKeyboardButton("🇷🇺 Русский", callback_data="select_language_ru"),
+        InlineKeyboardButton("🇺🇸 English", callback_data="select_language_en"),
+        InlineKeyboardButton("🇮🇩 Bahasa Indonesia", callback_data="select_language_id")
     )
     
     return keyboard
