@@ -113,7 +113,10 @@ def create_application() -> Application:
     ai_service = AIService(config, prompt_manager)
     analysis_service = ReceiptAnalysisService(ai_service)
     
-    # Initialize handlers
+    # Initialize global LocaleManager with Firestore instance FIRST
+    initialize_locale_manager(db)
+    
+    # Initialize handlers AFTER LocaleManager is initialized
     message_handlers = MessageHandlers(config, analysis_service)
     callback_handlers = CallbackHandlers(config, analysis_service)
     
@@ -122,9 +125,6 @@ def create_application() -> Application:
     
     # Create application
     application = Application.builder().token(TOKEN).concurrent_updates(True).build()
-    
-    # Initialize global LocaleManager with Firestore instance
-    initialize_locale_manager(db)
     
     # Initialize empty poster ingredients - will be loaded on demand
     application.bot_data["poster_ingredients"] = {}
