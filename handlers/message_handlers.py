@@ -83,7 +83,7 @@ class MessageHandlers(BaseMessageHandler):
             reply_markup=reply_markup
         )
         
-        return self.config.AWAITING_CORRECTION
+        return self.config.AWAITING_DASHBOARD
     
     async def handle_photo(self, update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
         """Handle photo upload - delegate to photo handler"""

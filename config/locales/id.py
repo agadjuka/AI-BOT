@@ -280,7 +280,7 @@ ID_TRANSLATIONS = {
             "excel_generation_error_detailed": "❌ Error membuat file Excel: {error}",
             "matching_table_title": "**Pencocokan dengan bahan Google Sheets:**",
             "no_ingredients_for_matching": "Tidak ada bahan untuk dicocokkan.",
-            "table_header": "{'№':<2} | {'Nama':<20} | {'Google Sheets':<20} | {'Status':<4}",
+            "table_header": "№ | Nama                 | Google Sheets        | Status",
             "manual_matching_editor_title": "**Editor pencocokan Google Sheets**",
             "current_item": "**Barang:** {item_name}",
             "choose_suitable_ingredient": "**Pilih bahan yang sesuai:**",

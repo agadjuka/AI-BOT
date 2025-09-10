@@ -32,21 +32,24 @@ class ReceiptEditDispatcher(BaseCallbackHandler):
         elif action == "auto_calculate_total":
             await self.receipt_edit_handler._auto_calculate_total(update, context)
         elif action == "finish_editing":
-            await self.receipt_edit_handler._show_final_report_with_edit_button_callback(update, context)
+            # Use photo_handler method which has proper localization
+            from handlers.photo_handler import PhotoHandler
+            photo_handler = PhotoHandler(self.config, self.analysis_service)
+            await photo_handler.show_final_report_with_edit_button(update, context)
         elif action == "edit_receipt":
             await self.receipt_edit_handler._send_edit_menu(update, context)
         elif action == "back_to_edit":
             await self.receipt_edit_handler._send_edit_menu(update, context)
-        elif action.startswith("edit_item_") or action.startswith("edit_"):
-            # Skip Google Sheets actions
-            if action.startswith("edit_google_sheets_"):
-                return self.config.AWAITING_CORRECTION
+        elif action.startswith("edit_item_"):
+            # Handle "edit_item_X" pattern
+            item_number = int(action.split("_")[-1])
             
-            # Handle both "edit_item_X" and "edit_X" patterns
-            if action.startswith("edit_item_"):
-                item_number = int(action.split("_")[-1])
-            else:  # action.startswith("edit_")
-                item_number = int(action.split("_")[-1])
+            context.user_data['line_to_edit'] = item_number
+            await self.ui_manager.cleanup_all_except_anchor(update, context)
+            await self.receipt_edit_handler._send_edit_menu(update, context)
+        elif action.startswith("edit_") and action != "edit_line_number" and not action.startswith("edit_google_sheets_"):
+            # Handle "edit_X" pattern (but not edit_line_number or Google Sheets actions)
+            item_number = int(action.split("_")[-1])
             
             context.user_data['line_to_edit'] = item_number
             await self.ui_manager.cleanup_all_except_anchor(update, context)
@@ -127,7 +130,10 @@ class ReceiptEditDispatcher(BaseCallbackHandler):
                     return self.config.AWAITING_CORRECTION
             
             await self.ui_manager.back_to_receipt(update, context)
-            await self.receipt_edit_handler._show_final_report_with_edit_button_callback(update, context)
+            # Use photo_handler method which has proper localization
+            from handlers.photo_handler import PhotoHandler
+            photo_handler = PhotoHandler(self.config, self.analysis_service)
+            await photo_handler.show_final_report_with_edit_button(update, context)
         elif action == "back_to_main_menu":
             await update.callback_query.edit_message_text(
                 locale_manager.get_text("welcome.main_menu", context)
@@ -169,7 +175,10 @@ class ReceiptEditDispatcher(BaseCallbackHandler):
             context.user_data.pop('field_to_edit', None)
             context.user_data.pop('line_to_edit', None)
             
-            await self.receipt_edit_handler._show_final_report_with_edit_button_callback(update, context)
+            # Use photo_handler method which has proper localization
+            from handlers.photo_handler import PhotoHandler
+            photo_handler = PhotoHandler(self.config, self.analysis_service)
+            await photo_handler.show_final_report_with_edit_button(update, context)
             return self.config.AWAITING_CORRECTION
         
         return self.config.AWAITING_CORRECTION

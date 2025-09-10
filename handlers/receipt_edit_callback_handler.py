@@ -6,10 +6,16 @@ from telegram.ext import ContextTypes
 
 from handlers.base_callback_handler import BaseCallbackHandler
 from models.receipt import ReceiptData, ReceiptItem
+from config.locales.locale_manager import locale_manager
+from handlers.input_handler import InputHandler
 
 
 class ReceiptEditCallbackHandler(BaseCallbackHandler):
     """Handler for receipt editing callbacks"""
+    
+    def __init__(self, config, analysis_service):
+        super().__init__(config, analysis_service)
+        self.input_handler = InputHandler(config, analysis_service)
     
     async def _add_new_row(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         """Add new row to receipt"""
@@ -18,7 +24,7 @@ class ReceiptEditCallbackHandler(BaseCallbackHandler):
         
         data: ReceiptData = context.user_data.get('receipt_data')
         if not data:
-            await query.edit_message_text("❌ Данные чека не найдены")
+            await query.edit_message_text(locale_manager.get_text("errors.receipt_data_not_found", context))
             return
         
         # Find maximum line number
@@ -28,7 +34,7 @@ class ReceiptEditCallbackHandler(BaseCallbackHandler):
         # Create new row with empty data
         new_item = ReceiptItem(
             line_number=new_line_number,
-            name='Новый товар',
+            name=locale_manager.get_text("analysis.new_item_name", context),
             quantity=1.0,
             price=0.0,
             total=0.0,
@@ -56,7 +62,7 @@ class ReceiptEditCallbackHandler(BaseCallbackHandler):
             print(f"DEBUG: Error deleting receipt message: {e}")
         
         # Show edit menu for new row
-        await self._send_edit_menu(update, context)
+        await self.input_handler._send_edit_menu(update, context)
     
     async def _show_total_edit_menu(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         """Show total edit menu"""
@@ -65,7 +71,7 @@ class ReceiptEditCallbackHandler(BaseCallbackHandler):
         
         data: ReceiptData = context.user_data.get('receipt_data', {})
         if not data:
-            await query.edit_message_text("❌ Данные чека не найдены")
+            await query.edit_message_text(locale_manager.get_text("errors.receipt_data_not_found", context))
             return
         
         current_total = data.grand_total_text
@@ -75,18 +81,23 @@ class ReceiptEditCallbackHandler(BaseCallbackHandler):
         calculated_total = self.formatter.calculate_total_sum(data)
         formatted_calculated_total = self.number_formatter.format_number_with_spaces(calculated_total)
         
-        text = f"**Редактирование итого:**\n\n"
-        text += f"💰 **Текущая итоговая сумма:** {formatted_total}\n"
-        text += f"🧮 **Автоматически рассчитанная сумма:** {formatted_calculated_total}\n\n"
-        text += "Выберите действие:"
+        editing_total_text = locale_manager.get_text("analysis.editing_total", context)
+        current_total_text = locale_manager.get_text("analysis.current_total", context, total=formatted_total)
+        calculated_total_text = locale_manager.get_text("analysis.calculated_total", context, calculated_total=formatted_calculated_total)
+        choose_action_text = locale_manager.get_text("analysis.choose_action", context)
+        
+        text = editing_total_text
+        text += current_total_text
+        text += calculated_total_text
+        text += choose_action_text
         
         keyboard = [
             [
-                InlineKeyboardButton("🧮 Рассчитать автоматически", callback_data="auto_calculate_total"),
-                InlineKeyboardButton("✏️ Ввести вручную", callback_data="manual_edit_total")
+                InlineKeyboardButton(locale_manager.get_text("buttons.auto_calculate_total", context), callback_data="auto_calculate_total"),
+                InlineKeyboardButton(locale_manager.get_text("buttons.manual_edit_total", context), callback_data="manual_edit_total")
             ],
             [
-                InlineKeyboardButton("❌ Отмена", callback_data="cancel")
+                InlineKeyboardButton(locale_manager.get_text("buttons.cancel", context), callback_data="cancel")
             ]
         ]
         
@@ -113,7 +124,7 @@ class ReceiptEditCallbackHandler(BaseCallbackHandler):
         
         data: ReceiptData = context.user_data.get('receipt_data', {})
         if not data:
-            await query.edit_message_text("❌ Данные чека не найдены")
+            await query.edit_message_text(locale_manager.get_text("errors.receipt_data_not_found", context))
             return
         
         # Calculate total sum of all positions
@@ -136,125 +147,18 @@ class ReceiptEditCallbackHandler(BaseCallbackHandler):
                 message_id=context.user_data.get('total_edit_menu_message_id')
             )
         except Exception as e:
-            print(f"Не удалось удалить сообщение с меню редактирования итого: {e}")
+            print(f"Failed to delete total edit menu message: {e}")
         
         # Show success message
         formatted_total = self.number_formatter.format_number_with_spaces(calculated_total)
         await self.ui_manager.send_temp(
-            update, context, f"✅ Итого автоматически рассчитано: **{formatted_total}**", duration=2
+            update, context, locale_manager.get_text("status.total_auto_calculated", context, total=formatted_total), duration=2
         )
     
-    async def _send_edit_menu(self, update: Update, context: ContextTypes.DEFAULT_TYPE, message_id_to_edit: int = None):
-        """Send edit menu for specific line"""
-        line_number = context.user_data.get('line_to_edit')
-        data: ReceiptData = context.user_data['receipt_data']
-        item_to_edit = data.get_item(line_number)
-        
-        if not item_to_edit:
-            if hasattr(update, 'callback_query') and update.callback_query:
-                await update.callback_query.message.reply_text("Ошибка: строка не найдена")
-            return
-        
-        # Automatically calculate sum and update status before display
-        item_to_edit = self.processor.auto_calculate_total_if_needed(item_to_edit)
-        item_to_edit = self.processor.auto_update_item_status(item_to_edit)
-        
-        # Format current values
-        name = item_to_edit.name
-        quantity = self.number_formatter.format_number_with_spaces(item_to_edit.quantity)
-        price = self.number_formatter.format_number_with_spaces(item_to_edit.price)
-        total = self.number_formatter.format_number_with_spaces(item_to_edit.total)
-        
-        # Check if sum was automatically calculated
-        is_auto_calculated = item_to_edit.auto_calculated
-        
-        # Determine current status (flag)
-        status = item_to_edit.status
-        if status == 'confirmed':
-            status_icon = "✅"
-        elif status == 'error':
-            status_icon = "🔴"
-        else:
-            status_icon = "⚠️"
-        
-        text = f"**Редактирование строки {line_number}:** {status_icon}\n\n"
-        text += f"📝 **Название:** {name}\n"
-        text += f"🔢 **Количество:** {quantity}\n"
-        text += f"💰 **Цена:** {price}\n"
-        
-        # Show sum with note about whether it was automatically calculated
-        if is_auto_calculated:
-            text += f"💵 **Сумма:** {total} *(автоматически рассчитана)*\n\n"
-        else:
-            text += f"💵 **Сумма:** {total}\n\n"
-        
-        text += "Выберите поле для редактирования:"
-        
-        keyboard = [
-            [
-                InlineKeyboardButton("📝 Название", callback_data=f"field_{line_number}_name"),
-                InlineKeyboardButton("🔢 Количество", callback_data=f"field_{line_number}_quantity"),
-                InlineKeyboardButton("💰 Цена", callback_data=f"field_{line_number}_price")
-            ],
-            [
-                InlineKeyboardButton("💵 Сумма", callback_data=f"field_{line_number}_total"),
-                InlineKeyboardButton("✅ Применить", callback_data=f"apply_{line_number}"),
-                InlineKeyboardButton("◀️ Назад", callback_data="back_to_receipt")
-            ]
-        ]
-        
-        reply_markup = InlineKeyboardMarkup(keyboard)
-        
-        # Check if we should edit existing message or create new one
-        edit_menu_message_id = context.user_data.get('edit_menu_message_id')
-        if message_id_to_edit:
-            edit_menu_message_id = message_id_to_edit
-        
-        if edit_menu_message_id:
-            # Try to edit existing message
-            try:
-                if hasattr(update, 'callback_query') and update.callback_query:
-                    await update.callback_query.message.bot.edit_message_text(
-                        chat_id=update.callback_query.message.chat_id,
-                        message_id=edit_menu_message_id,
-                        text=text,
-                        reply_markup=reply_markup,
-                        parse_mode='Markdown'
-                    )
-                elif hasattr(update, 'message') and update.message:
-                    await context.bot.edit_message_text(
-                        chat_id=update.message.chat_id,
-                        message_id=edit_menu_message_id,
-                        text=text,
-                        reply_markup=reply_markup,
-                        parse_mode='Markdown'
-                    )
-                print(f"DEBUG: Successfully edited existing message {edit_menu_message_id}")
-                return
-            except Exception as e:
-                print(f"DEBUG: Error editing message {edit_menu_message_id}: {e}")
-                # If couldn't edit, fall through to create new message
-        
-        # Create new message if no existing message or edit failed
-        if hasattr(update, 'callback_query') and update.callback_query:
-            # For callback queries, send new message to preserve receipt menu
-            try:
-                message = await update.callback_query.message.reply_text(
-                    text, reply_markup=reply_markup, parse_mode='Markdown'
-                )
-                context.user_data['edit_menu_message_id'] = message.message_id
-                print(f"DEBUG: Created new message with ID {message.message_id}")
-            except Exception as e:
-                print(f"DEBUG: Error creating new message: {e}")
-        elif hasattr(update, 'message') and update.message:
-            # For regular messages, create new message
-            message = await self.ui_manager.send_menu(
-                update, context, text, reply_markup, 'Markdown'
-            )
-            context.user_data['edit_menu_message_id'] = message.message_id
-            print(f"DEBUG: Created new message with ID {message.message_id}")
-        else:
-            return
+    
+    async def _send_edit_menu(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
+        """Delegate to input handler"""
+        await self.input_handler._send_edit_menu(update, context)
     
     async def _show_final_report_with_edit_button_callback(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         """Show final report with edit buttons (for callback query)"""
@@ -264,8 +168,8 @@ class ReceiptEditCallbackHandler(BaseCallbackHandler):
             if hasattr(update, 'callback_query') and update.callback_query:
                 await self.ui_manager.send_temp(
                     update, context,
-                    "❌ **Данные чека не найдены**\n\n"
-                    "Попробуйте загрузить чек заново.",
+                    locale_manager.get_text("errors.receipt_data_not_found", context) + "\n\n" +
+                    "Try uploading the receipt again.",
                     duration=5
                 )
             return
@@ -290,15 +194,15 @@ class ReceiptEditCallbackHandler(BaseCallbackHandler):
             
             # Add red marker if there are errors
             if has_errors:
-                final_report += "🔴 **Обнаружены ошибки в данных чека**\n\n"
+                final_report += locale_manager.get_text("analysis.errors_found", context)
             
             final_report += f"```\n{aligned_table}\n```\n\n"
             
             if abs(calculated_total - receipt_total) < 0.01:
-                final_report += "✅ **Итоговая сумма соответствует!**\n"
+                final_report += locale_manager.get_text("analysis.total_matches", context)
             else:
                 difference = abs(calculated_total - receipt_total)
-                final_report += f"❗ **Несоответствие итоговой суммы! Разница: {self.number_formatter.format_number_with_spaces(difference)}**\n"
+                final_report += locale_manager.get_text("analysis.total_mismatch", context, difference=self.number_formatter.format_number_with_spaces(difference))
             
             # Save report in cache for quick access
             context.user_data['cached_final_report'] = final_report
@@ -324,12 +228,12 @@ class ReceiptEditCallbackHandler(BaseCallbackHandler):
                     
                     # Check if name is unreadable
                     item_name = item.name
-                    is_unreadable = item_name == "???" or item_name == "**не распознано**"
+                    is_unreadable = item_name == "???" or item_name == "**unrecognized**"
                     
                     # If there are calculation errors, unreadable data or status not confirmed
                     if status != 'confirmed' or has_calculation_error or is_unreadable:
                         fix_buttons.append(InlineKeyboardButton(
-                            f"Исправить строку {item.line_number}",
+                            locale_manager.get_text("buttons.fix_line", context, line_number=item.line_number),
                             callback_data=f"edit_item_{item.line_number}"
                         ))
                 
@@ -356,27 +260,27 @@ class ReceiptEditCallbackHandler(BaseCallbackHandler):
             
             # Add line management buttons
             keyboard.append([
-                InlineKeyboardButton("➕ Добавить строку", callback_data="add_row"),
-                InlineKeyboardButton("➖ Удалить строку", callback_data="delete_row")
+                InlineKeyboardButton(locale_manager.get_text("buttons.add_row", context), callback_data="add_row"),
+                InlineKeyboardButton(locale_manager.get_text("buttons.delete_row", context), callback_data="delete_row")
             ])
             
             # Add edit line by number button under add/delete buttons
-            keyboard.append([InlineKeyboardButton("🔢 Редактировать строку по номеру", callback_data="edit_line_number")])
+            keyboard.append([InlineKeyboardButton(locale_manager.get_text("buttons.edit_line_number", context), callback_data="edit_line_number")])
             
             # Add total edit and reanalysis buttons in one row
             keyboard.append([
-                InlineKeyboardButton("💰 Редактировать Итого", callback_data="edit_total"),
-                InlineKeyboardButton("🔄 Проанализировать заново", callback_data="reanalyze")
+                InlineKeyboardButton(locale_manager.get_text("buttons.edit_total", context), callback_data="edit_total"),
+                InlineKeyboardButton(locale_manager.get_text("buttons.reanalyze", context), callback_data="reanalyze")
             ])
             
             # Add Google Sheets upload button
-            keyboard.append([InlineKeyboardButton("📊 Загрузить в Google Таблицы", callback_data="upload_to_google_sheets")])
+            keyboard.append([InlineKeyboardButton(locale_manager.get_text("buttons.upload_to_google_sheets", context), callback_data="upload_to_google_sheets")])
             
             # Add file generation button
-            keyboard.append([InlineKeyboardButton("📄 Получить файл для загрузки в постер", callback_data="generate_supply_file")])
+            keyboard.append([InlineKeyboardButton(locale_manager.get_text("buttons.generate_supply_file", context), callback_data="generate_supply_file")])
             
             # Add back button (required in every menu)
-            keyboard.append([InlineKeyboardButton("◀️ Назад", callback_data="back_to_receipt")])
+            keyboard.append([InlineKeyboardButton(locale_manager.get_text("buttons.back_to_receipt", context), callback_data="back_to_receipt")])
             
             reply_markup = InlineKeyboardMarkup(keyboard)
             
@@ -396,7 +300,7 @@ class ReceiptEditCallbackHandler(BaseCallbackHandler):
                 message = await self.ui_manager.send_menu(update, context, final_report, reply_markup)
         
         except Exception as e:
-            print(f"Ошибка при формировании отчета: {e}")
+            print(f"Error forming report: {e}")
             if hasattr(update, 'callback_query') and update.callback_query:
-                await update.callback_query.message.reply_text(f"Произошла ошибка при формировании отчета: {e}")
+                await update.callback_query.message.reply_text(locale_manager.get_text("errors.report_formation_error", context) + f": {e}")
     

@@ -286,7 +286,7 @@ RU_TRANSLATIONS = {
             "excel_generation_error_detailed": "❌ Ошибка при создании Excel файла: {error}",
             "matching_table_title": "**Сопоставление с ингредиентами Google Таблиц:**",
             "no_ingredients_for_matching": "Нет ингредиентов для сопоставления.",
-            "table_header": "{'№':<2} | {'Наименование':<20} | {'Google Таблицы':<20} | {'Статус':<4}",
+            "table_header": "№ | Наименование         | Google Таблицы      | Статус",
             "manual_matching_editor_title": "**Редактор сопоставления для Google Таблиц**",
             "current_item": "**Товар:** {item_name}",
             "choose_suitable_ingredient": "**Выберите подходящий ингредиент:**",

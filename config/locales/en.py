@@ -280,7 +280,7 @@ EN_TRANSLATIONS = {
             "excel_generation_error_detailed": "❌ Error creating Excel file: {error}",
             "matching_table_title": "**Matching with Google Sheets ingredients:**",
             "no_ingredients_for_matching": "No ingredients for matching.",
-            "table_header": "{'№':<2} | {'Name':<20} | {'Google Sheets':<20} | {'Status':<4}",
+            "table_header": "№ | Name                 | Google Sheets        | Status",
             "manual_matching_editor_title": "**Google Sheets matching editor**",
             "current_item": "**Item:** {item_name}",
             "choose_suitable_ingredient": "**Choose suitable ingredient:**",

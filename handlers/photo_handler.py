@@ -43,7 +43,7 @@ class PhotoHandler(BaseMessageHandler):
             # Validate and correct data
             is_valid, message = self.validator.validate_receipt_data(receipt_data)
             if not is_valid:
-                print(f"Предупреждение валидации: {message}")
+                print(f"Validation warning: {message}")
             
             context.user_data['receipt_data'] = receipt_data
             print(f"✅ {self.locale_manager.get_text('status.data_saved', context)}")
@@ -182,7 +182,7 @@ class PhotoHandler(BaseMessageHandler):
                     
                     # Check if name is unreadable
                     item_name = item.name
-                    is_unreadable = item_name == "???" or item_name == "**не распознано**"
+                    is_unreadable = item_name == "???" or item_name == "**unrecognized**"
                     
                     # If there are calculation errors, unreadable data or status not confirmed
                     if status != 'confirmed' or has_calculation_error or is_unreadable:

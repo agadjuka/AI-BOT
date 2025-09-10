@@ -141,6 +141,12 @@ def create_application() -> Application:
                 MessageHandler(filters.TEXT & ~filters.COMMAND, message_handlers.handle_user_input),
                 MessageHandler(filters.PHOTO, message_handlers.handle_photo)
             ],
+            config.AWAITING_DASHBOARD: [
+                CallbackQueryHandler(callback_handlers.handle_correction_choice),
+                CommandHandler("dashboard", message_handlers.dashboard),
+                MessageHandler(filters.TEXT & ~filters.COMMAND, message_handlers.handle_user_input),
+                MessageHandler(filters.PHOTO, message_handlers.handle_photo)
+            ],
             config.AWAITING_INPUT: [
                 CommandHandler("dashboard", message_handlers.dashboard),
                 MessageHandler(filters.TEXT & ~filters.COMMAND, message_handlers.handle_user_input),
@@ -179,7 +185,10 @@ def create_application() -> Application:
                 MessageHandler(filters.PHOTO, message_handlers.handle_photo)
             ],
         },
-        fallbacks=[CommandHandler("cancel", message_handlers.start)],
+        fallbacks=[
+            CommandHandler("cancel", message_handlers.start),
+            CommandHandler("dashboard", message_handlers.dashboard)
+        ],
         per_message=False
     )
 
