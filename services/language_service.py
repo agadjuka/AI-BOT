@@ -6,8 +6,9 @@ class LanguageService:
     def __init__(self):
         self.db = None
         try:
-            self.db = firestore.Client()
-            print("✅ Language service initialized with Firestore")
+            # Use the same database as main files (billscaner)
+            self.db = firestore.Client(database='billscaner')
+            print("✅ Language service initialized with Firestore (database: billscaner)")
         except Exception as e:
             print(f"⚠️ Firestore not available, using local storage: {e}")
             self.db = None

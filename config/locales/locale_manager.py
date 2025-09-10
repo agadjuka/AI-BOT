@@ -49,32 +49,45 @@ class LocaleManager:
             return stored_language
         return self._default_lang
     
-    def load_user_language_on_start(self, context: Any) -> str:
+    def load_user_language_on_start(self, context: Any, update: Any = None) -> str:
         """Load user language from Firestore when user starts interaction"""
-        if not context or not hasattr(context, 'effective_user'):
+        # Try to get user_id from update first, then from context
+        user_id = None
+        if update and hasattr(update, 'effective_user'):
+            user_id = getattr(update.effective_user, 'id', None)
+            print(f"DEBUG: Got user_id from update: {user_id}")
+        elif context and hasattr(context, 'effective_user'):
+            user_id = getattr(context, 'effective_user', {}).get('id')
+            print(f"DEBUG: Got user_id from context: {user_id}")
+        
+        if not user_id:
+            print(f"DEBUG: No user_id found in update or context")
             return self._default_lang
         
-        user_id = getattr(context, 'effective_user', {}).get('id')
-        if not user_id:
-            return self._default_lang
+        print(f"DEBUG: Loading language for user {user_id} from Firestore...")
         
         # Try to get from Firestore first
         stored_language = self.language_service.get_user_language(user_id)
+        print(f"DEBUG: Retrieved language from Firestore: '{stored_language}'")
+        
         if stored_language and self.is_language_supported(stored_language):
             # Save to context for this session
-            if hasattr(context, 'user_data'):
+            if context and hasattr(context, 'user_data'):
                 context.user_data['language'] = stored_language
+            print(f"DEBUG: Language '{stored_language}' loaded and saved to context")
             return stored_language
         
         # Fallback to default
+        print(f"DEBUG: No valid language found, using default: '{self._default_lang}'")
         return self._default_lang
     
-    def get_language_from_context(self, context: Any) -> str:
+    def get_language_from_context(self, context: Any, update: Any = None) -> str:
         """
         Получает язык из context.user_data или Firestore.
         
         Args:
             context: Контекст пользователя (обычно из Telegram bot)
+            update: Update объект для получения user_id
             
         Returns:
             str: Код языка или язык по умолчанию
@@ -91,20 +104,24 @@ class LocaleManager:
                 return language
         
         # If not in context, try to load from Firestore
-        if hasattr(context, 'effective_user'):
+        user_id = None
+        if update and hasattr(update, 'effective_user'):
+            user_id = getattr(update.effective_user, 'id', None)
+        elif hasattr(context, 'effective_user'):
             user_id = getattr(context, 'effective_user', {}).get('id')
-            if user_id:
-                stored_language = self.language_service.get_user_language(user_id)
-                if stored_language and self.is_language_supported(stored_language):
-                    # Save to context for this session
-                    if hasattr(context, 'user_data'):
-                        context.user_data['language'] = stored_language
-                    return stored_language
+        
+        if user_id:
+            stored_language = self.language_service.get_user_language(user_id)
+            if stored_language and self.is_language_supported(stored_language):
+                # Save to context for this session
+                if hasattr(context, 'user_data'):
+                    context.user_data['language'] = stored_language
+                return stored_language
         
         return self._default_lang
     
     def get_text(self, key: str, context: Optional[Any] = None, 
-                 language: Optional[str] = None, **kwargs) -> str:
+                 language: Optional[str] = None, update: Optional[Any] = None, **kwargs) -> str:
         """
         Получает переведенный текст по ключу.
         
@@ -112,6 +129,7 @@ class LocaleManager:
             key: Ключ для поиска перевода (поддерживает вложенные ключи через точку, например "buttons.analyze_receipt")
             context: Контекст пользователя (опционально)
             language: Язык (опционально, если не указан, берется из context)
+            update: Update объект для получения user_id (опционально)
             **kwargs: Переменные для интерполяции
             
         Returns:
@@ -119,7 +137,7 @@ class LocaleManager:
         """
         # Определяем язык
         if language is None and context is not None:
-            language = self.get_language_from_context(context)
+            language = self.get_language_from_context(context, update)
         elif language is None:
             language = self._default_lang
         
@@ -245,8 +263,19 @@ class LocaleManager:
         translations = self._translations.get(language, self._translations[self._default_lang])
         return list(translations.keys())
     
-    def set_user_language(self, context: Any, language: str) -> bool:
+    def set_user_language(self, update_or_context: Any, context: Any = None, language: str = None) -> bool:
         """Set user language in context and save to Firestore"""
+        # Handle both old and new calling conventions
+        if context is None and language is None:
+            # Old calling convention: set_user_language(context, language)
+            context = update_or_context
+            language = context
+            update = None
+        else:
+            # New calling convention: set_user_language(update, context, language)
+            update = update_or_context
+            language = language
+        
         if not self.is_language_supported(language):
             return False
         if not context or not hasattr(context, 'user_data'):
@@ -255,8 +284,13 @@ class LocaleManager:
         # Save to context
         context.user_data['language'] = language
 
-        # Save to Firestore
-        user_id = getattr(context, 'effective_user', {}).get('id')
+        # Get user_id from update or context
+        user_id = None
+        if update and hasattr(update, 'effective_user'):
+            user_id = getattr(update.effective_user, 'id', None)
+        elif hasattr(context, 'effective_user'):
+            user_id = getattr(context.effective_user, 'id', None)
+        
         if user_id:
             success = self.language_service.save_user_language(user_id, language)
             if success:

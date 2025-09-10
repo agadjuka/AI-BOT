@@ -35,27 +35,31 @@ class MessageHandlers(BaseMessageHandler):
     
     async def start(self, update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         """Handle /start command"""
-        user_id = update.effective_user.id
+        print(f"DEBUG: Start command received from user {update.effective_user.id}")
         
-        # Try to load saved language from Firestore
-        saved_language = self.locale_manager.get_user_language_from_storage(user_id)
+        # Ensure language is loaded from Firestore
+        self.ensure_language_loaded(update, context)
         
-        if saved_language and saved_language != self.locale_manager.DEFAULT_LANGUAGE:
-            # User has a saved language, set it and show main menu
-            context.user_data['language'] = saved_language
+        # Get current language
+        current_language = context.user_data.get('language', self.locale_manager.DEFAULT_LANGUAGE)
+        print(f"DEBUG: Current language: '{current_language}' for user {update.effective_user.id}")
+        
+        if current_language and current_language != self.locale_manager.DEFAULT_LANGUAGE:
+            # User has a saved language, show main menu
+            print(f"DEBUG: Using saved language '{current_language}' for user {update.effective_user.id}")
             
             # Create main menu with localized buttons
             keyboard = [
                 [InlineKeyboardButton(
-                    self.locale_manager.get_text("buttons.analyze_receipt", context), 
+                    self.get_text_with_auto_load("buttons.analyze_receipt", update, context), 
                     callback_data="analyze_receipt"
                 )],
                 [InlineKeyboardButton(
-                    self.locale_manager.get_text("buttons.generate_supply_file", context), 
+                    self.get_text_with_auto_load("buttons.generate_supply_file", update, context), 
                     callback_data="generate_supply_file"
                 )],
                 [InlineKeyboardButton(
-                    self.locale_manager.get_text("buttons.dashboard", context), 
+                    self.get_text_with_auto_load("buttons.dashboard", update, context), 
                     callback_data="dashboard_main"
                 )]
             ]
@@ -63,15 +67,17 @@ class MessageHandlers(BaseMessageHandler):
             reply_markup = InlineKeyboardMarkup(keyboard)
             
             await update.message.reply_html(
-                self.locale_manager.get_text("welcome.start_message", context, 
+                self.get_text_with_auto_load("welcome.start_message", update, context, 
                                            user=update.effective_user.mention_html()),
                 reply_markup=reply_markup
             )
         else:
             # No saved language, show language selection
+            print(f"DEBUG: No saved language found for user {update.effective_user.id}, showing language selection")
+            from config.locales.language_buttons import get_language_keyboard
             language_keyboard = get_language_keyboard()
             await update.message.reply_html(
-                self.locale_manager.get_text("welcome.choose_language", context),
+                self.get_text_with_auto_load("welcome.choose_language", update, context),
                 reply_markup=language_keyboard
             )
         
@@ -106,17 +112,20 @@ class MessageHandlers(BaseMessageHandler):
     
     async def dashboard(self, update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
         """Handle /dashboard command - show user dashboard"""
+        # Ensure language is loaded from Firestore
+        self.ensure_language_loaded(update, context)
+        
         # Set anchor message for dashboard
         self.ui_manager.set_anchor(context, update.message.message_id)
         
         # Create dashboard keyboard
         keyboard = [
             [InlineKeyboardButton(
-                self.locale_manager.get_text("welcome.dashboard.buttons.language_settings", context), 
+                self.get_text_with_auto_load("welcome.dashboard.buttons.language_settings", update, context), 
                 callback_data="dashboard_language_settings"
             )],
             [InlineKeyboardButton(
-                self.locale_manager.get_text("buttons.back_to_main_menu", context), 
+                self.get_text_with_auto_load("buttons.back_to_main_menu", update, context), 
                 callback_data="back_to_main_menu"
             )]
         ]
@@ -125,7 +134,7 @@ class MessageHandlers(BaseMessageHandler):
         
         # Send dashboard message
         await update.message.reply_html(
-            self.locale_manager.get_text("welcome.dashboard.welcome_message", context, 
+            self.get_text_with_auto_load("welcome.dashboard.welcome_message", update, context, 
                                        user=update.effective_user.mention_html()),
             reply_markup=reply_markup
         )
