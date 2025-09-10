@@ -5,6 +5,7 @@ import os
 from typing import Optional
 from .ingredients import IngredientConfig
 from .secrets import secrets
+from .locales import language_buttons
 
 
 class BotConfig:
@@ -45,6 +46,11 @@ class BotConfig:
         # Message settings
         self.MAX_MESSAGE_LENGTH = 4096
         self.MESSAGE_DELAY = 0.5
+        
+        # Language settings
+        self.SUPPORTED_LANGUAGES = ['ru', 'en', 'id']
+        self.DEFAULT_LANGUAGE = 'en'
+        self.LANGUAGE_COLLECTION_NAME = 'user_languages'
 
 
 # AI prompts moved to config/prompts.py
