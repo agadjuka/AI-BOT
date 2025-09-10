@@ -1,11 +1,11 @@
 steps:
   # Сборка Docker образа
   - name: 'gcr.io/cloud-builders/docker'
-    args: ['build', '-t', 'gcr.io/$PROJECT_ID/ai-bot:$COMMIT_SHA', '.']
+    args: ['build', '-t', 'gcr.io/$PROJECT_ID/ai-bot:latest', '.']
   
   # Отправка образа в Container Registry
   - name: 'gcr.io/cloud-builders/docker'
-    args: ['push', 'gcr.io/$PROJECT_ID/ai-bot:$COMMIT_SHA']
+    args: ['push', 'gcr.io/$PROJECT_ID/ai-bot:latest']
   
   # Деплой в Cloud Run
   - name: 'gcr.io/google.com/cloudsdktool/cloud-sdk'
@@ -15,9 +15,9 @@ steps:
       - 'deploy'
       - 'ai-bot'
       - '--image'
-      - 'gcr.io/$PROJECT_ID/ai-bot:$COMMIT_SHA'
+      - 'gcr.io/$PROJECT_ID/ai-bot:latest'
       - '--region'
-      - 'europe-west1'
+      - 'asia-southeast1'
       - '--platform'
       - 'managed'
       - '--allow-unauthenticated'
@@ -34,7 +34,7 @@ steps:
       - '--timeout'
       - '300'
       - '--set-env-vars'
-      - 'BOT_TOKEN=${_BOT_TOKEN},POSTER_TOKEN=${_POSTER_TOKEN},PROJECT_ID=${_PROJECT_ID}'
+      - 'BOT_TOKEN=${_BOT_TOKEN},POSTER_TOKEN=${_POSTER_TOKEN},PROJECT_ID=${_PROJECT_ID},WEBHOOK_URL=https://ai-bot-${_PROJECT_ID}.asia-southeast1.run.app'
 
 # Переменные для подстановки
 substitutions:
@@ -49,4 +49,4 @@ options:
 
 # Store images in Container Registry
 images:
-  - 'gcr.io/$PROJECT_ID/ai-bot:$COMMIT_SHA'
+  - 'gcr.io/$PROJECT_ID/ai-bot:latest'
