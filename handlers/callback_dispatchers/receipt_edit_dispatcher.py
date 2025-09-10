@@ -37,6 +37,10 @@ class ReceiptEditDispatcher(BaseCallbackHandler):
         elif action == "back_to_edit":
             await self.receipt_edit_handler._send_edit_menu(update, context)
         elif action.startswith("edit_item_") or action.startswith("edit_"):
+            # Skip Google Sheets actions
+            if action.startswith("edit_google_sheets_"):
+                return self.config.AWAITING_CORRECTION
+            
             # Handle both "edit_item_X" and "edit_X" patterns
             if action.startswith("edit_item_"):
                 item_number = int(action.split("_")[-1])

@@ -65,7 +65,7 @@ class GoogleSheetsDispatcher(BaseCallbackHandler):
                 )
                 return self.config.AWAITING_CORRECTION
             
-            if not await self.google_sheets_handler._ensure_google_sheets_ingredients_loaded(context):
+            if not await self._ensure_google_sheets_ingredients_loaded(context):
                 await query.edit_message_text(
                     "❌ **Ошибка загрузки в Google Sheets**\n\n"
                     "Не удалось загрузить справочник ингредиентов для Google Sheets.\n"
@@ -123,12 +123,6 @@ class GoogleSheetsDispatcher(BaseCallbackHandler):
             suggestion_number = int(action.split("_")[-1])
             await self.google_sheets_handler._handle_google_sheets_suggestion_selection(update, context, suggestion_number)
         elif action == "gs_next_item":
-            await self.google_sheets_handler._show_google_sheets_position_selection(update, context)
-        elif action == "edit_google_sheets_matching":
-            try:
-                await update.callback_query.delete_message()
-            except Exception as e:
-                print(f"DEBUG: Error deleting message: {e}")
             await self.google_sheets_handler._show_google_sheets_position_selection(update, context)
         elif action == "preview_google_sheets_upload":
             # User wants to preview Google Sheets upload
