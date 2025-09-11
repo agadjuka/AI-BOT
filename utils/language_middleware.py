@@ -22,3 +22,4 @@ def get_user_id_from_context(context: ContextTypes.DEFAULT_TYPE) -> int:
     if context and hasattr(context, 'user_data'):
         return context.user_data.get('_current_user_id')
     return None
+

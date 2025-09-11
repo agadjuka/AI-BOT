@@ -31,8 +31,14 @@ class AIService:
         print(f"🔍 Debug: GOOGLE_APPLICATION_CREDENTIALS = {os.getenv('GOOGLE_APPLICATION_CREDENTIALS')}")
         print(f"🔍 Debug: GOOGLE_APPLICATION_CREDENTIALS_JSON exists: {bool(os.getenv('GOOGLE_APPLICATION_CREDENTIALS_JSON'))}")
         
-        # Clear any cached credentials to force refresh
-        os.environ.pop('GOOGLE_APPLICATION_CREDENTIALS', None)
+        # Set GOOGLE_APPLICATION_CREDENTIALS if not set and credentials file exists
+        if not os.getenv('GOOGLE_APPLICATION_CREDENTIALS'):
+            credentials_file = "just-advice-470905-a3-32c0b9960b41.json"
+            if os.path.exists(credentials_file):
+                os.environ['GOOGLE_APPLICATION_CREDENTIALS'] = credentials_file
+                print(f"✅ Установлена переменная GOOGLE_APPLICATION_CREDENTIALS: {credentials_file}")
+            else:
+                print(f"❌ Файл учетных данных не найден: {credentials_file}")
         
         # Initialize Vertex AI using ADC (recommended approach for Cloud Run)
         try:
@@ -109,11 +115,20 @@ class AIService:
             print("Отправка запроса в Gemini (Фаза 1: Анализ)...")
             
             # Run the synchronous generate_content in a thread pool to avoid blocking
-            loop = asyncio.get_event_loop()
-            response = await loop.run_in_executor(
-                None, 
-                lambda: self.model.generate_content([image_part, self.prompt_manager.get_analyze_prompt()])
-            )
+            # Use asyncio.to_thread for Python 3.9+ or run_in_executor for older versions
+            try:
+                # Modern approach (Python 3.9+)
+                response = await asyncio.to_thread(
+                    self.model.generate_content, 
+                    [image_part, self.prompt_manager.get_analyze_prompt()]
+                )
+            except AttributeError:
+                # Fallback for older Python versions
+                loop = asyncio.get_running_loop()
+                response = await loop.run_in_executor(
+                    None, 
+                    lambda: self.model.generate_content([image_part, self.prompt_manager.get_analyze_prompt()])
+                )
             
             clean_response = response.text.strip().replace("```json", "").replace("```", "")
             print("Ответ от Gemini (Фаза 1):", clean_response)
@@ -149,11 +164,20 @@ class AIService:
             print("Отправка запроса в Gemini (Фаза 2: Форматирование)...")
             
             # Run the synchronous generate_content in a thread pool to avoid blocking
-            loop = asyncio.get_event_loop()
-            response = await loop.run_in_executor(
-                None,
-                lambda: self.model.generate_content(self.prompt_manager.get_format_prompt() + final_data)
-            )
+            # Use asyncio.to_thread for Python 3.9+ or run_in_executor for older versions
+            try:
+                # Modern approach (Python 3.9+)
+                response = await asyncio.to_thread(
+                    self.model.generate_content,
+                    self.prompt_manager.get_format_prompt() + final_data
+                )
+            except AttributeError:
+                # Fallback for older Python versions
+                loop = asyncio.get_running_loop()
+                response = await loop.run_in_executor(
+                    None,
+                    lambda: self.model.generate_content(self.prompt_manager.get_format_prompt() + final_data)
+                )
             
             print("Ответ от Gemini (Фаза 2):", response.text)
             return response.text
@@ -305,25 +329,10 @@ class ReceiptAnalysisServiceCompat:
     
     def analyze_receipt(self, image_path: str) -> Dict[str, Any]:
         """
-        Analyze receipt - automatically chooses sync or async based on context
+        Analyze receipt - uses sync version for compatibility
         """
-        try:
-            # Try to get the current event loop
-            loop = asyncio.get_running_loop()
-            # If we're in an async context, we need to run the async version
-            if loop.is_running():
-                # We're in an async context, but this is a sync method
-                # Run the sync version in a thread to avoid blocking
-                import concurrent.futures
-                with concurrent.futures.ThreadPoolExecutor() as executor:
-                    future = executor.submit(self._async_service.analyze_receipt_sync, image_path)
-                    return future.result()
-            else:
-                # No event loop running, safe to use sync version directly
-                return self._async_service.analyze_receipt_sync(image_path)
-        except RuntimeError:
-            # No event loop running, safe to use sync version directly
-            return self._async_service.analyze_receipt_sync(image_path)
+        # Always use sync version for compatibility
+        return self._async_service.analyze_receipt_sync(image_path)
     
     async def analyze_receipt_async(self, image_path: str) -> Dict[str, Any]:
         """
