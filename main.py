@@ -106,6 +106,32 @@ async def cleanup_old_files_periodically(ingredient_storage: IngredientStorage) 
             # Продолжаем работу даже при ошибке
             await asyncio.sleep(60)  # Ждем минуту перед следующей попыткой
 
+async def keep_alive_task() -> None:
+    """Keep-alive задача для предотвращения засыпания Cloud Run"""
+    while True:
+        try:
+            await asyncio.sleep(600)  # 10 minutes = 600 seconds
+            
+            # Выполняем минимальную задачу для поддержания активности
+            # Простое логирование с временной меткой
+            import datetime
+            current_time = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+            print(f"💓 Keep-alive ping: {current_time}")
+            
+            # Дополнительно можно проверить статус приложения
+            if application:
+                print("✅ Application активен")
+            else:
+                print("⚠️ Application не инициализирован")
+                
+        except asyncio.CancelledError:
+            print("💓 Keep-alive задача отменена")
+            break
+        except Exception as e:
+            print(f"❌ Ошибка в keep-alive задаче: {e}")
+            # Продолжаем работу даже при ошибке
+            await asyncio.sleep(60)  # Ждем минуту перед следующей попыткой
+
 def create_application() -> Application:
     """Create and configure the Telegram application"""
     # Check if all required modules are available
@@ -250,6 +276,10 @@ async def initialize_bot():
     cleanup_task = asyncio.create_task(cleanup_old_files_periodically(ingredient_storage))
     print("✅ Фоновая задача очистки запущена")
     
+    # Start keep-alive task
+    keep_alive_task_obj = asyncio.create_task(keep_alive_task())
+    print("✅ Keep-alive задача запущена (каждые 10 минут)")
+    
     # Initialize the application
     print("🔧 Инициализируем Telegram application...")
     await application.initialize()
@@ -352,12 +382,26 @@ async def debug_info():
         "firestore_connected": db is not None,
         "bot_token_set": TOKEN is not None,
         "locale_manager_status": locale_manager_status,
+        "keep_alive_active": True,  # Keep-alive всегда активен, если сервер работает
         "environment_vars": {
             "BOT_TOKEN": "***" if os.getenv("BOT_TOKEN") else "NOT SET",
             "PROJECT_ID": "***" if os.getenv("PROJECT_ID") else "NOT SET",
             "WEBHOOK_URL": "***" if os.getenv("WEBHOOK_URL") else "NOT SET",
             "POSTER_TOKEN": "***" if os.getenv("POSTER_TOKEN") else "NOT SET"
         }
+    }
+
+@app.get("/keepalive")
+async def keepalive_check():
+    """Keep-alive check endpoint - можно вызывать извне для дополнительной активности"""
+    import datetime
+    current_time = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    
+    return {
+        "status": "alive",
+        "timestamp": current_time,
+        "application_initialized": application is not None,
+        "message": "Keep-alive check successful"
     }
 
 @app.post("/webhook")
