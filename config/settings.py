@@ -43,6 +43,10 @@ class BotConfig:
         self.AWAITING_MANUAL_MATCH = 7
         self.AWAITING_DASHBOARD = 8
         
+        # Google Sheets management states
+        self.AWAITING_SHEET_URL = 9
+        self.AWAITING_SHEET_NAME = 10
+        
         # Message settings
         self.MAX_MESSAGE_LENGTH = 4096
         self.MESSAGE_DELAY = 0.5

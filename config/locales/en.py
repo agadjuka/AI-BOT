@@ -13,7 +13,8 @@ EN_TRANSLATIONS = {
         "dashboard": {
             "welcome_message": "👤 Personal Dashboard\n\nWelcome, {user}!\n\nChoose a setting:",
             "buttons": {
-                "language_settings": "🌍 Language Settings"
+                "language_settings": "🌍 Language Settings",
+                "google_sheets_management": "⚙️ Google Sheets"
             }
         }
     },
@@ -244,6 +245,36 @@ EN_TRANSLATIONS = {
             "search_ingredient": "🔍 Search ingredient\n\nEnter ingredient name for search:",
             "back_without_changes": "✅ Back without saving changes\n\nChanges were not saved.",
             "cancel_back": "❌ Cancel back\n\nContinuing with current data."
+        }
+    },
+    
+    # Google Sheets Management messages
+    "sheets_management": {
+        "title": "📊 Google Sheets Management",
+        "no_sheets_description": "You don't have any connected sheets yet. Let's add the first one!",
+        "has_sheets_description": "Here are your connected sheets. The sheet with a star (⭐) is used by default for receipt uploads.",
+        "add_new_sheet_instruction": "📊 **Add New Google Sheet**\n\nThis feature is coming soon! You will be able to add and configure your Google Sheets here.",
+        "buttons": {
+            "add_new_sheet": "➕ Add new sheet",
+            "back_to_dashboard": "⬅️ Back"
+        }
+    },
+    
+    # Add new sheet messages
+    "add_sheet": {
+        "step1_title": "➕ Adding New Sheet (Step 1 of 3)",
+        "step1_instruction": "To connect a sheet, follow these steps:\n1. Create a new Google Sheet, or use an existing one (make sure there's no confidential information).\n2. Click 'Share' button in the top right corner.\n3. In the 'Add people and groups' field, paste this email:\n\n`366461711404-compute@developer.gserviceaccount.com`\n\n4. Make sure you gave **Editor** permissions.\n5. Copy the sheet link from your browser and send it to me in the next message.",
+        "step2_title": "➕ Adding New Sheet (Step 2 of 3)",
+        "step2_instruction": "Great, we have access to the sheet! Now come up with a short and clear name for it. For example: 'Vegetables' or 'Purchases / August'.",
+        "step3_title": "➕ Adding New Sheet (Step 3 of 3)",
+        "step3_success": "✅ Sheet '{sheet_name}' successfully added.",
+        "buttons": {
+            "cancel": "❌ Cancel"
+        },
+        "errors": {
+            "invalid_url": "Could not get access to the sheet. Please check that you correctly specified the email and gave **Editor** permissions. Try sending the link again.",
+            "invalid_sheet_id": "Could not extract sheet ID from the link. Please send a correct Google Sheet link.",
+            "save_failed": "Error saving the sheet. Please try again."
         }
     },
     
