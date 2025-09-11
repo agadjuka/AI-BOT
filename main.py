@@ -91,6 +91,7 @@ app = FastAPI(title="AI Bot", description="Telegram Bot for receipt processing")
 application: Optional[Application] = None
 ingredient_storage: Optional[IngredientStorage] = None
 keep_alive_task_obj: Optional[asyncio.Task] = None
+locale_manager_cache: Optional[object] = None
 
 async def cleanup_old_files_periodically(ingredient_storage: IngredientStorage) -> None:
     """Async background task to clean up old files every 30 minutes"""
@@ -108,24 +109,17 @@ async def cleanup_old_files_periodically(ingredient_storage: IngredientStorage) 
             await asyncio.sleep(60)  # Ждем минуту перед следующей попыткой
 
 async def keep_alive_task() -> None:
-    """Keep-alive задача для предотвращения засыпания Cloud Run"""
+    """Keep-alive задача для предотвращения засыпания Cloud Run - OPTIMIZED"""
     print("💓 Keep-alive задача запущена")
     
     while True:
         try:
-            await asyncio.sleep(600)  # 10 minutes = 600 seconds
+            await asyncio.sleep(300)  # 5 minutes = 300 seconds (уменьшили интервал)
             
-            # Выполняем минимальную задачу для поддержания активности
-            # Простое логирование с временной меткой
+            # Минимальная задача - только логирование без дополнительных проверок
             import datetime
             current_time = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
             print(f"💓 Keep-alive ping: {current_time}")
-            
-            # Дополнительно можно проверить статус приложения
-            if application:
-                print("✅ Application активен")
-            else:
-                print("⚠️ Application не инициализирован")
                 
         except asyncio.CancelledError:
             print("💓 Keep-alive задача отменена")
@@ -136,15 +130,26 @@ async def keep_alive_task() -> None:
             await asyncio.sleep(60)  # Ждем минуту перед следующей попыткой
 
 async def start_keep_alive_task():
-    """Запускает keep-alive задачу, если она еще не запущена"""
+    """Запускает keep-alive задачу, если она еще не запущена - OPTIMIZED"""
     global keep_alive_task_obj
     
     if keep_alive_task_obj is None or keep_alive_task_obj.done():
-        print("🚀 Запускаем keep-alive задачу...")
         keep_alive_task_obj = asyncio.create_task(keep_alive_task())
         print("✅ Keep-alive задача запущена")
-    else:
-        print("⚠️ Keep-alive задача уже запущена")
+
+def get_cached_locale_manager():
+    """Получает кэшированный LocaleManager для оптимизации"""
+    global locale_manager_cache
+    
+    if locale_manager_cache is None:
+        try:
+            from config.locales.locale_manager import get_global_locale_manager
+            locale_manager_cache = get_global_locale_manager()
+        except Exception as e:
+            print(f"❌ Ошибка получения LocaleManager: {e}")
+            return None
+    
+    return locale_manager_cache
 
 def create_application() -> Application:
     """Create and configure the Telegram application"""
@@ -329,10 +334,7 @@ async def startup_event():
 
 @app.get("/")
 async def health_check():
-    """Health check endpoint for Cloud Run"""
-    # Проверяем и перезапускаем keep-alive задачу если нужно
-    await start_keep_alive_task()
-    
+    """Health check endpoint for Cloud Run - OPTIMIZED"""
     return {
         "status": "ok", 
         "message": "AI Bot is running",
@@ -414,12 +416,9 @@ async def debug_info():
 
 @app.get("/keepalive")
 async def keepalive_check():
-    """Keep-alive check endpoint - можно вызывать извне для дополнительной активности"""
+    """Keep-alive check endpoint - OPTIMIZED"""
     import datetime
     current_time = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-    
-    # Убеждаемся, что keep-alive задача запущена
-    await start_keep_alive_task()
     
     return {
         "status": "alive",
@@ -429,86 +428,43 @@ async def keepalive_check():
         "message": "Keep-alive check successful"
     }
 
-async def process_update_background(update_data: dict):
-    """Process Telegram update in background"""
-    try:
-        if not application:
-            print("❌ Бот не инициализирован для фоновой обработки")
-            return
-        
-        update = Update.de_json(update_data, application.bot)
-        print(f"📊 Parsed update: {update}")
-        
-        if not update:
-            print("❌ Не удалось распарсить update")
-            return
-        
-        # Process the update
-        await application.process_update(update)
-        print("✅ Update обработан успешно в фоновом режиме")
-        
-    except Exception as e:
-        print(f"❌ Ошибка при фоновой обработке update: {e}")
-        import traceback
-        traceback.print_exc()
 
 @app.post("/webhook")
 async def webhook(request: Request):
-    """Webhook endpoint for Telegram updates"""
+    """Webhook endpoint for Telegram updates - OPTIMIZED VERSION"""
     try:
-        print("📨 Получен webhook запрос")
-        
-        # Убеждаемся, что keep-alive задача запущена
-        await start_keep_alive_task()
-        
-        # Get headers info
-        headers = dict(request.headers)
-        print(f"📊 Headers: {headers}")
-        print(f"📊 Content-Type: {headers.get('content-type', 'unknown')}")
+        # Убеждаемся, что keep-alive задача запущена (только если нужно)
+        if keep_alive_task_obj is None or keep_alive_task_obj.done():
+            await start_keep_alive_task()
         
         # Get the update from Telegram
         update_data = await request.json()
-        print(f"📊 Update data: {update_data}")
         
         if not update_data:
-            print("❌ Пустые данные от Telegram")
             return {"ok": True}
         
         if not application:
-            print("❌ Бот не инициализирован")
-            print(f"🔍 application = {application}")
             return {"ok": True, "error": "Bot not initialized"}
         
-        print(f"🔍 application.bot = {application.bot}")
-        print(f"🔍 application.bot.token = {'***' if application.bot.token else 'None'}")
-        
-        # Проверяем LocaleManager
+        # Process the update DIRECTLY instead of background processing
+        # This eliminates the overhead of asyncio.create_task()
         try:
-            from config.locales.locale_manager import get_global_locale_manager
-            lm = get_global_locale_manager()
-            print(f"✅ LocaleManager доступен: {lm}")
-        except Exception as e:
-            print(f"❌ Ошибка с LocaleManager: {e}")
-            return {"ok": True, "error": f"LocaleManager error: {str(e)}"}
-        
-        # Process the update in background to allow concurrent processing
-        print("🔄 Отправляем update на фоновую обработку...")
-        try:
-            # Start background processing and return immediately
-            asyncio.create_task(process_update_background(update_data))
-            print("✅ Update отправлен на фоновую обработку")
+            update = Update.de_json(update_data, application.bot)
+            
+            if not update:
+                return {"ok": True}
+            
+            # Process the update directly
+            await application.process_update(update)
             return {"ok": True}
+            
         except Exception as e:
-            print(f"❌ Ошибка при отправке update на обработку: {e}")
-            import traceback
-            traceback.print_exc()
+            print(f"❌ Ошибка при обработке update: {e}")
             return {"ok": True, "error": f"Processing error: {str(e)}"}
         
     except Exception as e:
         print(f"❌ Ошибка при обработке webhook: {e}")
-        import traceback
-        traceback.print_exc()
-        raise HTTPException(status_code=500, detail=str(e))
+        return {"ok": True, "error": str(e)}
 
 if __name__ == "__main__":
     import uvicorn
