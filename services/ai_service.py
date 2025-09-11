@@ -3,23 +3,31 @@ AI service for receipt analysis using Google Gemini
 """
 import json
 import asyncio
+import time
 from typing import Dict, Any, Optional
 import vertexai
 from vertexai.generative_models import GenerativeModel, Part
 import httpx
 from httpx import AsyncClient, Limits, Timeout
+import threading
+from concurrent.futures import ThreadPoolExecutor
 
 from config.settings import BotConfig
 from config.prompts import PromptManager
 
 
 class AIService:
-    """Service for AI operations using Google Gemini"""
+    """Service for AI operations using Google Gemini with parallel processing support"""
     
     def __init__(self, config: BotConfig, prompt_manager: PromptManager):
         self.config = config
         self.prompt_manager = prompt_manager
         self._http_client: Optional[AsyncClient] = None
+        self._model_name = None  # Store model name instead of model instance
+        self._thread_pool = ThreadPoolExecutor(max_workers=10, thread_name_prefix="gemini_worker")
+        self._ai_service_pool = []  # Pool of AI service instances
+        self._pool_lock = threading.Lock()
+        self._max_pool_size = 5
         self._initialize_vertex_ai()
         self._initialize_http_client()
     
@@ -45,9 +53,10 @@ class AIService:
             vertexai.init(project=self.config.PROJECT_ID, location=self.config.LOCATION)
             print("✅ Vertex AI инициализирован с Application Default Credentials (ADC)")
             
-            # Create model instance once during initialization
-            self.model = GenerativeModel(self.config.MODEL_NAME)
-            print(f"✅ Модель {self.config.MODEL_NAME} создана")
+            # Store model name instead of creating model instance
+            # This allows creating separate model instances for each request
+            self._model_name = self.config.MODEL_NAME
+            print(f"✅ Модель {self._model_name} готова к созданию экземпляров")
             
         except Exception as e:
             print(f"❌ Ошибка инициализации Vertex AI с ADC: {e}")
@@ -55,11 +64,42 @@ class AIService:
             try:
                 print("🔄 Пробуем fallback на us-central1...")
                 vertexai.init(project=self.config.PROJECT_ID, location="us-central1")
-                self.model = GenerativeModel(self.config.MODEL_NAME)
+                self._model_name = self.config.MODEL_NAME
                 print("✅ Vertex AI инициализирован с fallback на us-central1")
             except Exception as e2:
                 print(f"❌ Ошибка инициализации Vertex AI с fallback: {e2}")
                 raise
+    
+    def _create_model_instance(self):
+        """Create a new model instance for parallel processing"""
+        return GenerativeModel(self._model_name)
+    
+    def _create_isolated_ai_service(self):
+        """Create a completely isolated AI service instance for maximum parallelization"""
+        from config.settings import BotConfig
+        from config.prompts import PromptManager
+        
+        # Create new instances to avoid any shared state
+        config = BotConfig()
+        prompt_manager = PromptManager()
+        return AIService(config, prompt_manager)
+    
+    def _get_ai_service_from_pool(self):
+        """Get an AI service instance from the pool or create a new one"""
+        with self._pool_lock:
+            if self._ai_service_pool:
+                return self._ai_service_pool.pop()
+            else:
+                return self._create_isolated_ai_service()
+    
+    def _return_ai_service_to_pool(self, ai_service):
+        """Return an AI service instance to the pool"""
+        with self._pool_lock:
+            if len(self._ai_service_pool) < self._max_pool_size:
+                self._ai_service_pool.append(ai_service)
+            else:
+                # Pool is full, cleanup the service
+                asyncio.create_task(ai_service.close())
     
     def _initialize_http_client(self):
         """Initialize HTTP client with connection pooling"""
@@ -92,64 +132,84 @@ class AIService:
         return self
     
     async def __aexit__(self, exc_type, exc_val, exc_tb):
-        """Async context manager exit - cleanup HTTP client"""
+        """Async context manager exit - cleanup HTTP client and thread pool"""
         if self._http_client:
             await self._http_client.aclose()
+        if self._thread_pool:
+            self._thread_pool.shutdown(wait=True)
     
     async def close(self):
-        """Close HTTP client explicitly"""
+        """Close HTTP client, thread pool and AI service pool explicitly"""
         if self._http_client:
             await self._http_client.aclose()
             self._http_client = None
+        if self._thread_pool:
+            self._thread_pool.shutdown(wait=True)
+            self._thread_pool = None
+        
+        # Cleanup AI service pool
+        with self._pool_lock:
+            for ai_service in self._ai_service_pool:
+                await ai_service.close()
+            self._ai_service_pool.clear()
     
     async def analyze_receipt_phase1(self, image_path: str) -> str:
         """
         Phase 1: Analyze receipt image and extract data (async version)
+        Uses AI service pool for better resource management
         """
+        isolated_ai_service = None
         try:
-            # Use pre-initialized model from __init__
+            # Get an AI service instance from the pool
+            isolated_ai_service = self._get_ai_service_from_pool()
+            
             with open(image_path, "rb") as f:
                 image_data = f.read()
             image_part = Part.from_data(data=image_data, mime_type="image/jpeg")
             
-            print("Отправка запроса в Gemini (Фаза 1: Анализ)...")
+            print("Отправка запроса в Gemini (Фаза 1: Анализ) - из пула экземпляров...")
             
-            # Run the synchronous generate_content in a thread pool to avoid blocking
-            # Use asyncio.to_thread for Python 3.9+ or run_in_executor for older versions
-            try:
-                # Modern approach (Python 3.9+)
-                response = await asyncio.to_thread(
-                    self.model.generate_content, 
-                    [image_part, self.prompt_manager.get_analyze_prompt()]
-                )
-            except AttributeError:
-                # Fallback for older Python versions
-                loop = asyncio.get_running_loop()
-                response = await loop.run_in_executor(
-                    None, 
-                    lambda: self.model.generate_content([image_part, self.prompt_manager.get_analyze_prompt()])
-                )
+            # Create a new model instance in the isolated service
+            model = isolated_ai_service._create_model_instance()
+            print("✅ Модель создана, отправляем запрос...")
+            
+            # Run the synchronous generate_content in our dedicated thread pool
+            loop = asyncio.get_running_loop()
+            start_time = time.time()
+            response = await loop.run_in_executor(
+                self._thread_pool, 
+                lambda: model.generate_content([image_part, isolated_ai_service.prompt_manager.get_analyze_prompt()])
+            )
+            end_time = time.time()
+            print(f"⏱️ Время выполнения запроса Gemini: {end_time - start_time:.2f} секунд")
             
             clean_response = response.text.strip().replace("```json", "").replace("```", "")
             print("Ответ от Gemini (Фаза 1):", clean_response)
+            
             return clean_response
             
         except Exception as e:
             print(f"❌ Ошибка в analyze_receipt_phase1: {e}")
             raise ValueError(f"Ошибка анализа чека (Фаза 1): {e}")
+        finally:
+            # Return the service to the pool instead of closing it
+            if isolated_ai_service:
+                self._return_ai_service_to_pool(isolated_ai_service)
     
     def analyze_receipt_phase1_sync(self, image_path: str) -> str:
         """
         Phase 1: Analyze receipt image and extract data (sync version for backward compatibility)
+        Creates a new model instance for parallel processing
         """
-        # Use pre-initialized model from __init__
+        # Create a new model instance for this request to avoid blocking
+        model = self._create_model_instance()
         
         with open(image_path, "rb") as f:
             image_data = f.read()
         image_part = Part.from_data(data=image_data, mime_type="image/jpeg")
         
         print("Отправка запроса в Gemini (Фаза 1: Анализ)...")
-        response = self.model.generate_content([image_part, self.prompt_manager.get_analyze_prompt()])
+        response = model.generate_content([image_part, self.prompt_manager.get_analyze_prompt()])
         
         clean_response = response.text.strip().replace("```json", "").replace("```", "")
         print("Ответ от Gemini (Фаза 1):", clean_response)
@@ -158,42 +218,50 @@ class AIService:
     async def analyze_receipt_phase2(self, final_data: str) -> str:
         """
         Phase 2: Format the analyzed data (async version)
+        Uses AI service pool for better resource management
         """
+        isolated_ai_service = None
         try:
-            # Use pre-initialized model from __init__
-            print("Отправка запроса в Gemini (Фаза 2: Форматирование)...")
+            # Get an AI service instance from the pool
+            isolated_ai_service = self._get_ai_service_from_pool()
             
-            # Run the synchronous generate_content in a thread pool to avoid blocking
-            # Use asyncio.to_thread for Python 3.9+ or run_in_executor for older versions
-            try:
-                # Modern approach (Python 3.9+)
-                response = await asyncio.to_thread(
-                    self.model.generate_content,
-                    self.prompt_manager.get_format_prompt() + final_data
-                )
-            except AttributeError:
-                # Fallback for older Python versions
-                loop = asyncio.get_running_loop()
-                response = await loop.run_in_executor(
-                    None,
-                    lambda: self.model.generate_content(self.prompt_manager.get_format_prompt() + final_data)
-                )
+            print("Отправка запроса в Gemini (Фаза 2: Форматирование) - из пула экземпляров...")
+            
+            # Create a new model instance in the isolated service
+            model = isolated_ai_service._create_model_instance()
+            
+            # Run the synchronous generate_content in our dedicated thread pool
+            loop = asyncio.get_running_loop()
+            start_time = time.time()
+            response = await loop.run_in_executor(
+                self._thread_pool,
+                lambda: model.generate_content(isolated_ai_service.prompt_manager.get_format_prompt() + final_data)
+            )
+            end_time = time.time()
+            print(f"⏱️ Время выполнения запроса Gemini (Фаза 2): {end_time - start_time:.2f} секунд")
             
             print("Ответ от Gemini (Фаза 2):", response.text)
+            
             return response.text
             
         except Exception as e:
             print(f"❌ Ошибка в analyze_receipt_phase2: {e}")
             raise ValueError(f"Ошибка форматирования данных (Фаза 2): {e}")
+        finally:
+            # Return the service to the pool instead of closing it
+            if isolated_ai_service:
+                self._return_ai_service_to_pool(isolated_ai_service)
     
     def analyze_receipt_phase2_sync(self, final_data: str) -> str:
         """
         Phase 2: Format the analyzed data (sync version for backward compatibility)
+        Creates a new model instance for parallel processing
         """
-        # Use pre-initialized model from __init__
+        # Create a new model instance for this request to avoid blocking
+        model = self._create_model_instance()
         
         print("Отправка запроса в Gemini (Фаза 2: Форматирование)...")
-        response = self.model.generate_content(self.prompt_manager.get_format_prompt() + final_data)
+        response = model.generate_content(self.prompt_manager.get_format_prompt() + final_data)
         print("Ответ от Gemini (Фаза 2):", response.text)
         return response.text
     

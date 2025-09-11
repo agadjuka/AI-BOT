@@ -96,7 +96,7 @@ class ReceiptEditDispatcher(BaseCallbackHandler):
             self._clear_receipt_data(context)
             
             try:
-                analysis_data = await self.analysis_service.analyze_receipt(self.config.PHOTO_FILE_NAME)
+                analysis_data = await self.analysis_service.analyze_receipt_async(self.config.PHOTO_FILE_NAME)
                 receipt_data = ReceiptData.from_dict(analysis_data)
                 
                 is_valid, message = self.validator.validate_receipt_data(receipt_data)
