@@ -63,6 +63,10 @@ class TextParser:
         if not text:
             return 0.0
         
+        # Convert to string if it's not already
+        if not isinstance(text, str):
+            text = str(text)
+        
         # If text contains only words (e.g., "total sum"), return 0
         if text.isalpha() or text.replace(' ', '').isalpha():
             return 0.0

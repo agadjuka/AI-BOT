@@ -73,9 +73,15 @@ class ReceiptData:
     def from_dict(cls, data: Dict[str, Any]) -> 'ReceiptData':
         """Create from dictionary"""
         items = [ReceiptItem.from_dict(item_data) for item_data in data.get('items', [])]
+        
+        # Ensure grand_total_text is always a string
+        grand_total = data.get('grand_total_text', '0')
+        if isinstance(grand_total, (int, float)):
+            grand_total = str(grand_total)
+        
         return cls(
             items=items,
-            grand_total_text=data.get('grand_total_text', '0')
+            grand_total_text=grand_total
         )
     
     def add_item(self, item: ReceiptItem) -> None:
