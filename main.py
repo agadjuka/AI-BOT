@@ -90,6 +90,7 @@ app = FastAPI(title="AI Bot", description="Telegram Bot for receipt processing")
 # Global variables
 application: Optional[Application] = None
 ingredient_storage: Optional[IngredientStorage] = None
+keep_alive_task_obj: Optional[asyncio.Task] = None
 
 async def cleanup_old_files_periodically(ingredient_storage: IngredientStorage) -> None:
     """Async background task to clean up old files every 30 minutes"""
@@ -108,6 +109,8 @@ async def cleanup_old_files_periodically(ingredient_storage: IngredientStorage) 
 
 async def keep_alive_task() -> None:
     """Keep-alive задача для предотвращения засыпания Cloud Run"""
+    print("💓 Keep-alive задача запущена")
+    
     while True:
         try:
             await asyncio.sleep(600)  # 10 minutes = 600 seconds
@@ -131,6 +134,17 @@ async def keep_alive_task() -> None:
             print(f"❌ Ошибка в keep-alive задаче: {e}")
             # Продолжаем работу даже при ошибке
             await asyncio.sleep(60)  # Ждем минуту перед следующей попыткой
+
+async def start_keep_alive_task():
+    """Запускает keep-alive задачу, если она еще не запущена"""
+    global keep_alive_task_obj
+    
+    if keep_alive_task_obj is None or keep_alive_task_obj.done():
+        print("🚀 Запускаем keep-alive задачу...")
+        keep_alive_task_obj = asyncio.create_task(keep_alive_task())
+        print("✅ Keep-alive задача запущена")
+    else:
+        print("⚠️ Keep-alive задача уже запущена")
 
 def create_application() -> Application:
     """Create and configure the Telegram application"""
@@ -277,8 +291,7 @@ async def initialize_bot():
     print("✅ Фоновая задача очистки запущена")
     
     # Start keep-alive task
-    keep_alive_task_obj = asyncio.create_task(keep_alive_task())
-    print("✅ Keep-alive задача запущена (каждые 10 минут)")
+    await start_keep_alive_task()
     
     # Initialize the application
     print("🔧 Инициализируем Telegram application...")
@@ -302,6 +315,10 @@ async def initialize_bot():
 @app.on_event("startup")
 async def startup_event():
     """Initialize bot on startup"""
+    # СРАЗУ запускаем keep-alive задачу, чтобы предотвратить засыпание
+    print("🚀 Запуск приложения - запускаем keep-alive задачу...")
+    await start_keep_alive_task()
+    
     try:
         await initialize_bot()
     except Exception as e:
@@ -313,11 +330,15 @@ async def startup_event():
 @app.get("/")
 async def health_check():
     """Health check endpoint for Cloud Run"""
+    # Проверяем и перезапускаем keep-alive задачу если нужно
+    await start_keep_alive_task()
+    
     return {
         "status": "ok", 
         "message": "AI Bot is running",
         "application_initialized": application is not None,
-        "firestore_connected": db is not None
+        "firestore_connected": db is not None,
+        "keep_alive_running": keep_alive_task_obj is not None and not keep_alive_task_obj.done()
     }
 
 @app.post("/set_webhook")
@@ -397,18 +418,48 @@ async def keepalive_check():
     import datetime
     current_time = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
     
+    # Убеждаемся, что keep-alive задача запущена
+    await start_keep_alive_task()
+    
     return {
         "status": "alive",
         "timestamp": current_time,
         "application_initialized": application is not None,
+        "keep_alive_running": keep_alive_task_obj is not None and not keep_alive_task_obj.done(),
         "message": "Keep-alive check successful"
     }
+
+async def process_update_background(update_data: dict):
+    """Process Telegram update in background"""
+    try:
+        if not application:
+            print("❌ Бот не инициализирован для фоновой обработки")
+            return
+        
+        update = Update.de_json(update_data, application.bot)
+        print(f"📊 Parsed update: {update}")
+        
+        if not update:
+            print("❌ Не удалось распарсить update")
+            return
+        
+        # Process the update
+        await application.process_update(update)
+        print("✅ Update обработан успешно в фоновом режиме")
+        
+    except Exception as e:
+        print(f"❌ Ошибка при фоновой обработке update: {e}")
+        import traceback
+        traceback.print_exc()
 
 @app.post("/webhook")
 async def webhook(request: Request):
     """Webhook endpoint for Telegram updates"""
     try:
         print("📨 Получен webhook запрос")
+        
+        # Убеждаемся, что keep-alive задача запущена
+        await start_keep_alive_task()
         
         # Get headers info
         headers = dict(request.headers)
@@ -440,25 +491,18 @@ async def webhook(request: Request):
             print(f"❌ Ошибка с LocaleManager: {e}")
             return {"ok": True, "error": f"LocaleManager error: {str(e)}"}
         
-        update = Update.de_json(update_data, application.bot)
-        print(f"📊 Parsed update: {update}")
-        
-        if not update:
-            print("❌ Не удалось распарсить update")
-            return {"ok": True}
-        
-        # Process the update
-        print("🔄 Обрабатываем update...")
+        # Process the update in background to allow concurrent processing
+        print("🔄 Отправляем update на фоновую обработку...")
         try:
-            await application.process_update(update)
-            print("✅ Update обработан успешно")
+            # Start background processing and return immediately
+            asyncio.create_task(process_update_background(update_data))
+            print("✅ Update отправлен на фоновую обработку")
+            return {"ok": True}
         except Exception as e:
-            print(f"❌ Ошибка при обработке update: {e}")
+            print(f"❌ Ошибка при отправке update на обработку: {e}")
             import traceback
             traceback.print_exc()
             return {"ok": True, "error": f"Processing error: {str(e)}"}
-        
-        return {"ok": True}
         
     except Exception as e:
         print(f"❌ Ошибка при обработке webhook: {e}")
