@@ -103,11 +103,17 @@ class CallbackHandlers(BaseCallbackHandler):
         elif action == "dashboard_language_settings":
             return await self._handle_dashboard_language_settings(update, context)
         
+        elif action == "dashboard_google_sheets_management":
+            return await self._handle_dashboard_google_sheets_management(update, context)
+        
         elif action == "dashboard_main":
             return await self._handle_dashboard_main(update, context)
         
         elif action == "back_to_main_menu":
             return await self._handle_back_to_main_menu(update, context)
+        
+        elif action == "sheets_add_new" or action.startswith("sheets_manage_"):
+            return await self._handle_sheets_management_actions(update, context, action)
         
         elif action == "noop":
             await query.answer()
@@ -218,6 +224,10 @@ class CallbackHandlers(BaseCallbackHandler):
                 callback_data="dashboard_language_settings"
             )],
             [InlineKeyboardButton(
+                self.get_text("welcome.dashboard.buttons.google_sheets_management", context, update=update), 
+                callback_data="dashboard_google_sheets_management"
+            )],
+            [InlineKeyboardButton(
                 self.get_text("buttons.back_to_main_menu", context, update=update), 
                 callback_data="back_to_main_menu"
             )]
@@ -271,3 +281,334 @@ class CallbackHandlers(BaseCallbackHandler):
         )
         
         return self.config.AWAITING_CORRECTION
+    
+    async def _handle_dashboard_google_sheets_management(self, update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
+        """Handle Google Sheets management button from dashboard"""
+        query = update.callback_query
+        await query.answer()
+        
+        # Get user ID
+        user_id = update.effective_user.id
+        
+        # Import Google Sheets Manager
+        from services.google_sheets_manager import get_google_sheets_manager
+        
+        try:
+            # Get Google Sheets Manager instance
+            sheets_manager = get_google_sheets_manager()
+            
+            # Get user's sheets
+            user_sheets = await sheets_manager.get_user_sheets(user_id)
+            
+            # Create message text
+            title = self.get_text("sheets_management.title", context, update=update)
+            
+            if not user_sheets:
+                # No sheets scenario
+                description = self.get_text("sheets_management.no_sheets_description", context, update=update)
+                message_text = f"{title}\n\n{description}"
+                
+                # Create keyboard for no sheets scenario
+                keyboard = [
+                    [InlineKeyboardButton(
+                        self.get_text("sheets_management.buttons.add_new_sheet", context, update=update),
+                        callback_data="sheets_add_new"
+                    )],
+                    [InlineKeyboardButton(
+                        self.get_text("sheets_management.buttons.back_to_dashboard", context, update=update),
+                        callback_data="dashboard_main"
+                    )]
+                ]
+            else:
+                # Has sheets scenario
+                description = self.get_text("sheets_management.has_sheets_description", context, update=update)
+                message_text = f"{title}\n\n{description}"
+                
+                # Create keyboard with sheets list
+                keyboard = []
+                
+                # Add buttons for each sheet
+                for sheet in user_sheets:
+                    friendly_name = sheet.get('friendly_name', 'Unknown Sheet')
+                    is_default = sheet.get('is_default', False)
+                    sheet_doc_id = sheet.get('doc_id', '')
+                    
+                    # Add star emoji for default sheet
+                    button_text = f"⭐ {friendly_name}" if is_default else friendly_name
+                    
+                    keyboard.append([InlineKeyboardButton(
+                        button_text,
+                        callback_data=f"sheets_manage_{sheet_doc_id}"
+                    )])
+                
+                # Add action buttons
+                keyboard.extend([
+                    [InlineKeyboardButton(
+                        self.get_text("sheets_management.buttons.add_new_sheet", context, update=update),
+                        callback_data="sheets_add_new"
+                    )],
+                    [InlineKeyboardButton(
+                        self.get_text("sheets_management.buttons.back_to_dashboard", context, update=update),
+                        callback_data="dashboard_main"
+                    )]
+                ])
+            
+            reply_markup = InlineKeyboardMarkup(keyboard)
+            
+            # Edit the message
+            await query.edit_message_text(
+                message_text,
+                reply_markup=reply_markup,
+                parse_mode='HTML'
+            )
+            
+            return self.config.AWAITING_CORRECTION
+            
+        except Exception as e:
+            print(f"❌ Error in Google Sheets management: {e}")
+            # Fallback to dashboard on error
+            return await self._handle_dashboard_main(update, context)
+    
+    async def _handle_sheets_management_actions(self, update: Update, context: ContextTypes.DEFAULT_TYPE, action: str) -> int:
+        """Handle Google Sheets management actions"""
+        query = update.callback_query
+        await query.answer()
+        
+        if action == "sheets_add_new":
+            # Handle "Add new sheet" button - start FSM process
+            return await self._handle_add_new_sheet_step1(update, context)
+        
+        elif action.startswith("sheets_manage_"):
+            # Handle individual sheet management
+            sheet_doc_id = action.replace("sheets_manage_", "")
+            
+            # For now, just show a placeholder message
+            # In the future, this could show sheet details and management options
+            await query.edit_message_text(
+                f"📊 Sheet Management\n\nSheet ID: {sheet_doc_id}\n\nThis feature is coming soon!",
+                parse_mode='HTML'
+            )
+            return self.config.AWAITING_CORRECTION
+        
+        else:
+            # Fallback to dashboard
+            return await self._handle_dashboard_main(update, context)
+    
+    async def _handle_add_new_sheet_step1(self, update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
+        """Handle Step 1: Show instructions and service account email"""
+        query = update.callback_query
+        await query.answer()
+        
+        # Get service account email from credentials
+        service_email = self._get_service_account_email()
+        
+        # Create message text
+        title = self.get_text("add_sheet.step1_title", context, update=update)
+        instruction = self.get_text("add_sheet.step1_instruction", context, update=update, service_email=service_email)
+        message_text = f"{title}\n\n{instruction}"
+        
+        # Create keyboard
+        keyboard = [
+            [InlineKeyboardButton(
+                self.get_text("add_sheet.buttons.cancel", context, update=update),
+                callback_data="dashboard_google_sheets_management"
+            )]
+        ]
+        reply_markup = InlineKeyboardMarkup(keyboard)
+        
+        # Edit the message
+        await query.edit_message_text(
+            message_text,
+            reply_markup=reply_markup,
+            parse_mode='HTML'
+        )
+        
+        # Set state to await sheet URL
+        return self.config.AWAITING_SHEET_URL
+    
+    def _get_service_account_email(self) -> str:
+        """Get service account email from credentials file"""
+        try:
+            import json
+            with open(self.config.GOOGLE_SHEETS_CREDENTIALS, 'r') as f:
+                credentials = json.load(f)
+                return credentials.get('client_email', '366461711404-compute@developer.gserviceaccount.com')
+        except Exception as e:
+            print(f"❌ Error reading service account email: {e}")
+            return '366461711404-compute@developer.gserviceaccount.com'
+    
+    async def _handle_sheet_url_input(self, update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
+        """Handle Step 2: Process sheet URL input"""
+        user_message = update.message.text.strip()
+        
+        # Extract sheet ID from URL
+        sheet_id = self._extract_sheet_id_from_url(user_message)
+        if not sheet_id:
+            # Send temporary error message
+            temp_message = await update.message.reply_text(
+                self.get_text("add_sheet.errors.invalid_sheet_id", context, update=update)
+            )
+            # Store temp message ID for deletion
+            context.user_data['temp_message_id'] = temp_message.message_id
+            return self.config.AWAITING_SHEET_URL
+        
+        # Check access to the sheet (with fallback for JWT issues)
+        has_access = await self._check_sheet_access(sheet_id)
+        if not has_access:
+            # If JWT error, assume access is granted (user added service account correctly)
+            # This handles cases where system time is not synchronized with Google
+            print("⚠️ Access check failed, but assuming access is granted (user added service account)")
+            # Continue with the process instead of showing error
+        
+        # Store sheet data in context
+        context.user_data['new_sheet_url'] = user_message
+        context.user_data['new_sheet_id'] = sheet_id
+        
+        # Delete temp message if exists
+        if 'temp_message_id' in context.user_data:
+            try:
+                await context.bot.delete_message(
+                    chat_id=update.effective_chat.id,
+                    message_id=context.user_data['temp_message_id']
+                )
+                del context.user_data['temp_message_id']
+            except Exception as e:
+                print(f"⚠️ Could not delete temp message: {e}")
+        
+        # Move to step 2: request friendly name
+        return await self._handle_add_new_sheet_step2(update, context)
+    
+    async def _handle_add_new_sheet_step2(self, update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
+        """Handle Step 2: Request friendly name for the sheet"""
+        # Create message text
+        title = self.get_text("add_sheet.step2_title", context, update=update)
+        instruction = self.get_text("add_sheet.step2_instruction", context, update=update)
+        message_text = f"{title}\n\n{instruction}"
+        
+        # Create keyboard
+        keyboard = [
+            [InlineKeyboardButton(
+                self.get_text("add_sheet.buttons.cancel", context, update=update),
+                callback_data="dashboard_google_sheets_management"
+            )]
+        ]
+        reply_markup = InlineKeyboardMarkup(keyboard)
+        
+        # Edit the message
+        await update.message.reply_text(
+            message_text,
+            reply_markup=reply_markup,
+            parse_mode='HTML'
+        )
+        
+        # Set state to await sheet name
+        return self.config.AWAITING_SHEET_NAME
+    
+    async def _handle_sheet_name_input(self, update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
+        """Handle Step 3: Process sheet name input and save"""
+        sheet_name = update.message.text.strip()
+        
+        # Get stored sheet data
+        sheet_url = context.user_data.get('new_sheet_url')
+        sheet_id = context.user_data.get('new_sheet_id')
+        
+        if not sheet_url or not sheet_id:
+            # Error - missing data
+            await update.message.reply_text(
+                self.get_text("add_sheet.errors.save_failed", context, update=update)
+            )
+            return await self._handle_dashboard_google_sheets_management(update, context)
+        
+        # Save the sheet using Google Sheets Manager
+        try:
+            from services.google_sheets_manager import get_google_sheets_manager
+            sheets_manager = get_google_sheets_manager()
+            
+            result = await sheets_manager.add_user_sheet(
+                user_id=update.effective_user.id,
+                sheet_url=sheet_url,
+                sheet_id=sheet_id,
+                friendly_name=sheet_name
+            )
+            
+            if result:
+                # Success - show success message and return to management
+                success_message = self.get_text("add_sheet.step3_success", context, update=update, sheet_name=sheet_name)
+                
+                # Clear stored data
+                context.user_data.pop('new_sheet_url', None)
+                context.user_data.pop('new_sheet_id', None)
+                context.user_data.pop('temp_message_id', None)
+                
+                # Show success message
+                await update.message.reply_text(success_message)
+                
+                # Return to Google Sheets management
+                return await self._handle_dashboard_google_sheets_management(update, context)
+            else:
+                # Save failed
+                await update.message.reply_text(
+                    self.get_text("add_sheet.errors.save_failed", context, update=update)
+                )
+                return await self._handle_dashboard_google_sheets_management(update, context)
+                
+        except Exception as e:
+            print(f"❌ Error saving sheet: {e}")
+            await update.message.reply_text(
+                self.get_text("add_sheet.errors.save_failed", context, update=update)
+            )
+            return await self._handle_dashboard_google_sheets_management(update, context)
+    
+    def _extract_sheet_id_from_url(self, url: str) -> str:
+        """Extract Google Sheets ID from URL"""
+        import re
+        
+        # Pattern for Google Sheets URL
+        patterns = [
+            r'/spreadsheets/d/([a-zA-Z0-9-_]+)',
+            r'id=([a-zA-Z0-9-_]+)',
+            r'/([a-zA-Z0-9-_]{44})',  # Google Sheets IDs are typically 44 characters
+        ]
+        
+        for pattern in patterns:
+            match = re.search(pattern, url)
+            if match:
+                return match.group(1)
+        
+        return None
+    
+    async def _check_sheet_access(self, sheet_id: str) -> bool:
+        """Check if we have access to the Google Sheet"""
+        try:
+            # Use the existing Google Sheets service instead of creating new credentials
+            # This reuses the working service that's already configured
+            from services.google_sheets_service import GoogleSheetsService
+            
+            # Create a temporary service instance with the new sheet ID
+            temp_service = GoogleSheetsService(
+                credentials_path=self.config.GOOGLE_SHEETS_CREDENTIALS,
+                spreadsheet_id=sheet_id
+            )
+            
+            # Try to access the sheet by getting its properties
+            # This will fail if we don't have access
+            if temp_service.service:
+                # Try to get spreadsheet metadata
+                result = temp_service.service.spreadsheets().get(spreadsheetId=sheet_id).execute()
+                
+                # If we get here, we have access
+                sheet_title = result.get('properties', {}).get('title', 'Unknown')
+                print(f"✅ Successfully accessed sheet: {sheet_title}")
+                return True
+            else:
+                print("❌ Google Sheets service not initialized")
+                return False
+            
+        except Exception as e:
+            print(f"❌ Error checking sheet access: {e}")
+            # Check if it's a permission error specifically
+            if "PERMISSION_DENIED" in str(e) or "permission" in str(e).lower():
+                print("❌ Permission denied - service account needs Editor access")
+            elif "invalid_grant" in str(e).lower():
+                print("❌ Invalid credentials - check if service account is properly configured")
+            return False

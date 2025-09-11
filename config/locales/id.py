@@ -247,6 +247,36 @@ ID_TRANSLATIONS = {
         }
     },
     
+    # Pesan manajemen Google Sheets
+    "sheets_management": {
+        "title": "📊 Manajemen Google Sheets",
+        "no_sheets_description": "Anda belum memiliki sheet yang terhubung. Mari tambahkan yang pertama!",
+        "has_sheets_description": "Berikut adalah sheet yang terhubung. Sheet dengan bintang (⭐) digunakan secara default untuk upload struk.",
+        "add_new_sheet_instruction": "📊 **Tambah Google Sheet Baru**\n\nFitur ini akan segera hadir! Di sini Anda akan dapat menambah dan mengkonfigurasi Google Sheets Anda.",
+        "buttons": {
+            "add_new_sheet": "➕ Tambah sheet baru",
+            "back_to_dashboard": "⬅️ Kembali"
+        }
+    },
+    
+    # Pesan tambah sheet baru
+    "add_sheet": {
+        "step1_title": "➕ Menambah Sheet Baru (Langkah 1 dari 3)",
+        "step1_instruction": "Untuk menghubungkan sheet, ikuti langkah-langkah berikut:\n1. Buat Google Sheet baru, atau gunakan yang sudah ada (pastikan tidak ada informasi rahasia).\n2. Klik tombol 'Bagikan' di pojok kanan atas.\n3. Di field 'Tambahkan orang dan grup', tempel email ini:\n\n`366461711404-compute@developer.gserviceaccount.com`\n\n4. Pastikan Anda memberikan izin **Editor**.\n5. Salin link sheet dari browser dan kirim ke saya dalam pesan berikutnya.",
+        "step2_title": "➕ Menambah Sheet Baru (Langkah 2 dari 3)",
+        "step2_instruction": "Bagus, kita punya akses ke sheet! Sekarang buat nama yang pendek dan jelas untuknya. Contoh: 'Sayuran' atau 'Pembelian / Agustus'.",
+        "step3_title": "➕ Menambah Sheet Baru (Langkah 3 dari 3)",
+        "step3_success": "✅ Sheet '{sheet_name}' berhasil ditambahkan.",
+        "buttons": {
+            "cancel": "❌ Batal"
+        },
+        "errors": {
+            "invalid_url": "Tidak dapat mengakses sheet. Silakan periksa bahwa Anda benar menuliskan email dan memberikan izin **Editor**. Coba kirim link lagi.",
+            "invalid_sheet_id": "Tidak dapat mengekstrak ID sheet dari link. Silakan kirim link Google Sheet yang benar.",
+            "save_failed": "Error menyimpan sheet. Coba lagi."
+        }
+    },
+    
     # Pesan Google Sheets
     "sheets": {
         "ingredients_loaded": "✅ Dimuat {count} bahan Google Sheets sesuai permintaan",

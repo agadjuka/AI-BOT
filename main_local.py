@@ -198,6 +198,18 @@ def main() -> None:
                 CallbackQueryHandler(callback_handlers.handle_correction_choice),
                 MessageHandler(filters.PHOTO, message_handlers.handle_photo)  # Add photo handler
             ],
+            config.AWAITING_SHEET_URL: [
+                CommandHandler("dashboard", message_handlers.dashboard),
+                MessageHandler(filters.TEXT & ~filters.COMMAND, callback_handlers._handle_sheet_url_input),
+                CallbackQueryHandler(callback_handlers.handle_correction_choice),
+                MessageHandler(filters.PHOTO, message_handlers.handle_photo)
+            ],
+            config.AWAITING_SHEET_NAME: [
+                CommandHandler("dashboard", message_handlers.dashboard),
+                MessageHandler(filters.TEXT & ~filters.COMMAND, callback_handlers._handle_sheet_name_input),
+                CallbackQueryHandler(callback_handlers.handle_correction_choice),
+                MessageHandler(filters.PHOTO, message_handlers.handle_photo)
+            ],
         },
         fallbacks=[
             CommandHandler("cancel", message_handlers.start),
