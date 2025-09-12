@@ -14,7 +14,8 @@ EN_TRANSLATIONS = {
             "welcome_message": "👤 Personal Dashboard\n\nWelcome, {user}!\n\nChoose a setting:",
             "buttons": {
                 "language_settings": "🌍 Language Settings",
-                "google_sheets_management": "⚙️ Google Sheets"
+                "google_sheets_management": "⚙️ Google Sheets",
+                "ingredients_management": "🥕 Ingredients List"
             }
         }
     },
@@ -256,6 +257,28 @@ EN_TRANSLATIONS = {
         "buttons": {
             "add_new_sheet": "➕ Add new sheet",
             "back_to_dashboard": "⬅️ Back"
+        }
+    },
+    
+    # Ingredients Management messages
+    "ingredients": {
+        "management": {
+            "no_ingredients": "🥕 **Ingredients List Management**\n\nYou don't have a personal ingredients list yet. This list is used for more accurate recognition of items in receipts.\n\nYou can upload your list as a simple text file (`.txt`) where each ingredient is written on a new line.",
+            "has_ingredients": "🥕 **Ingredients List Management**\n\nYou have a personal list loaded. It is used for matching items in receipts.",
+            "list_display": "🥕 **Your Ingredients List**\n\n{ingredients}\n\nChoose an action:",
+            "replace_instruction": "🔄 **Replace Ingredients List**\n\nSend a new text file (`.txt`) with ingredients where each ingredient is written on a new line.\n\nThis file will replace your current list.",
+            "file_upload_instruction": "📥 **Upload Ingredients File**\n\nSend a text file (`.txt`) with ingredients where each ingredient is written on a new line.\n\nExample file content:\n```\nMilk\nBread\nEggs\nButter\n```",
+            "delete_confirmation": "🗑️ **Delete Ingredients List**\n\nAre you sure you want to delete your personal ingredients list?\n\nThis action cannot be undone.",
+            "delete_success": "✅ **Ingredients List Deleted**\n\nYour personal ingredients list has been successfully deleted.",
+            "delete_error": "❌ **Deletion Error**\n\nFailed to delete ingredients list. Please try again.",
+            "buttons": {
+                "upload_file": "📥 Upload File",
+                "view_list": "📄 View List",
+                "replace_list": "🔄 Replace List",
+                "delete_list": "🗑️ Delete List",
+                "confirm_delete": "✅ Yes, Delete",
+                "cancel_delete": "❌ Cancel"
+            }
         }
     },
     

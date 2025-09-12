@@ -128,6 +128,10 @@ class MessageHandlers(BaseMessageHandler):
                 callback_data="dashboard_google_sheets_management"
             )],
             [InlineKeyboardButton(
+                self.get_text("welcome.dashboard.buttons.ingredients_management", context, update=update), 
+                callback_data="ingredients_management"
+            )],
+            [InlineKeyboardButton(
                 self.get_text("buttons.back_to_main_menu", context, update=update), 
                 callback_data="back_to_main_menu"
             )]

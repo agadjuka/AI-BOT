@@ -15,6 +15,8 @@ from handlers.callback_dispatchers.file_generation_dispatcher import FileGenerat
 from handlers.ingredient_matching_callback_handler import IngredientMatchingCallbackHandler
 from handlers.google_sheets_callback_handler import GoogleSheetsCallbackHandler
 from handlers.file_generation_callback_handler import FileGenerationCallbackHandler
+from handlers.table_settings_handler import TableSettingsHandler
+from config.table_config import TableType, DeviceType
 from config.locales.locale_manager import get_global_locale_manager
 from config.locales.language_buttons import get_language_keyboard
 
@@ -38,6 +40,7 @@ class CallbackHandlers(BaseCallbackHandler):
         self.ingredient_matching_handler = IngredientMatchingCallbackHandler(config, analysis_service)
         self.google_sheets_handler = GoogleSheetsCallbackHandler(config, analysis_service)
         self.file_generation_handler = FileGenerationCallbackHandler(config, analysis_service)
+        self.table_settings_handler = TableSettingsHandler(config, analysis_service)
         
         # Initialize dispatchers
         self.receipt_edit_dispatcher = ReceiptEditDispatcher(config, analysis_service)
@@ -110,6 +113,9 @@ class CallbackHandlers(BaseCallbackHandler):
         elif action == "dashboard_google_sheets_management":
             return await self._handle_dashboard_google_sheets_management(update, context)
         
+        elif action == "ingredients_management":
+            return await self._handle_ingredients_management(update, context)
+        
         elif action == "dashboard_main":
             return await self._handle_dashboard_main(update, context)
         
@@ -135,6 +141,17 @@ class CallbackHandlers(BaseCallbackHandler):
         elif action == "noop":
             await query.answer()
             return self.config.AWAITING_CORRECTION
+        
+        # Ingredients management callbacks
+        elif action in ["ingredients_view_list", "ingredients_replace_list", "ingredients_delete_list", 
+                       "ingredients_confirm_delete", "ingredients_upload_file"]:
+            return await self._handle_ingredients_actions(update, context, action)
+        
+        # Table settings callbacks
+        elif action == "table_settings_menu":
+            return await self.table_settings_handler.show_table_settings_menu(update, context)
+        elif action.startswith("table_settings_"):
+            return await self._handle_table_settings_actions(update, context, action)
         
         else:
             await query.answer(self.get_text("errors.unknown_action", context, update=update))
@@ -239,6 +256,10 @@ class CallbackHandlers(BaseCallbackHandler):
             [InlineKeyboardButton(
                 self.get_text("welcome.dashboard.buttons.google_sheets_management", context, update=update), 
                 callback_data="dashboard_google_sheets_management"
+            )],
+            [InlineKeyboardButton(
+                self.get_text("welcome.dashboard.buttons.ingredients_management", context, update=update), 
+                callback_data="ingredients_management"
             )],
             [InlineKeyboardButton(
                 self.get_text("buttons.back_to_main_menu", context, update=update), 
@@ -1367,3 +1388,82 @@ class CallbackHandlers(BaseCallbackHandler):
         context.user_data.pop('new_sheet_name', None)
         context.user_data.pop('temp_message_id', None)
         context.user_data.pop('main_sheet_message_id', None)
+    
+    # Ingredients management methods
+    async def _handle_ingredients_management(self, update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
+        """Handle ingredients management callback"""
+        query = update.callback_query
+        await query.answer()
+        
+        # Import ingredients menu handler
+        from handlers.ingredients_menu.ingredients_menu_callback_handler import IngredientsMenuCallbackHandler
+        ingredients_handler = IngredientsMenuCallbackHandler(self.config, self.analysis_service)
+        
+        return await ingredients_handler.handle_ingredients_management(update, context)
+    
+    async def _handle_ingredients_actions(self, update: Update, context: ContextTypes.DEFAULT_TYPE, action: str) -> int:
+        """Handle ingredients management actions"""
+        # Import ingredients menu handler
+        from handlers.ingredients_menu.ingredients_menu_callback_handler import IngredientsMenuCallbackHandler
+        ingredients_handler = IngredientsMenuCallbackHandler(self.config, self.analysis_service)
+        
+        if action == "ingredients_view_list":
+            return await ingredients_handler.handle_view_list(update, context)
+        elif action == "ingredients_replace_list":
+            return await ingredients_handler.handle_replace_list(update, context)
+        elif action == "ingredients_delete_list":
+            return await ingredients_handler.handle_delete_list(update, context)
+        elif action == "ingredients_confirm_delete":
+            return await ingredients_handler.handle_confirm_delete(update, context)
+        elif action == "ingredients_upload_file":
+            return await ingredients_handler.handle_upload_file(update, context)
+        else:
+            # Fallback to ingredients management
+            return await self._handle_ingredients_management(update, context)
+    
+    async def _handle_table_settings_actions(self, update: Update, context: ContextTypes.DEFAULT_TYPE, action: str) -> int:
+        """Handle table settings actions"""
+        query = update.callback_query
+        await query.answer()
+        
+        # Handle specific table settings actions
+        if action == "table_settings_ingredient_matching":
+            return await self.table_settings_handler.show_table_type_settings(update, context, TableType.INGREDIENT_MATCHING)
+        elif action == "table_settings_google_sheets":
+            return await self.table_settings_handler.show_table_type_settings(update, context, TableType.GOOGLE_SHEETS_MATCHING)
+        elif action == "table_settings_receipt_preview":
+            return await self.table_settings_handler.show_table_type_settings(update, context, TableType.RECEIPT_PREVIEW)
+        elif action == "table_settings_next_items":
+            return await self.table_settings_handler.show_table_type_settings(update, context, TableType.NEXT_ITEMS)
+        elif action == "table_settings_device_type":
+            return await self.table_settings_handler.show_device_type_settings(update, context)
+        elif action == "table_settings_reset_all":
+            return await self.table_settings_handler.reset_all_settings(update, context)
+        elif action.startswith("table_settings_device_"):
+            # Handle device type selection
+            device_type_str = action.replace("table_settings_device_", "")
+            if device_type_str == "mobile":
+                return await self.table_settings_handler.set_device_type(update, context, DeviceType.MOBILE)
+            elif device_type_str == "tablet":
+                return await self.table_settings_handler.set_device_type(update, context, DeviceType.TABLET)
+            elif device_type_str == "desktop":
+                return await self.table_settings_handler.set_device_type(update, context, DeviceType.DESKTOP)
+        elif action.startswith("table_settings_ingredient_matching_"):
+            # Handle ingredient matching table settings
+            setting = action.replace("table_settings_ingredient_matching_", "")
+            return await self.table_settings_handler.update_table_setting(update, context, TableType.INGREDIENT_MATCHING, setting)
+        elif action.startswith("table_settings_google_sheets_"):
+            # Handle Google Sheets table settings
+            setting = action.replace("table_settings_google_sheets_", "")
+            return await self.table_settings_handler.update_table_setting(update, context, TableType.GOOGLE_SHEETS_MATCHING, setting)
+        elif action.startswith("table_settings_receipt_preview_"):
+            # Handle receipt preview table settings
+            setting = action.replace("table_settings_receipt_preview_", "")
+            return await self.table_settings_handler.update_table_setting(update, context, TableType.RECEIPT_PREVIEW, setting)
+        elif action.startswith("table_settings_next_items_"):
+            # Handle next items table settings
+            setting = action.replace("table_settings_next_items_", "")
+            return await self.table_settings_handler.update_table_setting(update, context, TableType.NEXT_ITEMS, setting)
+        else:
+            # Fallback to table settings menu
+            return await self.table_settings_handler.show_table_settings_menu(update, context)

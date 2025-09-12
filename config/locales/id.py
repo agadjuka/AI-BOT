@@ -13,7 +13,9 @@ ID_TRANSLATIONS = {
         "dashboard": {
             "welcome_message": "👤 Dashboard Pribadi\n\nSelamat datang, {user}!\n\nPilih pengaturan:",
             "buttons": {
-                "language_settings": "🌍 Pengaturan Bahasa"
+                "language_settings": "🌍 Pengaturan Bahasa",
+                "google_sheets_management": "⚙️ Google Sheets",
+                "ingredients_management": "🥕 Daftar Bahan"
             }
         }
     },
@@ -255,6 +257,28 @@ ID_TRANSLATIONS = {
         "buttons": {
             "add_new_sheet": "➕ Tambah sheet baru",
             "back_to_dashboard": "⬅️ Kembali"
+        }
+    },
+    
+    # Pesan manajemen bahan
+    "ingredients": {
+        "management": {
+            "no_ingredients": "🥕 **Manajemen Daftar Bahan**\n\nAnda belum memiliki daftar bahan pribadi. Daftar ini digunakan untuk pengenalan yang lebih akurat dari item dalam struk.\n\nAnda dapat mengunggah daftar Anda sebagai file teks sederhana (`.txt`) di mana setiap bahan ditulis dalam baris baru.",
+            "has_ingredients": "🥕 **Manajemen Daftar Bahan**\n\nAnda memiliki daftar pribadi yang dimuat. Ini digunakan untuk mencocokkan item dalam struk.",
+            "list_display": "🥕 **Daftar Bahan Anda**\n\n{ingredients}\n\nPilih aksi:",
+            "replace_instruction": "🔄 **Ganti Daftar Bahan**\n\nKirim file teks baru (`.txt`) dengan bahan di mana setiap bahan ditulis dalam baris baru.\n\nFile ini akan mengganti daftar Anda saat ini.",
+            "file_upload_instruction": "📥 **Unggah File Bahan**\n\nKirim file teks (`.txt`) dengan bahan di mana setiap bahan ditulis dalam baris baru.\n\nContoh isi file:\n```\nSusu\nRoti\nTelur\nMentega\n```",
+            "delete_confirmation": "🗑️ **Hapus Daftar Bahan**\n\nApakah Anda yakin ingin menghapus daftar bahan pribadi Anda?\n\nTindakan ini tidak dapat dibatalkan.",
+            "delete_success": "✅ **Daftar Bahan Dihapus**\n\nDaftar bahan pribadi Anda telah berhasil dihapus.",
+            "delete_error": "❌ **Error Penghapusan**\n\nGagal menghapus daftar bahan. Silakan coba lagi.",
+            "buttons": {
+                "upload_file": "📥 Unggah File",
+                "view_list": "📄 Lihat Daftar",
+                "replace_list": "🔄 Ganti Daftar",
+                "delete_list": "🗑️ Hapus Daftar",
+                "confirm_delete": "✅ Ya, Hapus",
+                "cancel_delete": "❌ Batal"
+            }
         }
     },
     
