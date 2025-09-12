@@ -68,27 +68,9 @@ class CommonHandlers:
     
     
     async def _ensure_google_sheets_ingredients_loaded(self, context: ContextTypes.DEFAULT_TYPE) -> bool:
-        """Обеспечивает загрузку ингредиентов Google Sheets"""
-        google_sheets_ingredients = context.bot_data.get('google_sheets_ingredients', {})
-        
-        if not google_sheets_ingredients:
-            # Загружаем ингредиенты Google Sheets
-            from google_sheets_handler import get_google_sheets_ingredients
-            google_sheets_ingredients = get_google_sheets_ingredients()
-            
-            if not google_sheets_ingredients:
-                return False
-            
-            # Сохраняем ингредиенты в данные бота для будущего использования
-            context.bot_data["google_sheets_ingredients"] = google_sheets_ingredients
-            loaded_message = self.locale_manager.get_text("common.loaded_google_sheets_ingredients", 
-                                                        context, count=len(google_sheets_ingredients))
-            print(loaded_message)
-            
-            debug_message = self.locale_manager.get_text("common.debug_first_ingredients", 
-                                                       context, ingredients=list(google_sheets_ingredients.keys())[:5])
-            print(debug_message)
-        
+        """Обеспечивает загрузку ингредиентов Google Sheets - DEPRECATED"""
+        # Эта функция больше не используется, так как ингредиенты загружаются персонально
+        print("⚠️ _ensure_google_sheets_ingredients_loaded() устарела - используйте персональные ингредиенты из Firestore")
         return True
     
     def format_table_with_pagination(self, data: List[Dict[str, Any]], 

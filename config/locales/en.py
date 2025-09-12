@@ -361,6 +361,7 @@ EN_TRANSLATIONS = {
     "sheets": {
         "ingredients_loaded": "✅ Loaded {count} ingredients from Google Sheets on demand",
         "no_data_for_upload": "❌ **No data for upload**\n\nFirst you need to upload and analyze a receipt.\nClick 'Analyze receipt' and upload a receipt photo.",
+        "no_personal_ingredients": "❌ **No personal ingredients**\n\nYou haven't loaded your ingredient list for matching.\nPlease first upload your ingredient list in settings.",
         
         # Google Sheets search messages
         "no_line_selected": "Error: no line selected for matching.",

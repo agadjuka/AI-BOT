@@ -3,7 +3,6 @@ Configuration settings for the AI Bot
 """
 import os
 from typing import Optional
-from .ingredients import IngredientConfig
 from .secrets import secrets
 from .locales import language_buttons
 
@@ -22,8 +21,7 @@ class BotConfig:
         self.GOOGLE_SHEETS_SPREADSHEET_ID: str = "1ah85v40ZqJzTz8PGHO6Ndoctw378NOYATH9X3OeeuUI"  # ID таблицы Google Sheets
         self.GOOGLE_SHEETS_WORKSHEET_NAME: str = "Лист1"  # Название листа
         
-        # Ingredient matching settings - moved to config/ingredients.py
-        self.ingredient_config = IngredientConfig()
+        # Ingredient matching settings - now handled by personal ingredients from Firestore
         
         # Google Cloud settings
         self.PROJECT_ID: str = secrets.PROJECT_ID

@@ -23,21 +23,21 @@ class GoogleSheetsInputHandler(BaseMessageHandler):
             )
             return self.config.AWAITING_CORRECTION
         
-        # Get Google Sheets ingredients
-        google_sheets_ingredients = context.bot_data.get('google_sheets_ingredients', {})
+        # Get user's personal ingredients from Firestore
+        from services.ingredients_manager import get_ingredients_manager
+        ingredients_manager = get_ingredients_manager()
+        user_ingredients = await ingredients_manager.get_user_ingredients(update.effective_user.id)
         
-        if not google_sheets_ingredients:
+        if not user_ingredients:
             await self.ui_manager.send_temp(
-                update, context, self.locale_manager.get_text("sheets.dictionary_not_loaded", context), duration=5
+                update, context, self.locale_manager.get_text("sheets.no_personal_ingredients", context), duration=5
             )
             return self.config.AWAITING_CORRECTION
         
-        # Convert format from {id: {'name': name}} to {name: id} for search service
+        # Convert user ingredients to the format expected by search service
         google_sheets_ingredients_for_search = {}
-        for ingredient_id, ingredient_data in google_sheets_ingredients.items():
-            ingredient_name = ingredient_data.get('name', '')
-            if ingredient_name:
-                google_sheets_ingredients_for_search[ingredient_name] = ingredient_id
+        for i, ingredient_name in enumerate(user_ingredients):
+            google_sheets_ingredients_for_search[ingredient_name] = f"user_ingredient_{i}"
         
         # Use the same smart search as in poster
         search_results = self.ingredient_matching_service.get_similar_ingredients(
@@ -70,32 +70,23 @@ class GoogleSheetsInputHandler(BaseMessageHandler):
             )
             return self.config.AWAITING_CORRECTION
         
-        # Get Google Sheets ingredients
-        google_sheets_ingredients = context.bot_data.get('google_sheets_ingredients', {})
+        # Get user's personal ingredients from Firestore
+        from services.ingredients_manager import get_ingredients_manager
+        ingredients_manager = get_ingredients_manager()
+        user_ingredients = await ingredients_manager.get_user_ingredients(update.effective_user.id)
         
-        if not google_sheets_ingredients:
-            # Try to load Google Sheets ingredients
-            from google_sheets_handler import get_google_sheets_ingredients
-            google_sheets_ingredients = get_google_sheets_ingredients()
-            
-            if not google_sheets_ingredients:
-                await self.ui_manager.send_temp(
-                    update, context, self.locale_manager.get_text("sheets.dictionary_not_loaded", context), duration=5
-                )
-                return self.config.AWAITING_CORRECTION
-            
-            # Save to bot data
-            context.bot_data['google_sheets_ingredients'] = google_sheets_ingredients
-            print(self.locale_manager.get_text("sheets.ingredients_loaded_for_search", context, count=len(google_sheets_ingredients)))
-        else:
-            print(self.locale_manager.get_text("sheets.using_cached_ingredients", context, count=len(google_sheets_ingredients)))
+        if not user_ingredients:
+            await self.ui_manager.send_temp(
+                update, context, self.locale_manager.get_text("sheets.no_personal_ingredients", context), duration=5
+            )
+            return self.config.AWAITING_CORRECTION
         
-        # Convert format from {id: {'name': name}} to {name: id} for search service
+        # Convert user ingredients to the format expected by search service
         google_sheets_ingredients_for_search = {}
-        for ingredient_id, ingredient_data in google_sheets_ingredients.items():
-            ingredient_name = ingredient_data.get('name', '')
-            if ingredient_name:
-                google_sheets_ingredients_for_search[ingredient_name] = ingredient_id
+        for i, ingredient_name in enumerate(user_ingredients):
+            google_sheets_ingredients_for_search[ingredient_name] = f"user_ingredient_{i}"
+        
+        print(f"DEBUG: Using {len(google_sheets_ingredients_for_search)} personal ingredients for search")
         
         # Use the same smart search as in poster
         search_results = self.ingredient_matching_service.get_similar_ingredients(

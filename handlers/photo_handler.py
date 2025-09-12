@@ -283,15 +283,25 @@ class PhotoHandler(BaseMessageHandler):
     async def _create_ingredient_matching_for_receipt(self, update: Update, context: ContextTypes.DEFAULT_TYPE, receipt_data: ReceiptData) -> None:
         """Automatically create ingredient matching table for the receipt"""
         try:
-            # Get Google Sheets ingredients from bot data
-            google_sheets_ingredients = context.bot_data.get('google_sheets_ingredients', {})
+            # Get user's personal ingredients from Firestore
+            from services.ingredients_manager import get_ingredients_manager
+            ingredients_manager = get_ingredients_manager()
+            user_ingredients = await ingredients_manager.get_user_ingredients(update.effective_user.id)
             
-            if not google_sheets_ingredients:
-                print("DEBUG: Google Sheets ingredients not loaded, skipping automatic matching")
+            if not user_ingredients:
+                print("DEBUG: No personal ingredients found for user, skipping automatic matching")
                 return
             
+            # Convert user ingredients to the format expected by matching service
+            # Format: {ingredient_name: ingredient_id} where ID is just the index
+            user_ingredients_for_matching = {}
+            for i, ingredient_name in enumerate(user_ingredients):
+                user_ingredients_for_matching[ingredient_name] = f"user_ingredient_{i}"
+            
+            print(f"DEBUG: Using {len(user_ingredients_for_matching)} personal ingredients for matching")
+            
             # Perform ingredient matching
-            matching_result = self.ingredient_matching_service.match_ingredients(receipt_data, google_sheets_ingredients)
+            matching_result = self.ingredient_matching_service.match_ingredients(receipt_data, user_ingredients_for_matching)
             
             # Save matching result to context
             context.user_data['ingredient_matching_result'] = matching_result

@@ -89,13 +89,35 @@ class GoogleSheetsDispatcher(BaseCallbackHandler):
                 )
                 return self.config.AWAITING_CORRECTION
             
-            google_sheets_ingredients = context.bot_data.get('google_sheets_ingredients', {})
+            # Get user's personal ingredients from Firestore
+            from services.ingredients_manager import get_ingredients_manager
+            ingredients_manager = get_ingredients_manager()
+            user_ingredients = await ingredients_manager.get_user_ingredients(update.effective_user.id)
             
-            google_sheets_ingredients_for_matching = {}
-            for ingredient_id, ingredient_data in google_sheets_ingredients.items():
-                ingredient_name = ingredient_data.get('name', '')
-                if ingredient_name:
-                    google_sheets_ingredients_for_matching[ingredient_name] = ingredient_id
+            if not user_ingredients:
+                await query.edit_message_text(
+                    self.locale_manager.get_text("sheets.callback.upload_error", context, 
+                        message=self.locale_manager.get_text("sheets.callback.no_personal_ingredients", context)),
+                    reply_markup=InlineKeyboardMarkup([
+                        [InlineKeyboardButton(
+                            self.locale_manager.get_text("buttons.upload_to_google_sheets", context), 
+                            callback_data="upload_to_google_sheets"
+                        )],
+                        [InlineKeyboardButton(
+                            self.locale_manager.get_text("buttons.back_to_receipt", context), 
+                            callback_data="back_to_receipt"
+                        )]
+                    ]),
+                    parse_mode='Markdown'
+                )
+                return self.config.AWAITING_CORRECTION
+            
+            # Convert user ingredients to the format expected by matching service
+            user_ingredients_for_matching = {}
+            for i, ingredient_name in enumerate(user_ingredients):
+                user_ingredients_for_matching[ingredient_name] = f"user_ingredient_{i}"
+            
+            print(f"DEBUG: Using {len(user_ingredients_for_matching)} personal ingredients for Google Sheets matching")
             
             user_id = update.effective_user.id
             receipt_hash = receipt_data.get_receipt_hash()
@@ -107,7 +129,7 @@ class GoogleSheetsDispatcher(BaseCallbackHandler):
                 context.user_data['changed_ingredient_indices'] = changed_indices
             else:
                 ingredient_matching_service = IngredientMatchingService()
-                matching_result = ingredient_matching_service.match_ingredients(receipt_data, google_sheets_ingredients_for_matching)
+                matching_result = ingredient_matching_service.match_ingredients(receipt_data, user_ingredients_for_matching)
                 
                 context.user_data['ingredient_matching_result'] = matching_result
                 context.user_data['changed_ingredient_indices'] = set()

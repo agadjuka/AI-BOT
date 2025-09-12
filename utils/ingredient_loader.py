@@ -17,24 +17,17 @@ class IngredientLoader:
     
     def load_google_sheets_ingredients(self, force_reload: bool = False) -> Dict[str, Dict[str, str]]:
         """
-        Load ingredients from Google Sheets configuration
+        DEPRECATED: Load ingredients from Google Sheets configuration
+        This method is deprecated as ingredients are now loaded personally from Firestore.
         
         Args:
             force_reload: Force reload even if already cached
             
         Returns:
-            Dictionary mapping ingredient IDs to {'name': name}
+            Empty dictionary for backward compatibility
         """
-        if self._google_sheets_ingredients is None or force_reload:
-            self.logger.info("Loading ingredients from Google Sheets configuration...")
-            self._google_sheets_ingredients = get_google_sheets_ingredients()
-            
-            if self._google_sheets_ingredients:
-                self.logger.info(f"Successfully loaded {len(self._google_sheets_ingredients)} ingredients from Google Sheets")
-            else:
-                self.logger.warning("Failed to load ingredients from Google Sheets")
-        
-        return self._google_sheets_ingredients or {}
+        self.logger.warning("load_google_sheets_ingredients() is deprecated - use personal ingredients from Firestore")
+        return {}
     
     def ensure_ingredients_available(self, ingredient_type: str, force_reload: bool = False) -> Tuple[bool, str]:
         """
@@ -78,25 +71,17 @@ class IngredientLoader:
     
     def get_google_sheets_ingredients_for_matching(self, force_reload: bool = False) -> Dict[str, str]:
         """
-        Get Google Sheets ingredients in format suitable for matching service
-        (name -> id mapping)
+        DEPRECATED: Get Google Sheets ingredients in format suitable for matching service
+        This method is deprecated as ingredients are now loaded personally from Firestore.
         
         Args:
             force_reload: Force reload even if already cached
             
         Returns:
-            Dictionary mapping ingredient names to IDs
+            Empty dictionary for backward compatibility
         """
-        google_sheets_ingredients = self.load_google_sheets_ingredients(force_reload)
-        
-        # Convert from {id: {'name': name}} to {name: id} format
-        ingredients_for_matching = {}
-        for ingredient_id, ingredient_data in google_sheets_ingredients.items():
-            ingredient_name = ingredient_data.get('name', '')
-            if ingredient_name:
-                ingredients_for_matching[ingredient_name] = ingredient_id
-        
-        return ingredients_for_matching
+        self.logger.warning("get_google_sheets_ingredients_for_matching() is deprecated - use personal ingredients from Firestore")
+        return {}
     
     def clear_cache(self) -> None:
         """Clear all cached ingredients"""

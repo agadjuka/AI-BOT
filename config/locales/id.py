@@ -355,6 +355,7 @@ ID_TRANSLATIONS = {
     "sheets": {
         "ingredients_loaded": "✅ Dimuat {count} bahan Google Sheets sesuai permintaan",
         "no_data_for_upload": "❌ **Tidak ada data untuk diupload**\n\nPertama perlu upload dan analisis struk.\nKlik 'Analisis struk' dan upload foto struk.",
+        "no_personal_ingredients": "❌ **Tidak ada bahan pribadi**\n\nAnda belum memuat daftar bahan untuk pencocokan.\nSilakan upload daftar bahan Anda di pengaturan terlebih dahulu.",
         
         # Pesan pencarian Google Sheets
         "no_line_selected": "Error: tidak ada baris yang dipilih untuk pencocokan.",

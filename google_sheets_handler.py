@@ -5,26 +5,12 @@ from config.settings import BotConfig
 
 def get_google_sheets_ingredients() -> dict:
     """
-    Загружает список ингредиентов для сопоставления с Google Sheets.
-    Возвращает словарь: {id: {'name': name}}
+    DEPRECATED: Эта функция больше не используется.
+    Ингредиенты теперь загружаются персонально для каждого пользователя из Firestore.
+    Возвращает пустой словарь для обратной совместимости.
     """
-    config = BotConfig()
-    
-    # Получаем список ингредиентов из конфигурации
-    ingredient_list = config.ingredient_config.get_ingredient_list() or {}
-    
-    if not ingredient_list:
-        print("⚠️ Список ингредиентов для Google Sheets не настроен.")
-        print("💡 Добавьте готовый список ингредиентов в конфигурацию.")
-        return {}
-    
-    # Преобразуем формат из {name: id} в {id: {'name': name}}
-    ingredient_dictionary = {}
-    for name, ingredient_id in ingredient_list.items():
-        ingredient_dictionary[ingredient_id] = {'name': name}
-    
-    print(f"✅ Загружено {len(ingredient_dictionary)} ингредиентов для Google Sheets.")
-    return ingredient_dictionary
+    print("⚠️ get_google_sheets_ingredients() устарела - используйте персональные ингредиенты из Firestore")
+    return {}
 
 def validate_google_sheets_config() -> tuple[bool, str]:
     """
@@ -41,7 +27,5 @@ def validate_google_sheets_config() -> tuple[bool, str]:
     if not config.GOOGLE_SHEETS_SPREADSHEET_ID:
         return False, "Не настроен ID таблицы Google Sheets"
     
-    if not config.ingredient_config.get_ingredient_list():
-        return False, "Не настроен список ингредиентов для сопоставления"
-    
+    # Ингредиенты теперь загружаются персонально из Firestore, поэтому эта проверка больше не нужна
     return True, "Конфигурация Google Sheets корректна"

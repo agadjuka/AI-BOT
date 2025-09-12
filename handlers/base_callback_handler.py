@@ -255,23 +255,28 @@ class BaseCallbackHandler:
                                                 new_item, receipt_data) -> None:
         """Automatically match ingredient for new item"""
         try:
-            # Ensure poster ingredients are loaded
-            if not await self._ensure_poster_ingredients_loaded(context):
-                print("DEBUG: Could not load poster ingredients for auto-matching")
+            # Get user's personal ingredients from Firestore
+            from services.ingredients_manager import get_ingredients_manager
+            ingredients_manager = get_ingredients_manager()
+            user_ingredients = await ingredients_manager.get_user_ingredients(update.effective_user.id)
+            
+            if not user_ingredients:
+                print("DEBUG: No personal ingredients available for auto-matching")
                 return
             
-            # Get poster ingredients from bot data
-            poster_ingredients = context.bot_data.get('poster_ingredients', {})
-            if not poster_ingredients:
-                print("DEBUG: No poster ingredients available for auto-matching")
-                return
+            # Convert user ingredients to the format expected by matching service
+            user_ingredients_for_matching = {}
+            for i, ingredient_name in enumerate(user_ingredients):
+                user_ingredients_for_matching[ingredient_name] = f"user_ingredient_{i}"
+            
+            print(f"DEBUG: Using {len(user_ingredients_for_matching)} personal ingredients for auto-matching")
             
             # Create ingredient matching service
             from services.ingredient_matching_service import IngredientMatchingService
             ingredient_matching_service = IngredientMatchingService()
             
             # Match the new item
-            matching_result = ingredient_matching_service.match_ingredients(receipt_data, poster_ingredients)
+            matching_result = ingredient_matching_service.match_ingredients(receipt_data, user_ingredients_for_matching)
             
             # Find the match for our new item (should be the last one)
             if matching_result.matches:

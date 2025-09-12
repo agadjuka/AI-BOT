@@ -350,14 +350,14 @@ class IngredientMatchingService:
         print(f"DEBUG: Normalized query: '{normalized_query}'")
         results = []
         
-        for poster_name, poster_id in poster_ingredients.items():
-            normalized_poster_name = self._normalize_name(poster_name)
-            score = self._calculate_similarity(normalized_query, normalized_poster_name)
+        for ingredient_name, ingredient_id in google_sheets_ingredients.items():
+            normalized_ingredient_name = self._normalize_name(ingredient_name)
+            score = self._calculate_similarity(normalized_query, normalized_ingredient_name)
             
             if score > 0.1:  # Only include results with some similarity
                 results.append({
-                    'name': poster_name,
-                    'id': poster_id,
+                    'name': ingredient_name,
+                    'id': ingredient_id,
                     'score': score
                 })
         
@@ -401,27 +401,27 @@ class IngredientMatchingService:
             print(f"DEBUG: Top result: {final_results[0]['name']} (score: {final_results[0]['score']:.3f})")
         return final_results
     
-    def manual_match_ingredient(self, receipt_item_name: str, poster_ingredient_id: str, 
-                               poster_ingredients: Dict[str, str]) -> IngredientMatch:
+    def manual_match_ingredient(self, receipt_item_name: str, ingredient_id: str, 
+                               ingredients: Dict[str, str]) -> IngredientMatch:
         """
         Create a manual match for an ingredient
         
         Args:
             receipt_item_name: Name of the item from receipt
-            poster_ingredient_id: ID of the selected Poster ingredient
-            google_sheets_ingredients: Dictionary of ingredient names to IDs from Google Sheets
+            ingredient_id: ID of the selected ingredient
+            ingredients: Dictionary of ingredient names to IDs
             
         Returns:
             IngredientMatch with manual match
         """
         # Find the ingredient name by ID
-        poster_ingredient_name = None
-        for name, ingredient_id in poster_ingredients.items():
-            if ingredient_id == poster_ingredient_id:
-                poster_ingredient_name = name
+        ingredient_name = None
+        for name, id in ingredients.items():
+            if id == ingredient_id:
+                ingredient_name = name
                 break
         
-        if not poster_ingredient_name:
+        if not ingredient_name:
             return IngredientMatch(
                 receipt_item_name=receipt_item_name,
                 match_status=MatchStatus.NO_MATCH,
@@ -430,8 +430,8 @@ class IngredientMatchingService:
         
         return IngredientMatch(
             receipt_item_name=receipt_item_name,
-            matched_ingredient_name=poster_ingredient_name,
-            matched_ingredient_id=poster_ingredient_id,
+            matched_ingredient_name=ingredient_name,
+            matched_ingredient_id=ingredient_id,
             match_status=MatchStatus.EXACT_MATCH,  # Manual matches are considered exact
             similarity_score=1.0
         )

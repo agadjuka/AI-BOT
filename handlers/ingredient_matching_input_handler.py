@@ -53,7 +53,16 @@ class IngredientMatchingInputHandler(BaseMessageHandler):
         # Get current matching data
         current_match_index = context.user_data.get('current_match_index', 0)
         matching_result = context.user_data.get('ingredient_matching_result')
-        google_sheets_ingredients = context.bot_data.get('google_sheets_ingredients', {})
+        
+        # Get user's personal ingredients from Firestore
+        from services.ingredients_manager import get_ingredients_manager
+        ingredients_manager = get_ingredients_manager()
+        user_ingredients = await ingredients_manager.get_user_ingredients(update.effective_user.id)
+        
+        # Convert to matching format
+        google_sheets_ingredients = {}
+        for i, ingredient_name in enumerate(user_ingredients):
+            google_sheets_ingredients[ingredient_name] = f"user_ingredient_{i}"
         
         if not matching_result or current_match_index >= len(matching_result.matches):
             await self.ui_manager.send_temp(
@@ -128,7 +137,16 @@ class IngredientMatchingInputHandler(BaseMessageHandler):
     async def _handle_position_search(self, update: Update, context: ContextTypes.DEFAULT_TYPE, query: str) -> int:
         """Handle position search for manual matching"""
         matching_result = context.user_data.get('ingredient_matching_result')
-        google_sheets_ingredients = context.bot_data.get('google_sheets_ingredients', {})
+        
+        # Get user's personal ingredients from Firestore
+        from services.ingredients_manager import get_ingredients_manager
+        ingredients_manager = get_ingredients_manager()
+        user_ingredients = await ingredients_manager.get_user_ingredients(update.effective_user.id)
+        
+        # Convert to matching format
+        google_sheets_ingredients = {}
+        for i, ingredient_name in enumerate(user_ingredients):
+            google_sheets_ingredients[ingredient_name] = f"user_ingredient_{i}"
         
         if not matching_result:
             await self.ui_manager.send_temp(
@@ -206,7 +224,16 @@ class IngredientMatchingInputHandler(BaseMessageHandler):
         """Handle ingredient search"""
         current_match_index = context.user_data.get('current_match_index', 0)
         matching_result = context.user_data.get('ingredient_matching_result')
-        google_sheets_ingredients = context.bot_data.get('google_sheets_ingredients', {})
+        
+        # Get user's personal ingredients from Firestore
+        from services.ingredients_manager import get_ingredients_manager
+        ingredients_manager = get_ingredients_manager()
+        user_ingredients = await ingredients_manager.get_user_ingredients(update.effective_user.id)
+        
+        # Convert to matching format
+        google_sheets_ingredients = {}
+        for i, ingredient_name in enumerate(user_ingredients):
+            google_sheets_ingredients[ingredient_name] = f"user_ingredient_{i}"
         
         if not matching_result or current_match_index >= len(matching_result.matches):
             await self.ui_manager.send_temp(
@@ -298,7 +325,16 @@ class IngredientMatchingInputHandler(BaseMessageHandler):
     async def _handle_ingredient_name_for_position(self, update: Update, context: ContextTypes.DEFAULT_TYPE, user_input: str) -> int:
         """Handle ingredient name input for position matching"""
         matching_result = context.user_data.get('ingredient_matching_result')
-        google_sheets_ingredients = context.bot_data.get('google_sheets_ingredients', {})
+        
+        # Get user's personal ingredients from Firestore
+        from services.ingredients_manager import get_ingredients_manager
+        ingredients_manager = get_ingredients_manager()
+        user_ingredients = await ingredients_manager.get_user_ingredients(update.effective_user.id)
+        
+        # Convert to matching format
+        google_sheets_ingredients = {}
+        for i, ingredient_name in enumerate(user_ingredients):
+            google_sheets_ingredients[ingredient_name] = f"user_ingredient_{i}"
         
         if not matching_result:
             await self.ui_manager.send_temp(
