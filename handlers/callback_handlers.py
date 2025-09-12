@@ -48,6 +48,10 @@ class CallbackHandlers(BaseCallbackHandler):
         self.google_sheets_dispatcher = GoogleSheetsDispatcher(config, analysis_service, self.google_sheets_handler)
         self.file_generation_dispatcher = FileGenerationDispatcher(config, analysis_service, self.google_sheets_handler, self.ingredient_matching_handler)
     
+    async def handle_callback_query(self, update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
+        """Handle callback query - alias for handle_correction_choice for compatibility"""
+        return await self.handle_correction_choice(update, context)
+    
     async def handle_correction_choice(self, update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
         """Handle correction choice callback - main dispatcher"""
         query = update.callback_query

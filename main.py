@@ -311,6 +311,13 @@ def create_application() -> Application:
                 MessageHandler(filters.TEXT & ~filters.COMMAND, message_handlers.handle_start_row_input),
                 MessageHandler(filters.PHOTO, message_handlers.handle_photo)
             ],
+            config.AWAITING_INGREDIENTS_FILE: [
+                CallbackQueryHandler(callback_handlers.handle_callback_query),
+                CallbackQueryHandler(callback_handlers.handle_correction_choice),
+                CommandHandler("dashboard", message_handlers.dashboard),
+                MessageHandler(filters.Document.ALL, message_handlers.handle_ingredients_file_upload),
+                MessageHandler(filters.PHOTO, message_handlers.handle_photo)
+            ],
         },
         fallbacks=[
             CommandHandler("cancel", message_handlers.start),

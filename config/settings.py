@@ -49,6 +49,9 @@ class BotConfig:
         self.AWAITING_COLUMN_INPUT = 13
         self.AWAITING_START_ROW_INPUT = 14
         
+        # Ingredients management states
+        self.AWAITING_INGREDIENTS_FILE = 15
+        
         # Message settings
         self.MAX_MESSAGE_LENGTH = 4096
         self.MESSAGE_DELAY = 0.5

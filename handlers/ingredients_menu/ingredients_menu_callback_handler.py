@@ -48,7 +48,7 @@ class IngredientsMenuCallbackHandler(BaseCallbackHandler):
                 callback_data="ingredients_upload_file"
             )],
             [InlineKeyboardButton(
-                self.get_text("buttons.back", context, update=update),
+                self.get_text("buttons.back_to_main_menu", context, update=update),
                 callback_data="dashboard_main"
             )]
         ]
@@ -82,7 +82,7 @@ class IngredientsMenuCallbackHandler(BaseCallbackHandler):
                 callback_data="ingredients_delete_list"
             )],
             [InlineKeyboardButton(
-                self.get_text("buttons.back", context, update=update),
+                self.get_text("buttons.back_to_main_menu", context, update=update),
                 callback_data="dashboard_main"
             )]
         ]
@@ -109,8 +109,15 @@ class IngredientsMenuCallbackHandler(BaseCallbackHandler):
             # If no ingredients, show no ingredients screen
             return await self._show_no_ingredients_screen(update, context)
         
-        # Format ingredients list
-        ingredients_text = "\n".join([f"• {ingredient}" for ingredient in user_ingredients])
+        # Format ingredients list with pagination for long lists
+        if len(user_ingredients) > 20:
+            # Show first 20 ingredients with "and X more" message
+            displayed_ingredients = user_ingredients[:20]
+            remaining_count = len(user_ingredients) - 20
+            ingredients_text = "\n".join([f"• {ingredient}" for ingredient in displayed_ingredients])
+            ingredients_text += f"\n\n...и еще {remaining_count}"
+        else:
+            ingredients_text = "\n".join([f"• {ingredient}" for ingredient in user_ingredients])
         
         # Create keyboard
         keyboard = [
@@ -144,7 +151,7 @@ class IngredientsMenuCallbackHandler(BaseCallbackHandler):
         query = update.callback_query
         await query.answer()
         
-        # Show instruction for file upload
+        # Show instruction for file upload and transition to FSM state
         keyboard = [
             [InlineKeyboardButton(
                 self.get_text("buttons.back", context, update=update),
@@ -155,12 +162,12 @@ class IngredientsMenuCallbackHandler(BaseCallbackHandler):
         reply_markup = InlineKeyboardMarkup(keyboard)
         
         await query.edit_message_text(
-            self.get_text("ingredients.management.replace_instruction", context, update=update),
+            self.get_text("ingredients.management.file_upload_request", context, update=update),
             reply_markup=reply_markup,
             parse_mode='HTML'
         )
         
-        return self.config.AWAITING_DASHBOARD
+        return self.config.AWAITING_INGREDIENTS_FILE
     
     async def handle_delete_list(self, update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
         """Handle delete ingredients list callback"""
@@ -234,7 +241,7 @@ class IngredientsMenuCallbackHandler(BaseCallbackHandler):
         query = update.callback_query
         await query.answer()
         
-        # Show instruction for file upload
+        # Show instruction for file upload and transition to FSM state
         keyboard = [
             [InlineKeyboardButton(
                 self.get_text("buttons.back", context, update=update),
@@ -245,9 +252,9 @@ class IngredientsMenuCallbackHandler(BaseCallbackHandler):
         reply_markup = InlineKeyboardMarkup(keyboard)
         
         await query.edit_message_text(
-            self.get_text("ingredients.management.file_upload_instruction", context, update=update),
+            self.get_text("ingredients.management.file_upload_request", context, update=update),
             reply_markup=reply_markup,
             parse_mode='HTML'
         )
         
-        return self.config.AWAITING_DASHBOARD
+        return self.config.AWAITING_INGREDIENTS_FILE

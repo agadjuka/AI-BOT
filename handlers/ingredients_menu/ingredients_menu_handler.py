@@ -43,7 +43,7 @@ class IngredientsMenuHandler(BaseMessageHandler):
                 callback_data="ingredients_upload_file"
             )],
             [InlineKeyboardButton(
-                self.get_text("buttons.back", context, update=update),
+                self.get_text("buttons.back_to_main_menu", context, update=update),
                 callback_data="dashboard_main"
             )]
         ]
@@ -82,7 +82,7 @@ class IngredientsMenuHandler(BaseMessageHandler):
                 callback_data="ingredients_delete_list"
             )],
             [InlineKeyboardButton(
-                self.get_text("buttons.back", context, update=update),
+                self.get_text("buttons.back_to_main_menu", context, update=update),
                 callback_data="dashboard_main"
             )]
         ]
@@ -127,7 +127,7 @@ class IngredientsMenuHandler(BaseMessageHandler):
                 callback_data="ingredients_delete_list"
             )],
             [InlineKeyboardButton(
-                self.get_text("buttons.back", context, update=update),
+                self.get_text("buttons.back_to_main_menu", context, update=update),
                 callback_data="ingredients_management"
             )]
         ]
