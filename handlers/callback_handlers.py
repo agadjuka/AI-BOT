@@ -806,6 +806,7 @@ class CallbackHandlers(BaseCallbackHandler):
         2. Sort them alphabetically
         3. If <= 5 columns: add next empty columns to make exactly 5
         4. If > 5 columns: take last 5 (rightmost) columns
+        5. Sort the final result alphabetically
         """
         # Step 1: Get all used columns from mapping
         used_columns = list(column_mapping.values())
@@ -837,11 +838,13 @@ class CallbackHandlers(BaseCallbackHandler):
             
             # Combine and take exactly 5
             result = used_columns_sorted + columns_to_add
-            return result[:5]
-        
-        # Step 4: If > 5 columns, take last 5 (rightmost)
+            result = result[:5]
         else:
-            return used_columns_sorted[-5:]
+            # Step 4: If > 5 columns, take last 5 (rightmost)
+            result = used_columns_sorted[-5:]
+        
+        # Step 5: Sort the final result alphabetically
+        return sorted(result)
     
     async def _handle_confirm_mapping_actions(self, update: Update, context: ContextTypes.DEFAULT_TYPE, action: str) -> int:
         """Handle confirmation mapping actions"""
