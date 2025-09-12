@@ -197,6 +197,13 @@ def create_application() -> Application:
         spreadsheet_id=config.GOOGLE_SHEETS_SPREADSHEET_ID
     )
     print("✅ GoogleSheetsService предзагружен")
+    
+    # Debug Google Sheets configuration
+    print(f"🔍 Google Sheets configuration:")
+    print(f"  - Credentials path: {config.GOOGLE_SHEETS_CREDENTIALS}")
+    print(f"  - Spreadsheet ID: {config.GOOGLE_SHEETS_SPREADSHEET_ID}")
+    print(f"  - Service available: {google_sheets_service.is_available()}")
+    print(f"  - GOOGLE_APPLICATION_CREDENTIALS_JSON set: {bool(os.getenv('GOOGLE_APPLICATION_CREDENTIALS_JSON'))}")
 
     # Create conversation handler
     conv_handler = ConversationHandler(
@@ -423,7 +430,13 @@ async def debug_info():
             "BOT_TOKEN": "***" if os.getenv("BOT_TOKEN") else "NOT SET",
             "PROJECT_ID": "***" if os.getenv("PROJECT_ID") else "NOT SET",
             "WEBHOOK_URL": "***" if os.getenv("WEBHOOK_URL") else "NOT SET",
-            "POSTER_TOKEN": "***" if os.getenv("POSTER_TOKEN") else "NOT SET"
+            "POSTER_TOKEN": "***" if os.getenv("POSTER_TOKEN") else "NOT SET",
+            "GOOGLE_APPLICATION_CREDENTIALS_JSON": "***" if os.getenv("GOOGLE_APPLICATION_CREDENTIALS_JSON") else "NOT SET"
+        },
+        "google_sheets_config": {
+            "credentials_path": "google_sheets_credentials.json",
+            "spreadsheet_id": "1ah85v40ZqJzTz8PGHO6Ndoctw378NOYATH9X3OeeuUI",
+            "service_available": google_sheets_service.is_available() if 'google_sheets_service' in locals() else False
         }
     }
 
