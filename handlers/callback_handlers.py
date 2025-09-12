@@ -285,89 +285,111 @@ class CallbackHandlers(BaseCallbackHandler):
     async def _handle_dashboard_google_sheets_management(self, update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
         """Handle Google Sheets management button from dashboard"""
         query = update.callback_query
-        await query.answer()
+        if query:
+            await query.answer()
         
         # Get user ID
         user_id = update.effective_user.id
         
-        # Import Google Sheets Manager
-        from services.google_sheets_manager import get_google_sheets_manager
+        # Check if user sheets are already cached
+        cache_key = f"user_sheets_{user_id}"
+        user_sheets = context.bot_data.get(cache_key)
         
-        try:
-            # Get Google Sheets Manager instance
-            sheets_manager = get_google_sheets_manager()
+        if user_sheets is None:
+            # Import Google Sheets Manager
+            from services.google_sheets_manager import get_google_sheets_manager
             
-            # Get user's sheets
-            user_sheets = await sheets_manager.get_user_sheets(user_id)
-            
-            # Create message text
-            title = self.get_text("sheets_management.title", context, update=update)
-            
-            if not user_sheets:
-                # No sheets scenario
-                description = self.get_text("sheets_management.no_sheets_description", context, update=update)
-                message_text = f"{title}\n\n{description}"
+            try:
+                # Get Google Sheets Manager instance
+                sheets_manager = get_google_sheets_manager()
                 
-                # Create keyboard for no sheets scenario
-                keyboard = [
-                    [InlineKeyboardButton(
-                        self.get_text("sheets_management.buttons.add_new_sheet", context, update=update),
-                        callback_data="sheets_add_new"
-                    )],
-                    [InlineKeyboardButton(
-                        self.get_text("sheets_management.buttons.back_to_dashboard", context, update=update),
-                        callback_data="dashboard_main"
-                    )]
-                ]
-            else:
-                # Has sheets scenario
-                description = self.get_text("sheets_management.has_sheets_description", context, update=update)
-                message_text = f"{title}\n\n{description}"
-                
-                # Create keyboard with sheets list
-                keyboard = []
-                
-                # Add buttons for each sheet
-                for sheet in user_sheets:
-                    friendly_name = sheet.get('friendly_name', 'Unknown Sheet')
-                    is_default = sheet.get('is_default', False)
-                    sheet_doc_id = sheet.get('doc_id', '')
-                    
-                    # Add star emoji for default sheet
-                    button_text = f"⭐ {friendly_name}" if is_default else friendly_name
-                    
-                    keyboard.append([InlineKeyboardButton(
-                        button_text,
-                        callback_data=f"sheets_manage_{sheet_doc_id}"
-                    )])
-                
-                # Add action buttons
-                keyboard.extend([
-                    [InlineKeyboardButton(
-                        self.get_text("sheets_management.buttons.add_new_sheet", context, update=update),
-                        callback_data="sheets_add_new"
-                    )],
-                    [InlineKeyboardButton(
-                        self.get_text("sheets_management.buttons.back_to_dashboard", context, update=update),
-                        callback_data="dashboard_main"
-                    )]
-                ])
+                # Get user's sheets and cache them
+                user_sheets = await sheets_manager.get_user_sheets(user_id)
+                context.bot_data[cache_key] = user_sheets
+                print(f"✅ Cached {len(user_sheets)} sheets for user {user_id}")
+            except Exception as e:
+                print(f"❌ Error loading user sheets: {e}")
+                user_sheets = []
+        else:
+            print(f"✅ Using cached sheets for user {user_id} ({len(user_sheets)} sheets)")
+        
+        # Create message text
+        title = self.get_text("sheets_management.title", context, update=update)
+        
+        if not user_sheets:
+            # No sheets scenario
+            description = self.get_text("sheets_management.no_sheets_description", context, update=update)
+            message_text = f"{title}\n\n{description}"
             
-            reply_markup = InlineKeyboardMarkup(keyboard)
+            # Create keyboard for no sheets scenario
+            keyboard = [
+                [InlineKeyboardButton(
+                    self.get_text("sheets_management.buttons.add_new_sheet", context, update=update),
+                    callback_data="sheets_add_new"
+                )],
+                [InlineKeyboardButton(
+                    self.get_text("sheets_management.buttons.back_to_dashboard", context, update=update),
+                    callback_data="dashboard_main"
+                )]
+            ]
+        else:
+            # Has sheets scenario
+            description = self.get_text("sheets_management.has_sheets_description", context, update=update)
+            message_text = f"{title}\n\n{description}"
             
-            # Edit the message
+            # Create keyboard with sheets list
+            keyboard = []
+            
+            # Add buttons for each sheet
+            for sheet in user_sheets:
+                friendly_name = sheet.get('friendly_name', 'Unknown Sheet')
+                is_default = sheet.get('is_default', False)
+                sheet_doc_id = sheet.get('doc_id', '')
+                
+                # Add star emoji for default sheet
+                button_text = f"⭐ {friendly_name}" if is_default else friendly_name
+                
+                keyboard.append([InlineKeyboardButton(
+                    button_text,
+                    callback_data=f"sheets_manage_{sheet_doc_id}"
+                )])
+            
+            # Add action buttons
+            keyboard.extend([
+                [InlineKeyboardButton(
+                    self.get_text("sheets_management.buttons.add_new_sheet", context, update=update),
+                    callback_data="sheets_add_new"
+                )],
+                [InlineKeyboardButton(
+                    self.get_text("sheets_management.buttons.back_to_dashboard", context, update=update),
+                    callback_data="dashboard_main"
+                )]
+            ])
+        
+        reply_markup = InlineKeyboardMarkup(keyboard)
+        
+        # Send or edit the message
+        if query:
             await query.edit_message_text(
                 message_text,
                 reply_markup=reply_markup,
                 parse_mode='HTML'
             )
-            
-            return self.config.AWAITING_CORRECTION
-            
-        except Exception as e:
-            print(f"❌ Error in Google Sheets management: {e}")
-            # Fallback to dashboard on error
-            return await self._handle_dashboard_main(update, context)
+        else:
+            await update.message.reply_text(
+                message_text,
+                reply_markup=reply_markup,
+                parse_mode='HTML'
+            )
+        
+        return self.config.AWAITING_CORRECTION
+    
+    def _clear_user_sheets_cache(self, context: ContextTypes.DEFAULT_TYPE, user_id: int) -> None:
+        """Clear cached user sheets data"""
+        cache_key = f"user_sheets_{user_id}"
+        if cache_key in context.bot_data:
+            del context.bot_data[cache_key]
+            print(f"✅ Cleared sheets cache for user {user_id}")
     
     async def _handle_sheets_management_actions(self, update: Update, context: ContextTypes.DEFAULT_TYPE, action: str) -> int:
         """Handle Google Sheets management actions"""
@@ -539,6 +561,9 @@ class CallbackHandlers(BaseCallbackHandler):
                 context.user_data.pop('new_sheet_url', None)
                 context.user_data.pop('new_sheet_id', None)
                 context.user_data.pop('temp_message_id', None)
+                
+                # Clear user sheets cache since we added a new sheet
+                self._clear_user_sheets_cache(context, update.effective_user.id)
                 
                 # Show success message
                 await update.message.reply_text(success_message)

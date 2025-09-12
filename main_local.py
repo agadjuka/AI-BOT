@@ -139,6 +139,19 @@ def main() -> None:
     # Initialize empty Google Sheets ingredients - will be loaded on demand
     application.bot_data["google_sheets_ingredients"] = {}
     print("✅ Google Sheets ингредиенты будут загружены по требованию")
+    
+    # Preload GoogleSheetsManager to initialize Firestore connection
+    from services.google_sheets_manager import get_google_sheets_manager
+    sheets_manager = get_google_sheets_manager(db)
+    print("✅ GoogleSheetsManager предзагружен с Firestore")
+    
+    # Preload GoogleSheetsService to initialize Google Sheets API
+    from services.google_sheets_service import GoogleSheetsService
+    google_sheets_service = GoogleSheetsService(
+        credentials_path=config.GOOGLE_SHEETS_CREDENTIALS,
+        spreadsheet_id=config.GOOGLE_SHEETS_SPREADSHEET_ID
+    )
+    print("✅ GoogleSheetsService предзагружен")
 
     # Create conversation handler
     conv_handler = ConversationHandler(
