@@ -511,7 +511,7 @@ class InputHandler(BaseMessageHandler):
         # Clear field_to_edit
         context.user_data.pop('field_to_edit', None)
         
-        # Return to mapping editor
+        # Return to mapping editor (this will edit the original message)
         return await self._show_mapping_editor(update, context)
     
     
@@ -529,4 +529,12 @@ class InputHandler(BaseMessageHandler):
         """Show mapping editor interface - delegate to callback handler"""
         from handlers.callback_handlers import CallbackHandlers
         callback_handler = CallbackHandlers(self.config, self.analysis_service)
-        return await callback_handler._show_mapping_editor(update, context)
+        
+        # For text input, we need to edit the original mapping editor message
+        # We need to find the original message that contains the mapping editor
+        if hasattr(update, 'message') and update.message:
+            # This is a text input, we need to edit the original message
+            # We'll need to find the original message ID from context or use a different approach
+            return await callback_handler._show_mapping_editor(update, context, edit_original_message=True)
+        else:
+            return await callback_handler._show_mapping_editor(update, context)

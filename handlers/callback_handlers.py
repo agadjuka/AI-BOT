@@ -749,7 +749,7 @@ class CallbackHandlers(BaseCallbackHandler):
         return f"<pre><code>{table_content}</code></pre>"
     
     def _create_mapping_editor_table_preview(self, column_mapping: dict, context: ContextTypes.DEFAULT_TYPE) -> str:
-        """Create table preview for mapping editor - same as Table Configuration but with field names"""
+        """Create table preview for mapping editor with smart 5-column window"""
         # Use the same table structure as Table Configuration (Step 3 of 3)
         # Set column widths - first column (row numbers) is 2 characters, others are 10
         number_width = 2    # First column for row numbers
@@ -757,26 +757,25 @@ class CallbackHandlers(BaseCallbackHandler):
         
         lines = []
         
-        # First row - column letters (A, B, C, D, E)
+        # Smart 5-column window algorithm
+        display_columns = self._get_smart_5_column_window(column_mapping)
+        
+        # First row - dynamic column letters (always exactly 5)
         header_parts = []
         header_parts.append(f"{'':^{number_width}}")  # Empty cell for row numbers
-        header_parts.append(f"{'A':^{column_width}}")
-        header_parts.append(f"{'B':^{column_width}}")
-        header_parts.append(f"{'C':^{column_width}}")
-        header_parts.append(f"{'D':^{column_width}}")
-        header_parts.append(f"{'E':^{column_width}}")
+        for col in display_columns:
+            header_parts.append(f"{col:^{column_width}}")
         lines.append("|".join(header_parts) + "|")  # Add closing vertical separator
         
         # Second row - separator line
         separator = "─" * (number_width + column_width * 5 + 6)  # 1 number column + 5 data columns + 6 separators
         lines.append(separator)
         
-        # Third row - field names mapped to columns (initially all empty with dashes)
+        # Third row - field names mapped to columns
         row_parts = []
         row_parts.append(f"{'1':^{number_width}}")  # Row number
         
         # Map fields to columns - show field names only if mapped, otherwise show dashes
-        columns = ['A', 'B', 'C', 'D', 'E']
         field_mapping = {
             'check_date': 'Date',
             'product_name': 'Product',
@@ -785,7 +784,7 @@ class CallbackHandlers(BaseCallbackHandler):
             'total_price': 'Sum'
         }
         
-        for col in columns:
+        for col in display_columns:
             # Find which field is mapped to this column
             field_name = "---"
             for field_key, mapped_col in column_mapping.items():
@@ -799,6 +798,50 @@ class CallbackHandlers(BaseCallbackHandler):
         # Wrap in HTML pre/code block for monospace font
         table_content = "\n".join(lines)
         return f"<pre><code>{table_content}</code></pre>"
+    
+    def _get_smart_5_column_window(self, column_mapping: dict) -> list:
+        """
+        Smart 5-column window algorithm:
+        1. Get all used columns from mapping
+        2. Sort them alphabetically
+        3. If <= 5 columns: add next empty columns to make exactly 5
+        4. If > 5 columns: take last 5 (rightmost) columns
+        """
+        # Step 1: Get all used columns from mapping
+        used_columns = list(column_mapping.values())
+        
+        # Step 2: Sort them alphabetically
+        used_columns_sorted = sorted(used_columns)
+        
+        # Step 3: If <= 5 columns, add next empty columns
+        if len(used_columns_sorted) <= 5:
+            # Generate all possible column letters (A, B, C, ..., Z, AA, AB, ...)
+            all_possible_columns = []
+            
+            # Single letters A-Z
+            for i in range(26):
+                all_possible_columns.append(chr(ord('A') + i))
+            
+            # Double letters AA-ZZ
+            for i in range(26):
+                for j in range(26):
+                    all_possible_columns.append(chr(ord('A') + i) + chr(ord('A') + j))
+            
+            # Find columns to add
+            columns_to_add = []
+            for col in all_possible_columns:
+                if col not in used_columns_sorted:
+                    columns_to_add.append(col)
+                if len(used_columns_sorted) + len(columns_to_add) >= 5:
+                    break
+            
+            # Combine and take exactly 5
+            result = used_columns_sorted + columns_to_add
+            return result[:5]
+        
+        # Step 4: If > 5 columns, take last 5 (rightmost)
+        else:
+            return used_columns_sorted[-5:]
     
     async def _handle_confirm_mapping_actions(self, update: Update, context: ContextTypes.DEFAULT_TYPE, action: str) -> int:
         """Handle confirmation mapping actions"""
@@ -958,7 +1001,7 @@ class CallbackHandlers(BaseCallbackHandler):
         # Show mapping editor
         return await self._show_mapping_editor(update, context)
     
-    async def _show_mapping_editor(self, update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
+    async def _show_mapping_editor(self, update: Update, context: ContextTypes.DEFAULT_TYPE, edit_message: bool = False, edit_original_message: bool = False) -> int:
         """Show mapping editor interface"""
         # Get current settings from FSM state
         column_mapping = context.user_data.get('column_mapping', {})
@@ -1014,6 +1057,49 @@ class CallbackHandlers(BaseCallbackHandler):
                 reply_markup=reply_markup,
                 parse_mode='HTML'
             )
+        elif edit_original_message and hasattr(update, 'message') and update.message:
+            # We need to edit the original mapping editor message
+            # Since we can't directly edit a message from text input, we'll send a new message
+            # and delete the old one
+            try:
+                # Send new message
+                sent_message = await update.message.reply_text(
+                    message_text,
+                    reply_markup=reply_markup,
+                    parse_mode='HTML'
+                )
+                # Store the message ID for potential future editing
+                context.user_data['mapping_editor_message_id'] = sent_message.message_id
+            except Exception as e:
+                print(f"DEBUG: Failed to send mapping editor message: {e}")
+                # Fallback to regular reply
+                await update.message.reply_text(
+                    message_text,
+                    reply_markup=reply_markup,
+                    parse_mode='HTML'
+                )
+        elif edit_message and hasattr(update, 'message') and update.message:
+            # Edit the message that was previously edited for column input
+            # We need to find the message that was edited in _handle_mapping_field_edit
+            # Since we can't directly edit a message from text input, we'll send a new message
+            # and delete the old one
+            try:
+                # Send new message
+                sent_message = await update.message.reply_text(
+                    message_text,
+                    reply_markup=reply_markup,
+                    parse_mode='HTML'
+                )
+                # Store the message ID for potential future editing
+                context.user_data['mapping_editor_message_id'] = sent_message.message_id
+            except Exception as e:
+                print(f"DEBUG: Failed to send mapping editor message: {e}")
+                # Fallback to regular reply
+                await update.message.reply_text(
+                    message_text,
+                    reply_markup=reply_markup,
+                    parse_mode='HTML'
+                )
         else:
             await update.message.reply_text(
                 message_text,

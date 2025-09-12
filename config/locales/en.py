@@ -298,7 +298,7 @@ EN_TRANSLATIONS = {
                 "save_and_exit": "✅ Save and Exit",
                 "cancel": "⬅️ Cancel",
             },
-            "column_input": "Укажите новую колонку для поля '{field_name}' (например, `C`) или напишите `-`, чтобы не использовать это поле.",
+            "column_input": "Specify the **new column** for field '{field_name}'.\n\nYou can use any column (e.g., <code>C</code> or <code>AA</code>). To not use this field, just send <code>-</code> (dash).",
             "field_names": {
                 "check_date": "Current Date",
                 "product_name": "Product Name",
