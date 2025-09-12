@@ -75,12 +75,17 @@ class IngredientsFileHandler(BaseMessageHandler):
         
         # Process the file
         try:
+            print(f"Processing file: {document.file_name}, MIME: {document.mime_type}, Size: {document.file_size}")
+            
             # Download file
             file = await context.bot.get_file(document.file_id)
             file_content = await file.download_as_bytearray()
             
+            print(f"Downloaded file content length: {len(file_content)} bytes")
+            
             # Parse file content
             ingredients_list = self._parse_ingredients_file(file_content)
+            print(f"Parsed ingredients: {len(ingredients_list)} items")
             
             if not ingredients_list:
                 # File is empty or contains no valid ingredients
@@ -103,10 +108,12 @@ class IngredientsFileHandler(BaseMessageHandler):
             
             # Save ingredients to database
             user_id = update.effective_user.id
+            print(f"Saving {len(ingredients_list)} ingredients for user {user_id}")
             success = await self.ingredients_manager.update_user_ingredients(user_id, ingredients_list)
+            print(f"Save result: {success}")
             
             if success:
-                # Success - edit message to show success and return to management
+                # Success - send new message with success and return to management
                 success_text = self.get_text("ingredients.management.file_upload_success", 
                                            context, update=update, count=len(ingredients_list))
                 
@@ -119,8 +126,8 @@ class IngredientsFileHandler(BaseMessageHandler):
                 ]
                 reply_markup = InlineKeyboardMarkup(keyboard)
                 
-                # Edit the main message
-                await update.effective_message.edit_text(
+                # Send success message
+                success_message = await update.effective_message.reply_text(
                     success_text,
                     reply_markup=reply_markup,
                     parse_mode='HTML'
@@ -128,7 +135,23 @@ class IngredientsFileHandler(BaseMessageHandler):
                 
                 # Wait a bit and return to management screen
                 await asyncio.sleep(2)
-                return await self._return_to_ingredients_management(update, context)
+                
+                # Delete success message and return to management
+                try:
+                    await context.bot.delete_message(
+                        chat_id=update.effective_chat.id,
+                        message_id=success_message.message_id
+                    )
+                except Exception as e:
+                    print(f"Failed to delete success message: {e}")
+                
+                # Try to return to management screen
+                try:
+                    return await self._return_to_ingredients_management(update, context)
+                except Exception as e:
+                    print(f"Failed to return to management screen: {e}")
+                    # Fallback: just return to dashboard
+                    return self.config.AWAITING_DASHBOARD
             else:
                 # Database error
                 error_message = await update.effective_message.reply_text(
@@ -149,6 +172,8 @@ class IngredientsFileHandler(BaseMessageHandler):
                 
         except Exception as e:
             print(f"Error processing ingredients file: {e}")
+            import traceback
+            traceback.print_exc()
             
             # Send error message
             error_message = await update.effective_message.reply_text(
@@ -218,8 +243,17 @@ class IngredientsFileHandler(BaseMessageHandler):
     
     async def _return_to_ingredients_management(self, update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
         """Return to ingredients management screen"""
-        # Import here to avoid circular imports
-        from handlers.ingredients_menu.ingredients_menu_callback_handler import IngredientsMenuCallbackHandler
-        
-        ingredients_handler = IngredientsMenuCallbackHandler(self.config, self.analysis_service)
-        return await ingredients_handler.handle_ingredients_management(update, context)
+        try:
+            print("Returning to ingredients management screen")
+            # Import here to avoid circular imports
+            from handlers.ingredients_menu.ingredients_menu_callback_handler import IngredientsMenuCallbackHandler
+            
+            ingredients_handler = IngredientsMenuCallbackHandler(self.config, self.analysis_service)
+            return await ingredients_handler.handle_ingredients_management(update, context)
+        except Exception as e:
+            print(f"Error returning to ingredients management: {e}")
+            import traceback
+            traceback.print_exc()
+            # Fallback to dashboard
+            return self.config.AWAITING_DASHBOARD
+

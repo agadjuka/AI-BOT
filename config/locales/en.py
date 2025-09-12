@@ -26,6 +26,7 @@ EN_TRANSLATIONS = {
         "analyze_receipt": "📸 Analyze receipt",
         "back_to_receipt": "◀️ Back to receipt",
         "back_to_main_menu": "◀️ Back",
+        "back": "⬅️ Back",
         "dashboard": "👤 Dashboard",
         
         

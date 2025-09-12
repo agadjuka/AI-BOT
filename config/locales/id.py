@@ -26,6 +26,7 @@ ID_TRANSLATIONS = {
         "analyze_receipt": "📸 Analisis struk",
         "back_to_receipt": "◀️ Kembali ke struk",
         "back_to_main_menu": "◀️ Kembali",
+        "back": "⬅️ Kembali",
         "dashboard": "👤 Dashboard",
         
         
