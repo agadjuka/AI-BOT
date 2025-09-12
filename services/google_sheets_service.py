@@ -35,10 +35,21 @@ class GoogleSheetsService:
             # Try to use the same credentials system as AI Service
             credentials = None
             
+            # Debug: Print environment variables
+            print("🔍 Debug: Checking Google Sheets credentials...")
+            print(f"🔍 GOOGLE_APPLICATION_CREDENTIALS_JSON exists: {bool(os.getenv('GOOGLE_APPLICATION_CREDENTIALS_JSON'))}")
+            print(f"🔍 credentials_path: {self.credentials_path}")
+            print(f"🔍 credentials_path exists: {os.path.exists(self.credentials_path) if self.credentials_path else False}")
+            
             # First, try to use GOOGLE_APPLICATION_CREDENTIALS_JSON environment variable
             if os.getenv("GOOGLE_APPLICATION_CREDENTIALS_JSON"):
                 try:
-                    credentials_info = json.loads(os.getenv("GOOGLE_APPLICATION_CREDENTIALS_JSON"))
+                    credentials_json = os.getenv("GOOGLE_APPLICATION_CREDENTIALS_JSON")
+                    print(f"🔍 GOOGLE_APPLICATION_CREDENTIALS_JSON length: {len(credentials_json)}")
+                    
+                    credentials_info = json.loads(credentials_json)
+                    print(f"🔍 Parsed credentials info keys: {list(credentials_info.keys())}")
+                    
                     credentials = Credentials.from_service_account_info(
                         credentials_info,
                         scopes=['https://www.googleapis.com/auth/spreadsheets']
@@ -46,6 +57,7 @@ class GoogleSheetsService:
                     print("✅ Google Sheets service initialized with GOOGLE_APPLICATION_CREDENTIALS_JSON")
                 except Exception as e:
                     print(f"❌ Error parsing GOOGLE_APPLICATION_CREDENTIALS_JSON: {e}")
+                    print(f"🔍 First 100 chars of credentials: {credentials_json[:100] if credentials_json else 'None'}")
             
             # If that fails, try the credentials file path
             if not credentials and self.credentials_path and os.path.exists(self.credentials_path):
@@ -69,13 +81,17 @@ class GoogleSheetsService:
             
             if not credentials:
                 print("⚠️ No valid credentials found for Google Sheets. Service will be disabled.")
+                print("💡 Make sure to set GOOGLE_APPLICATION_CREDENTIALS_JSON environment variable")
                 return
             
             self.service = build('sheets', 'v4', credentials=credentials)
             print("✅ Google Sheets service initialized successfully")
+            print(f"🔍 Spreadsheet ID: {self.spreadsheet_id}")
             
         except Exception as e:
             print(f"❌ Error initializing Google Sheets service: {e}")
+            import traceback
+            traceback.print_exc()
             self.service = None
     
     def is_available(self) -> bool:
