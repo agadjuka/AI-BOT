@@ -455,6 +455,9 @@ class CallbackHandlers(BaseCallbackHandler):
         ]
         reply_markup = InlineKeyboardMarkup(keyboard)
         
+        # Store the main message ID for future editing
+        context.user_data['main_sheet_message_id'] = query.message.message_id
+        
         # Edit the message
         await query.edit_message_text(
             message_text,
@@ -480,16 +483,28 @@ class CallbackHandlers(BaseCallbackHandler):
         """Handle Step 2: Process sheet URL input"""
         user_message = update.message.text.strip()
         
+        # Delete user message immediately
+        try:
+            await context.bot.delete_message(
+                chat_id=update.message.chat_id,
+                message_id=update.message.message_id
+            )
+        except Exception as e:
+            print(f"DEBUG: Failed to delete user message: {e}")
+        
         # Extract sheet ID from URL
         sheet_id = self._extract_sheet_id_from_url(user_message)
         if not sheet_id:
-            # Send temporary error message
-            temp_message = await update.message.reply_text(
-                self.get_text("add_sheet.errors.invalid_sheet_id", context, update=update),
-                parse_mode='HTML'
-            )
-            # Store temp message ID for deletion
-            context.user_data['temp_message_id'] = temp_message.message_id
+            # Edit main message to show error
+            main_message_id = context.user_data.get('main_sheet_message_id')
+            if main_message_id:
+                error_text = self.get_text("add_sheet.errors.invalid_sheet_id", context, update=update)
+                await context.bot.edit_message_text(
+                    chat_id=update.effective_chat.id,
+                    message_id=main_message_id,
+                    text=error_text,
+                    parse_mode='HTML'
+                )
             return self.config.AWAITING_SHEET_URL
         
         # Check access to the sheet (with fallback for JWT issues)
@@ -512,12 +527,16 @@ class CallbackHandlers(BaseCallbackHandler):
                     print("❌ Google Sheets service not initialized")
             except Exception as e:
                 if "PERMISSION_DENIED" in str(e) or "permission" in str(e).lower():
-                    # Real permission error - show error message
-                    temp_message = await update.message.reply_text(
-                        self.get_text("add_sheet.errors.invalid_url", context, update=update),
-                        parse_mode='HTML'
-                    )
-                    context.user_data['temp_message_id'] = temp_message.message_id
+                    # Real permission error - edit main message to show error
+                    main_message_id = context.user_data.get('main_sheet_message_id')
+                    if main_message_id:
+                        error_text = self.get_text("add_sheet.errors.invalid_url", context, update=update)
+                        await context.bot.edit_message_text(
+                            chat_id=update.effective_chat.id,
+                            message_id=main_message_id,
+                            text=error_text,
+                            parse_mode='HTML'
+                        )
                     return self.config.AWAITING_SHEET_URL
                 else:
                     # JWT error - assume access is granted
@@ -527,17 +546,6 @@ class CallbackHandlers(BaseCallbackHandler):
         # Store sheet data in context
         context.user_data['new_sheet_url'] = user_message
         context.user_data['new_sheet_id'] = sheet_id
-        
-        # Delete temp message if exists
-        if 'temp_message_id' in context.user_data:
-            try:
-                await context.bot.delete_message(
-                    chat_id=update.effective_chat.id,
-                    message_id=context.user_data['temp_message_id']
-                )
-                del context.user_data['temp_message_id']
-            except Exception as e:
-                print(f"⚠️ Could not delete temp message: {e}")
         
         # Move to step 2: request friendly name
         return await self._handle_add_new_sheet_step2(update, context)
@@ -558,12 +566,23 @@ class CallbackHandlers(BaseCallbackHandler):
         ]
         reply_markup = InlineKeyboardMarkup(keyboard)
         
-        # Edit the message
-        await update.message.reply_text(
-            message_text,
-            reply_markup=reply_markup,
-            parse_mode='HTML'
-        )
+        # Edit the main message instead of sending new one
+        main_message_id = context.user_data.get('main_sheet_message_id')
+        if main_message_id:
+            await context.bot.edit_message_text(
+                chat_id=update.effective_chat.id,
+                message_id=main_message_id,
+                text=message_text,
+                reply_markup=reply_markup,
+                parse_mode='HTML'
+            )
+        else:
+            # Fallback to sending new message if main message ID not found
+            await update.message.reply_text(
+                message_text,
+                reply_markup=reply_markup,
+                parse_mode='HTML'
+            )
         
         # Set state to await sheet name
         return self.config.AWAITING_SHEET_NAME
@@ -572,16 +591,30 @@ class CallbackHandlers(BaseCallbackHandler):
         """Handle Step 2: Process sheet name input and show confirmation screen"""
         sheet_name = update.message.text.strip()
         
+        # Delete user message immediately
+        try:
+            await context.bot.delete_message(
+                chat_id=update.message.chat_id,
+                message_id=update.message.message_id
+            )
+        except Exception as e:
+            print(f"DEBUG: Failed to delete user message: {e}")
+        
         # Get stored sheet data
         sheet_url = context.user_data.get('new_sheet_url')
         sheet_id = context.user_data.get('new_sheet_id')
         
         if not sheet_url or not sheet_id:
             # Error - missing data
-            await update.message.reply_text(
-                self.get_text("add_sheet.errors.save_failed", context, update=update),
-                parse_mode='HTML'
-            )
+            main_message_id = context.user_data.get('main_sheet_message_id')
+            if main_message_id:
+                error_text = self.get_text("add_sheet.errors.save_failed", context, update=update)
+                await context.bot.edit_message_text(
+                    chat_id=update.effective_chat.id,
+                    message_id=main_message_id,
+                    text=error_text,
+                    parse_mode='HTML'
+                )
             return await self._handle_dashboard_google_sheets_management(update, context)
         
         # Store sheet name in context for confirmation screen
@@ -599,10 +632,15 @@ class CallbackHandlers(BaseCallbackHandler):
         
         if not all([sheet_name, sheet_url, sheet_id]):
             # Error - missing data
-            await update.message.reply_text(
-                self.get_text("add_sheet.errors.save_failed", context, update=update),
-                parse_mode='HTML'
-            )
+            main_message_id = context.user_data.get('main_sheet_message_id')
+            if main_message_id:
+                error_text = self.get_text("add_sheet.errors.save_failed", context, update=update)
+                await context.bot.edit_message_text(
+                    chat_id=update.effective_chat.id,
+                    message_id=main_message_id,
+                    text=error_text,
+                    parse_mode='HTML'
+                )
             return await self._handle_dashboard_google_sheets_management(update, context)
         
         # Create table preview data
@@ -635,12 +673,23 @@ class CallbackHandlers(BaseCallbackHandler):
         ]
         reply_markup = InlineKeyboardMarkup(keyboard)
         
-        # Edit the message
-        await update.message.reply_text(
-            message_text,
-            reply_markup=reply_markup,
-            parse_mode='HTML'
-        )
+        # Edit the main message instead of sending new one
+        main_message_id = context.user_data.get('main_sheet_message_id')
+        if main_message_id:
+            await context.bot.edit_message_text(
+                chat_id=update.effective_chat.id,
+                message_id=main_message_id,
+                text=message_text,
+                reply_markup=reply_markup,
+                parse_mode='HTML'
+            )
+        else:
+            # Fallback to sending new message if main message ID not found
+            await update.message.reply_text(
+                message_text,
+                reply_markup=reply_markup,
+                parse_mode='HTML'
+            )
         
         # Set state to await confirmation
         return self.config.AWAITING_CONFIRM_MAPPING
@@ -988,10 +1037,15 @@ class CallbackHandlers(BaseCallbackHandler):
         # Get stored sheet data
         sheet_id = context.user_data.get('new_sheet_id')
         if not sheet_id:
-            await query.edit_message_text(
-                self.get_text("add_sheet.errors.save_failed", context, update=update),
-                parse_mode='HTML'
-            )
+            main_message_id = context.user_data.get('main_sheet_message_id')
+            if main_message_id:
+                error_text = self.get_text("add_sheet.errors.save_failed", context, update=update)
+                await context.bot.edit_message_text(
+                    chat_id=update.effective_chat.id,
+                    message_id=main_message_id,
+                    text=error_text,
+                    parse_mode='HTML'
+                )
             return await self._handle_dashboard_google_sheets_management(update, context)
         
         # Set default mapping - initially all empty
@@ -1009,8 +1063,12 @@ class CallbackHandlers(BaseCallbackHandler):
         # Get current settings from FSM state
         column_mapping = context.user_data.get('column_mapping', {})
         
-        # Create message text
+        # Create message text - remove markdown stars from title
         title = self.get_text("add_sheet.mapping_editor.title", context, update=update)
+        # Remove markdown stars if present
+        if title.startswith("**") and title.endswith("**"):
+            title = title[2:-2]
+        
         description = self.get_text("add_sheet.mapping_editor.description", context, update=update)
         
         # Create table preview data
@@ -1053,57 +1111,24 @@ class CallbackHandlers(BaseCallbackHandler):
         
         reply_markup = InlineKeyboardMarkup(keyboard)
         
-        # Edit the message
-        if hasattr(update, 'callback_query') and update.callback_query:
+        # Always edit the main message instead of creating new ones
+        main_message_id = context.user_data.get('main_sheet_message_id')
+        if main_message_id:
+            await context.bot.edit_message_text(
+                chat_id=update.effective_chat.id,
+                message_id=main_message_id,
+                text=message_text,
+                reply_markup=reply_markup,
+                parse_mode='HTML'
+            )
+        elif hasattr(update, 'callback_query') and update.callback_query:
             await update.callback_query.edit_message_text(
                 message_text,
                 reply_markup=reply_markup,
                 parse_mode='HTML'
             )
-        elif edit_original_message and hasattr(update, 'message') and update.message:
-            # We need to edit the original mapping editor message
-            # Since we can't directly edit a message from text input, we'll send a new message
-            # and delete the old one
-            try:
-                # Send new message
-                sent_message = await update.message.reply_text(
-                    message_text,
-                    reply_markup=reply_markup,
-                    parse_mode='HTML'
-                )
-                # Store the message ID for potential future editing
-                context.user_data['mapping_editor_message_id'] = sent_message.message_id
-            except Exception as e:
-                print(f"DEBUG: Failed to send mapping editor message: {e}")
-                # Fallback to regular reply
-                await update.message.reply_text(
-                    message_text,
-                    reply_markup=reply_markup,
-                    parse_mode='HTML'
-                )
-        elif edit_message and hasattr(update, 'message') and update.message:
-            # Edit the message that was previously edited for column input
-            # We need to find the message that was edited in _handle_mapping_field_edit
-            # Since we can't directly edit a message from text input, we'll send a new message
-            # and delete the old one
-            try:
-                # Send new message
-                sent_message = await update.message.reply_text(
-                    message_text,
-                    reply_markup=reply_markup,
-                    parse_mode='HTML'
-                )
-                # Store the message ID for potential future editing
-                context.user_data['mapping_editor_message_id'] = sent_message.message_id
-            except Exception as e:
-                print(f"DEBUG: Failed to send mapping editor message: {e}")
-                # Fallback to regular reply
-                await update.message.reply_text(
-                    message_text,
-                    reply_markup=reply_markup,
-                    parse_mode='HTML'
-                )
         else:
+            # Fallback to sending new message
             await update.message.reply_text(
                 message_text,
                 reply_markup=reply_markup,
@@ -1126,7 +1151,7 @@ class CallbackHandlers(BaseCallbackHandler):
         # Create message text
         message_text = self.get_text("add_sheet.mapping_editor.column_input", context, update=update, field_name=field_name)
         
-        # Send new message under the main one (don't edit the main message)
+        # Send new temporary message under the main one (don't edit the main message)
         sent_message = await update.effective_message.reply_text(
             message_text,
             parse_mode='HTML'
@@ -1180,7 +1205,16 @@ class CallbackHandlers(BaseCallbackHandler):
                 if success:
                     # Success message
                     success_text = self.get_text("add_sheet.mapping_editor.save_success_existing", context, update=update)
-                    await query.edit_message_text(success_text, parse_mode='HTML')
+                    main_message_id = context.user_data.get('main_sheet_message_id')
+                    if main_message_id:
+                        await context.bot.edit_message_text(
+                            chat_id=update.effective_chat.id,
+                            message_id=main_message_id,
+                            text=success_text,
+                            parse_mode='HTML'
+                        )
+                    else:
+                        await query.edit_message_text(success_text, parse_mode='HTML')
                     
                     # Clear FSM data
                     self._clear_mapping_fsm_data(context)
@@ -1193,7 +1227,16 @@ class CallbackHandlers(BaseCallbackHandler):
                 else:
                     # Save failed
                     error_text = self.get_text("add_sheet.mapping_editor.save_error", context, update=update)
-                    await query.edit_message_text(error_text, parse_mode='HTML')
+                    main_message_id = context.user_data.get('main_sheet_message_id')
+                    if main_message_id:
+                        await context.bot.edit_message_text(
+                            chat_id=update.effective_chat.id,
+                            message_id=main_message_id,
+                            text=error_text,
+                            parse_mode='HTML'
+                        )
+                    else:
+                        await query.edit_message_text(error_text, parse_mode='HTML')
                     return await self._handle_dashboard_google_sheets_management(update, context)
             
             elif editing_sheet_id:
@@ -1204,7 +1247,16 @@ class CallbackHandlers(BaseCallbackHandler):
                 if not all([sheet_name, sheet_url, editing_sheet_id]):
                     # Error - missing data
                     error_text = self.get_text("add_sheet.errors.save_failed", context, update=update)
-                    await query.edit_message_text(error_text, parse_mode='HTML')
+                    main_message_id = context.user_data.get('main_sheet_message_id')
+                    if main_message_id:
+                        await context.bot.edit_message_text(
+                            chat_id=update.effective_chat.id,
+                            message_id=main_message_id,
+                            text=error_text,
+                            parse_mode='HTML'
+                        )
+                    else:
+                        await query.edit_message_text(error_text, parse_mode='HTML')
                     return await self._handle_dashboard_google_sheets_management(update, context)
                 
                 # Add new sheet with custom mapping
@@ -1220,7 +1272,16 @@ class CallbackHandlers(BaseCallbackHandler):
                 if result:
                     # Success message
                     success_text = self.get_text("add_sheet.mapping_editor.save_success_new", context, update=update, sheet_name=sheet_name)
-                    await query.edit_message_text(success_text, parse_mode='HTML')
+                    main_message_id = context.user_data.get('main_sheet_message_id')
+                    if main_message_id:
+                        await context.bot.edit_message_text(
+                            chat_id=update.effective_chat.id,
+                            message_id=main_message_id,
+                            text=success_text,
+                            parse_mode='HTML'
+                        )
+                    else:
+                        await query.edit_message_text(success_text, parse_mode='HTML')
                     
                     # Clear FSM data
                     self._clear_mapping_fsm_data(context)
@@ -1234,18 +1295,45 @@ class CallbackHandlers(BaseCallbackHandler):
                 else:
                     # Save failed
                     error_text = self.get_text("add_sheet.mapping_editor.save_error", context, update=update)
-                    await query.edit_message_text(error_text, parse_mode='HTML')
+                    main_message_id = context.user_data.get('main_sheet_message_id')
+                    if main_message_id:
+                        await context.bot.edit_message_text(
+                            chat_id=update.effective_chat.id,
+                            message_id=main_message_id,
+                            text=error_text,
+                            parse_mode='HTML'
+                        )
+                    else:
+                        await query.edit_message_text(error_text, parse_mode='HTML')
                     return await self._handle_dashboard_google_sheets_management(update, context)
             else:
                 # Error - no sheet context
                 error_text = self.get_text("add_sheet.mapping_editor.save_error", context, update=update)
-                await query.edit_message_text(error_text, parse_mode='HTML')
+                main_message_id = context.user_data.get('main_sheet_message_id')
+                if main_message_id:
+                    await context.bot.edit_message_text(
+                        chat_id=update.effective_chat.id,
+                        message_id=main_message_id,
+                        text=error_text,
+                        parse_mode='HTML'
+                    )
+                else:
+                    await query.edit_message_text(error_text, parse_mode='HTML')
                 return await self._handle_dashboard_google_sheets_management(update, context)
                 
         except Exception as e:
             print(f"❌ Error saving mapping: {e}")
             error_text = self.get_text("add_sheet.mapping_editor.save_error", context, update=update)
-            await query.edit_message_text(error_text, parse_mode='HTML')
+            main_message_id = context.user_data.get('main_sheet_message_id')
+            if main_message_id:
+                await context.bot.edit_message_text(
+                    chat_id=update.effective_chat.id,
+                    message_id=main_message_id,
+                    text=error_text,
+                    parse_mode='HTML'
+                )
+            else:
+                await query.edit_message_text(error_text, parse_mode='HTML')
             return await self._handle_dashboard_google_sheets_management(update, context)
     
     async def _handle_cancel_mapping_edit(self, update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
@@ -1257,7 +1345,16 @@ class CallbackHandlers(BaseCallbackHandler):
         
         # Show cancellation message
         cancel_text = self.get_text("add_sheet.mapping_editor.cancel_message", context, update=update)
-        await query.edit_message_text(cancel_text, parse_mode='HTML')
+        main_message_id = context.user_data.get('main_sheet_message_id')
+        if main_message_id:
+            await context.bot.edit_message_text(
+                chat_id=update.effective_chat.id,
+                message_id=main_message_id,
+                text=cancel_text,
+                parse_mode='HTML'
+            )
+        else:
+            await query.edit_message_text(cancel_text, parse_mode='HTML')
         
         # Return to Google Sheets management
         return await self._handle_dashboard_google_sheets_management(update, context)
@@ -1269,6 +1366,7 @@ class CallbackHandlers(BaseCallbackHandler):
         context.user_data.pop('editing_sheet_id', None)
         context.user_data.pop('sheet_doc_id', None)
         context.user_data.pop('mapping_request_message_id', None)
+        context.user_data.pop('main_sheet_message_id', None)
     
     def _clear_new_sheet_fsm_data(self, context: ContextTypes.DEFAULT_TYPE) -> None:
         """Clear new sheet FSM data"""
@@ -1276,3 +1374,4 @@ class CallbackHandlers(BaseCallbackHandler):
         context.user_data.pop('new_sheet_id', None)
         context.user_data.pop('new_sheet_name', None)
         context.user_data.pop('temp_message_id', None)
+        context.user_data.pop('main_sheet_message_id', None)

@@ -282,7 +282,7 @@ def create_application() -> Application:
             ],
             config.AWAITING_COLUMN_INPUT: [
                 CommandHandler("dashboard", message_handlers.dashboard),
-                MessageHandler(filters.TEXT & ~filters.COMMAND, message_handlers.handle_user_input),
+                MessageHandler(filters.TEXT & ~filters.COMMAND, message_handlers.handle_column_input),
                 MessageHandler(filters.PHOTO, message_handlers.handle_photo)
             ],
             config.AWAITING_START_ROW_INPUT: [
