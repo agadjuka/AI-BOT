@@ -178,8 +178,6 @@ def create_application() -> Application:
     # Create application
     application = Application.builder().token(TOKEN).concurrent_updates(True).build()
     
-    # Initialize empty poster ingredients - will be loaded on demand
-    application.bot_data["poster_ingredients"] = {}
     
     # Initialize empty Google Sheets ingredients - will be loaded on demand
     application.bot_data["google_sheets_ingredients"] = {}
@@ -457,7 +455,6 @@ async def debug_info():
             "BOT_TOKEN": "***" if os.getenv("BOT_TOKEN") else "NOT SET",
             "PROJECT_ID": "***" if os.getenv("PROJECT_ID") else "NOT SET",
             "WEBHOOK_URL": "***" if os.getenv("WEBHOOK_URL") else "NOT SET",
-            "POSTER_TOKEN": "***" if os.getenv("POSTER_TOKEN") else "NOT SET",
             "GOOGLE_APPLICATION_CREDENTIALS_JSON": "***" if os.getenv("GOOGLE_APPLICATION_CREDENTIALS_JSON") else "NOT SET"
         },
         "google_sheets_config": {

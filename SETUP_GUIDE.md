@@ -48,7 +48,6 @@ python start.py
 
 1. **Настройте GitHub Secrets:**
    - `BOT_TOKEN` - Токен Telegram бота
-   - `POSTER_TOKEN` - Токен Poster API
    - `PROJECT_ID` - ID проекта Google Cloud
    - `GCP_SA_KEY` - JSON ключ сервисного аккаунта
 

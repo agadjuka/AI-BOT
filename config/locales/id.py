@@ -22,7 +22,6 @@ ID_TRANSLATIONS = {
     "buttons": {
         # Aksi utama
         "analyze_receipt": "📸 Analisis struk",
-        "generate_supply_file": "📄 Dapatkan file untuk upload ke poster",
         "back_to_receipt": "◀️ Kembali ke struk",
         "back_to_main_menu": "◀️ Kembali",
         "dashboard": "👤 Dashboard",
@@ -158,7 +157,7 @@ ID_TRANSLATIONS = {
         "no_ingredients": "Tidak ada bahan untuk dicocokkan.",
         "matching_title": "**Pencocokan bahan:**\n",
         "statistics": "📊 **Statistik:** Total: {total} | 🟢 Tepat: {exact} | 🟡 Sebagian: {partial} | 🔴 Tidak ditemukan: {none}\n",
-        "table_header": "{'№':<2} | {'Barang':<{name_width}} | {'Poster':<{name_width}} | {'Status':<4}",
+        "table_header": "{'№':<2} | {'Barang':<{name_width}} | {'Google Sheets':<{name_width}} | {'Status':<4}",
         "manual_instructions": "**Instruksi pencocokan manual:**\n\n1. Pilih nomor saran untuk pencocokan otomatis\n2. Atau masukkan '0' untuk melewatkan bahan ini\n3. Atau masukkan 'search: <nama>' untuk mencari opsi lain\n\nContoh:\n• `1` - pilih saran pertama\n• `0` - lewati\n• `search: tomat` - cari opsi dengan 'tomat'",
         "no_search_results": "Tidak ditemukan hasil untuk '{query}'.",
         "search_results": "**Hasil pencarian untuk '{query}':**\n",
@@ -191,7 +190,7 @@ ID_TRANSLATIONS = {
         
         # Pesan pencocokan posisi
         "invalid_line_number": "Nomor baris tidak valid. Masukkan nomor dari 1 sampai {max_lines}",
-        "line_selected": "Baris {line_number} dipilih. Sekarang masukkan nama bahan dari poster untuk pencarian:",
+        "line_selected": "Baris {line_number} dipilih. Sekarang masukkan nama bahan dari Google Sheets untuk pencarian:",
         "invalid_line_format": "Format tidak valid. Masukkan hanya nomor baris (contoh: `3`):",
         
         # Progress pencocokan
@@ -417,7 +416,6 @@ ID_TRANSLATIONS = {
         "generation_date": "📅 **Tanggal:** {date}",
         "show_table": "📊 Tampilkan tabel",
         "back_to_edit": "◀️ Kembali ke edit",
-        "download_poster_file": "📄 Download file poster",
         "download_google_sheets_file": "📊 Download file Google Sheets",
         "matching_table_title": "📊 **Tabel pencocokan bahan:**",
         "table_header": "| № | Item struk | Bahan | Status | Kesamaan |",
@@ -439,7 +437,6 @@ ID_TRANSLATIONS = {
         "no_data_to_display": "Tidak ada data untuk ditampilkan",
         "page": "Halaman {page}",
         "unknown_ingredient_type": "DEBUG: Tipe bahan tidak dikenal: {ingredient_type}",
-        "loaded_poster_ingredients": "DEBUG: Dimuat {count} bahan poster",
         "loaded_google_sheets_ingredients": "✅ Dimuat {count} bahan Google Sheets sesuai permintaan",
         "debug_first_ingredients": "DEBUG: 5 bahan pertama: {ingredients}",
         "navigation_buttons": {

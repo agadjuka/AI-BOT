@@ -13,8 +13,6 @@ class SecretsConfig:
         # Bot Token - токен Telegram бота (только из переменных окружения)
         self.BOT_TOKEN: str = os.getenv("BOT_TOKEN", "")
         
-        # Poster Token - токен для API Poster (только из переменных окружения)
-        self.POSTER_TOKEN: str = os.getenv("POSTER_TOKEN", "")
         
         # Google Cloud Project ID (только из переменных окружения)
         self.PROJECT_ID: str = os.getenv("PROJECT_ID", "")
@@ -41,7 +39,6 @@ class SecretsConfig:
         """
         required_tokens = [
             ("BOT_TOKEN", self.BOT_TOKEN),
-            ("POSTER_TOKEN", self.POSTER_TOKEN),
             ("PROJECT_ID", self.PROJECT_ID)
         ]
         
@@ -58,5 +55,4 @@ secrets = SecretsConfig()
 
 # Для обратной совместимости экспортируем токены напрямую
 BOT_TOKEN = secrets.BOT_TOKEN
-POSTER_TOKEN = secrets.POSTER_TOKEN
 PROJECT_ID = secrets.PROJECT_ID

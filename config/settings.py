@@ -16,8 +16,6 @@ class BotConfig:
         self.BOT_TOKEN: str = secrets.BOT_TOKEN
         self.PHOTO_FILE_NAME: str = "last_photo.jpg"
         
-        # Poster settings
-        self.POSTER_TOKEN: str = secrets.POSTER_TOKEN
         
         # Google Sheets settings
         self.GOOGLE_SHEETS_CREDENTIALS: str = "google_sheets_credentials.json"  # Путь к файлу credentials.json

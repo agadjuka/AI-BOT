@@ -1,5 +1,5 @@
 """
-Service for matching receipt ingredients with Poster ingredients
+Service for matching receipt ingredients with Google Sheets ingredients
 """
 from typing import List, Dict, Any, Optional, Tuple
 from difflib import SequenceMatcher
@@ -10,7 +10,7 @@ from models.receipt import ReceiptData, ReceiptItem
 
 
 class IngredientMatchingService:
-    """Service for matching ingredients from receipts with Poster ingredients"""
+    """Service for matching ingredients from receipts with Google Sheets ingredients"""
     
     def __init__(self):
         self.exact_match_threshold = 0.85  # 85% similarity for exact match (adjusted for word matching)
@@ -18,13 +18,13 @@ class IngredientMatchingService:
         self.min_match_threshold = 0.15  # 15% minimum similarity to consider any match (lowered for more matches)
         self.max_suggestions = 5  # Maximum number of suggestions
     
-    def match_ingredients(self, receipt_data: ReceiptData, poster_ingredients: Dict[str, str]) -> IngredientMatchingResult:
+    def match_ingredients(self, receipt_data: ReceiptData, google_sheets_ingredients: Dict[str, str]) -> IngredientMatchingResult:
         """
-        Match ingredients from receipt with Poster ingredients
+        Match ingredients from receipt with Google Sheets ingredients
         
         Args:
             receipt_data: Receipt data containing items
-            poster_ingredients: Dictionary of ingredient names to IDs from Poster
+            google_sheets_ingredients: Dictionary of ingredient names to IDs from Google Sheets
             
         Returns:
             IngredientMatchingResult with matching results
@@ -36,18 +36,18 @@ class IngredientMatchingService:
                 # Skip empty or unreadable items
                 continue
                 
-            match = self._find_best_match(item.name, poster_ingredients)
+            match = self._find_best_match(item.name, google_sheets_ingredients)
             result.add_match(match)
         
         return result
     
-    def _find_best_match(self, receipt_item_name: str, poster_ingredients: Dict[str, str]) -> IngredientMatch:
+    def _find_best_match(self, receipt_item_name: str, google_sheets_ingredients: Dict[str, str]) -> IngredientMatch:
         """
         Find the best match for a receipt item name
         
         Args:
             receipt_item_name: Name of the item from receipt
-            poster_ingredients: Dictionary of ingredient names to IDs from Poster
+            google_sheets_ingredients: Dictionary of ingredient names to IDs from Google Sheets
             
         Returns:
             IngredientMatch with the best match found
@@ -59,14 +59,14 @@ class IngredientMatchingService:
         best_score = 0.0
         all_scores = []
         
-        # Calculate similarity with all Poster ingredients
-        for poster_name, poster_id in poster_ingredients.items():
-            normalized_poster_name = self._normalize_name(poster_name)
-            score = self._calculate_similarity(normalized_receipt_name, normalized_poster_name)
+        # Calculate similarity with all Google Sheets ingredients
+        for google_sheets_name, google_sheets_id in google_sheets_ingredients.items():
+            normalized_google_sheets_name = self._normalize_name(google_sheets_name)
+            score = self._calculate_similarity(normalized_receipt_name, normalized_google_sheets_name)
             
             all_scores.append({
-                'name': poster_name,
-                'id': poster_id,
+                'name': google_sheets_name,
+                'id': google_sheets_id,
                 'score': score
             })
         
@@ -333,19 +333,19 @@ class IngredientMatchingService:
         
         return min(final_score, 1.0)
     
-    def get_similar_ingredients(self, query: str, poster_ingredients: Dict[str, str], limit: int = 10) -> List[Dict[str, Any]]:
+    def get_similar_ingredients(self, query: str, google_sheets_ingredients: Dict[str, str], limit: int = 10) -> List[Dict[str, Any]]:
         """
         Get similar ingredients for manual selection
         
         Args:
             query: Search query
-            poster_ingredients: Dictionary of ingredient names to IDs from Poster
+            google_sheets_ingredients: Dictionary of ingredient names to IDs from Google Sheets
             limit: Maximum number of results
             
         Returns:
             List of similar ingredients with scores
         """
-        print(f"DEBUG: get_similar_ingredients called with query '{query}' and {len(poster_ingredients)} ingredients")
+        print(f"DEBUG: get_similar_ingredients called with query '{query}' and {len(google_sheets_ingredients)} ingredients")
         normalized_query = self._normalize_name(query)
         print(f"DEBUG: Normalized query: '{normalized_query}'")
         results = []
@@ -409,7 +409,7 @@ class IngredientMatchingService:
         Args:
             receipt_item_name: Name of the item from receipt
             poster_ingredient_id: ID of the selected Poster ingredient
-            poster_ingredients: Dictionary of ingredient names to IDs from Poster
+            google_sheets_ingredients: Dictionary of ingredient names to IDs from Google Sheets
             
         Returns:
             IngredientMatch with manual match

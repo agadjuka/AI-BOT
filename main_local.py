@@ -133,9 +133,6 @@ def main() -> None:
     # Create application
     application = Application.builder().token(config.BOT_TOKEN).concurrent_updates(True).build()
     
-    # Initialize empty poster ingredients - will be loaded on demand
-    application.bot_data["poster_ingredients"] = {}
-    
     # Initialize empty Google Sheets ingredients - will be loaded on demand
     application.bot_data["google_sheets_ingredients"] = {}
     print("✅ Google Sheets ингредиенты будут загружены по требованию")

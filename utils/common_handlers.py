@@ -47,20 +47,18 @@ class CommonHandlers:
         await message.reply_text(parts[-1], reply_markup=reply_markup, parse_mode='Markdown')
     
     async def ensure_ingredients_loaded(self, context: ContextTypes.DEFAULT_TYPE, 
-                                      ingredient_type: str = "poster") -> bool:
+                                      ingredient_type: str = "google_sheets") -> bool:
         """
         Обеспечивает загрузку ингредиентов, загружает их при необходимости
         
         Args:
             context: Контекст бота
-            ingredient_type: Тип ингредиентов ("poster" или "google_sheets")
+            ingredient_type: Тип ингредиентов ("google_sheets")
             
         Returns:
             bool: True если ингредиенты загружены успешно, False в противном случае
         """
-        if ingredient_type == "poster":
-            return await self._ensure_poster_ingredients_loaded(context)
-        elif ingredient_type == "google_sheets":
+        if ingredient_type == "google_sheets":
             return await self._ensure_google_sheets_ingredients_loaded(context)
         else:
             debug_message = self.locale_manager.get_text("common.unknown_ingredient_type", 
@@ -68,25 +66,6 @@ class CommonHandlers:
             print(debug_message)
             return False
     
-    async def _ensure_poster_ingredients_loaded(self, context: ContextTypes.DEFAULT_TYPE) -> bool:
-        """Обеспечивает загрузку ингредиентов постера"""
-        poster_ingredients = context.bot_data.get('poster_ingredients', {})
-        
-        if not poster_ingredients:
-            # Загружаем ингредиенты постера
-            from poster_handler import get_all_poster_ingredients
-            poster_ingredients = get_all_poster_ingredients()
-            
-            if not poster_ingredients:
-                return False
-            
-            # Сохраняем ингредиенты в данные бота для будущего использования
-            context.bot_data["poster_ingredients"] = poster_ingredients
-            debug_message = self.locale_manager.get_text("common.loaded_poster_ingredients", 
-                                                       context, count=len(poster_ingredients))
-            print(debug_message)
-        
-        return True
     
     async def _ensure_google_sheets_ingredients_loaded(self, context: ContextTypes.DEFAULT_TYPE) -> bool:
         """Обеспечивает загрузку ингредиентов Google Sheets"""

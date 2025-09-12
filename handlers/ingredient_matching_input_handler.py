@@ -53,7 +53,7 @@ class IngredientMatchingInputHandler(BaseMessageHandler):
         # Get current matching data
         current_match_index = context.user_data.get('current_match_index', 0)
         matching_result = context.user_data.get('ingredient_matching_result')
-        poster_ingredients = context.bot_data.get('poster_ingredients', {})
+        google_sheets_ingredients = context.bot_data.get('google_sheets_ingredients', {})
         
         if not matching_result or current_match_index >= len(matching_result.matches):
             await self.ui_manager.send_temp(
@@ -92,7 +92,7 @@ class IngredientMatchingInputHandler(BaseMessageHandler):
                         manual_match = self.ingredient_matching_service.manual_match_ingredient(
                             current_match.receipt_item_name,
                             selected_suggestion['id'],
-                            poster_ingredients
+                            google_sheets_ingredients
                         )
                         
                         # Update the match in the result
@@ -128,7 +128,7 @@ class IngredientMatchingInputHandler(BaseMessageHandler):
     async def _handle_position_search(self, update: Update, context: ContextTypes.DEFAULT_TYPE, query: str) -> int:
         """Handle position search for manual matching"""
         matching_result = context.user_data.get('ingredient_matching_result')
-        poster_ingredients = context.bot_data.get('poster_ingredients', {})
+        google_sheets_ingredients = context.bot_data.get('google_sheets_ingredients', {})
         
         if not matching_result:
             await self.ui_manager.send_temp(
@@ -138,7 +138,7 @@ class IngredientMatchingInputHandler(BaseMessageHandler):
         
         # Search for ingredients in the loaded list
         search_results = self.ingredient_matching_service.get_similar_ingredients(
-            query, poster_ingredients, limit=10
+            query, google_sheets_ingredients, limit=10
         )
         
         if search_results:
@@ -206,7 +206,7 @@ class IngredientMatchingInputHandler(BaseMessageHandler):
         """Handle ingredient search"""
         current_match_index = context.user_data.get('current_match_index', 0)
         matching_result = context.user_data.get('ingredient_matching_result')
-        poster_ingredients = context.bot_data.get('poster_ingredients', {})
+        google_sheets_ingredients = context.bot_data.get('google_sheets_ingredients', {})
         
         if not matching_result or current_match_index >= len(matching_result.matches):
             await self.ui_manager.send_temp(
@@ -218,7 +218,7 @@ class IngredientMatchingInputHandler(BaseMessageHandler):
         
         # Search for ingredients
         search_results = self.ingredient_matching_service.get_similar_ingredients(
-            query, poster_ingredients, limit=10
+            query, google_sheets_ingredients, limit=10
         )
         
         if search_results:
@@ -298,7 +298,7 @@ class IngredientMatchingInputHandler(BaseMessageHandler):
     async def _handle_ingredient_name_for_position(self, update: Update, context: ContextTypes.DEFAULT_TYPE, user_input: str) -> int:
         """Handle ingredient name input for position matching"""
         matching_result = context.user_data.get('ingredient_matching_result')
-        poster_ingredients = context.bot_data.get('poster_ingredients', {})
+        google_sheets_ingredients = context.bot_data.get('google_sheets_ingredients', {})
         
         if not matching_result:
             await self.ui_manager.send_temp(
@@ -308,7 +308,7 @@ class IngredientMatchingInputHandler(BaseMessageHandler):
         
         # Search for ingredients in the loaded list
         search_results = self.ingredient_matching_service.get_similar_ingredients(
-            user_input, poster_ingredients, limit=10
+            user_input, google_sheets_ingredients, limit=10
         )
         
         if search_results:

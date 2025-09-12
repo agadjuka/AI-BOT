@@ -1,5 +1,5 @@
 """
-Service for generating supply files for Poster
+Service for generating supply files for Google Sheets
 """
 import pandas as pd
 import io
@@ -27,7 +27,7 @@ class FileGeneratorService:
                            storage_location: str = "Storage 1",
                            comment: str = "") -> bytes:
         """
-        Generate supply file for Poster
+        Generate supply file for Google Sheets
         
         Args:
             receipt_data: Processed receipt data
@@ -169,7 +169,7 @@ class FileGeneratorService:
             print(f"DEBUG: Match {i}: '{match.receipt_item_name}' -> '{match.matched_ingredient_name}' (status: {match.match_status}, score: {match.similarity_score})")
         
         if matched_count == 0:
-            return False, "Нет сопоставленных ингредиентов. Необходимо выполнить сопоставление товаров с ингредиентами Poster."
+            return False, "Нет сопоставленных ингредиентов. Необходимо выполнить сопоставление товаров с ингредиентами Google Sheets."
         
         return True, ""
     

@@ -84,7 +84,7 @@ class CallbackHandlers(BaseCallbackHandler):
                        "cancel_back"]:
             return await self.ingredient_matching_dispatcher._handle_ingredient_matching_actions(update, context, action)
         
-        elif action in ["generate_supply_file", "generate_poster_file", "generate_google_sheets_file",
+        elif action in ["generate_supply_file", "generate_google_sheets_file",
                        "generate_file_xlsx", "generate_file_from_table", "match_ingredients"]:
             return await self.file_generation_dispatcher._handle_file_generation_actions(update, context, action)
         
@@ -165,10 +165,6 @@ class CallbackHandlers(BaseCallbackHandler):
                 [InlineKeyboardButton(
                     self.get_text("buttons.analyze_receipt", context, update=update), 
                     callback_data="analyze_receipt"
-                )],
-                [InlineKeyboardButton(
-                    self.get_text("buttons.generate_supply_file", context, update=update), 
-                    callback_data="generate_supply_file"
                 )],
                 [InlineKeyboardButton(
                     self.get_text("buttons.dashboard", context, update=update), 
@@ -271,10 +267,6 @@ class CallbackHandlers(BaseCallbackHandler):
             [InlineKeyboardButton(
                 self.get_text("buttons.analyze_receipt", context, update=update), 
                 callback_data="analyze_receipt"
-            )],
-            [InlineKeyboardButton(
-                self.get_text("buttons.generate_supply_file", context, update=update), 
-                callback_data="generate_supply_file"
             )],
             [InlineKeyboardButton(
                 self.get_text("buttons.dashboard", context, update=update), 

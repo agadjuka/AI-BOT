@@ -23,7 +23,6 @@ EN_TRANSLATIONS = {
     "buttons": {
         # Main actions
         "analyze_receipt": "📸 Analyze receipt",
-        "generate_supply_file": "📄 Get file for poster upload",
         "back_to_receipt": "◀️ Back to receipt",
         "back_to_main_menu": "◀️ Back",
         "dashboard": "👤 Dashboard",
@@ -159,7 +158,7 @@ EN_TRANSLATIONS = {
         "no_ingredients": "No ingredients for matching.",
         "matching_title": "**Ingredient matching:**\n",
         "statistics": "📊 **Statistics:** Total: {total} | 🟢 Exact: {exact} | 🟡 Partial: {partial} | 🔴 Not found: {none}\n",
-        "table_header": "{'№':<2} | {'Product':<{name_width}} | {'Poster':<{name_width}} | {'Status':<4}",
+        "table_header": "{'№':<2} | {'Product':<{name_width}} | {'Google Sheets':<{name_width}} | {'Status':<4}",
         "manual_instructions": "**Manual matching instructions:**\n\n1. Select suggestion number for automatic matching\n2. Or enter '0' to skip this ingredient\n3. Or enter 'search: <name>' to search for other options\n\nExamples:\n• `1` - select first suggestion\n• `0` - skip\n• `search: tomato` - find options with 'tomato'",
         "no_search_results": "Nothing found for query '{query}'.",
         "search_results": "**Search results for '{query}':**\n",
@@ -192,7 +191,7 @@ EN_TRANSLATIONS = {
         
         # Position matching messages
         "invalid_line_number": "Invalid line number. Enter a number from 1 to {max_lines}",
-        "line_selected": "Line {line_number} selected. Now enter ingredient name from poster for search:",
+        "line_selected": "Line {line_number} selected. Now enter ingredient name from Google Sheets for search:",
         "invalid_line_format": "Invalid format. Enter only line number (e.g.: `3`):",
         
         # Matching progress
@@ -424,7 +423,6 @@ EN_TRANSLATIONS = {
         "generation_date": "📅 **Date:** {date}",
         "show_table": "📊 Show table",
         "back_to_edit": "◀️ Back to editing",
-        "download_poster_file": "📄 Download poster file",
         "download_google_sheets_file": "📊 Download Google Sheets file",
         "matching_table_title": "📊 **Ingredient matching table:**",
         "table_header": "| № | Receipt item | Ingredient | Status | Similarity |",
@@ -446,7 +444,6 @@ EN_TRANSLATIONS = {
         "no_data_to_display": "No data to display",
         "page": "Page {page}",
         "unknown_ingredient_type": "DEBUG: Unknown ingredient type: {ingredient_type}",
-        "loaded_poster_ingredients": "DEBUG: Loaded {count} poster ingredients",
         "loaded_google_sheets_ingredients": "✅ Loaded {count} Google Sheets ingredients on demand",
         "debug_first_ingredients": "DEBUG: First 5 ingredients: {ingredients}",
         "navigation_buttons": {

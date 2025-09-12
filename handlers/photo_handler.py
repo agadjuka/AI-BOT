@@ -283,15 +283,15 @@ class PhotoHandler(BaseMessageHandler):
     async def _create_ingredient_matching_for_receipt(self, update: Update, context: ContextTypes.DEFAULT_TYPE, receipt_data: ReceiptData) -> None:
         """Automatically create ingredient matching table for the receipt"""
         try:
-            # Get poster ingredients from bot data
-            poster_ingredients = context.bot_data.get('poster_ingredients', {})
+            # Get Google Sheets ingredients from bot data
+            google_sheets_ingredients = context.bot_data.get('google_sheets_ingredients', {})
             
-            if not poster_ingredients:
-                print("DEBUG: Poster ingredients not loaded, skipping automatic matching")
+            if not google_sheets_ingredients:
+                print("DEBUG: Google Sheets ingredients not loaded, skipping automatic matching")
                 return
             
             # Perform ingredient matching
-            matching_result = self.ingredient_matching_service.match_ingredients(receipt_data, poster_ingredients)
+            matching_result = self.ingredient_matching_service.match_ingredients(receipt_data, google_sheets_ingredients)
             
             # Save matching result to context
             context.user_data['ingredient_matching_result'] = matching_result
@@ -441,8 +441,6 @@ class PhotoHandler(BaseMessageHandler):
             # Add Google Sheets upload button
             keyboard.append([InlineKeyboardButton(self.locale_manager.get_text("buttons.upload_to_google_sheets", context), callback_data="upload_to_google_sheets")])
             
-            # Add file generation button
-            keyboard.append([InlineKeyboardButton(self.locale_manager.get_text("buttons.generate_supply_file", context), callback_data="generate_supply_file")])
             
             # Add back button (required in every menu)
             keyboard.append([InlineKeyboardButton(self.locale_manager.get_text("buttons.back_to_receipt", context), callback_data="back_to_receipt")])

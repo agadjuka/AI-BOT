@@ -62,7 +62,7 @@ class IngredientFormatter:
     
     def _create_table_header(self) -> str:
         """Create table header"""
-        return f"{'№':<2} | {'Товар':<{self.max_name_length}} | {'Poster':<{self.max_name_length}} | {'Статус':<4}"
+        return f"{'№':<2} | {'Товар':<{self.max_name_length}} | {'Google Sheets':<{self.max_name_length}} | {'Статус':<4}"
     
     def _create_table_separator(self) -> str:
         """Create table separator"""

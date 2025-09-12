@@ -79,7 +79,7 @@ class TableConfigManager:
             columns=[
                 ColumnConfig("number", "№", 2, "right"),
                 ColumnConfig("receipt_item", "Товар", 12, "left", emoji="📦"),
-                ColumnConfig("ingredient", "Poster", 12, "left", emoji="🏷️"),
+                ColumnConfig("ingredient", "Google Sheets", 12, "left", emoji="🏷️"),
                 ColumnConfig("status", "Статус", 4, "center", emoji="📊")
             ],
             style=TableStyle(
@@ -98,7 +98,7 @@ class TableConfigManager:
             columns=[
                 ColumnConfig("number", "№", 2, "right"),
                 ColumnConfig("receipt_item", "Товар", 20, "left", emoji="📦"),
-                ColumnConfig("ingredient", "Poster", 20, "left", emoji="🏷️"),
+                ColumnConfig("ingredient", "Google Sheets", 20, "left", emoji="🏷️"),
                 ColumnConfig("status", "Статус", 6, "center", emoji="📊")
             ],
             style=TableStyle(
