@@ -468,7 +468,8 @@ class CallbackHandlers(BaseCallbackHandler):
         if not sheet_id:
             # Send temporary error message
             temp_message = await update.message.reply_text(
-                self.get_text("add_sheet.errors.invalid_sheet_id", context, update=update)
+                self.get_text("add_sheet.errors.invalid_sheet_id", context, update=update),
+                parse_mode='HTML'
             )
             # Store temp message ID for deletion
             context.user_data['temp_message_id'] = temp_message.message_id
@@ -477,10 +478,34 @@ class CallbackHandlers(BaseCallbackHandler):
         # Check access to the sheet (with fallback for JWT issues)
         has_access = await self._check_sheet_access(sheet_id)
         if not has_access:
-            # If JWT error, assume access is granted (user added service account correctly)
-            # This handles cases where system time is not synchronized with Google
-            print("⚠️ Access check failed, but assuming access is granted (user added service account)")
-            # Continue with the process instead of showing error
+            # Check if it's a JWT error (system time issue) or real permission error
+            try:
+                from services.google_sheets_service import GoogleSheetsService
+                temp_service = GoogleSheetsService(
+                    credentials_path=self.config.GOOGLE_SHEETS_CREDENTIALS,
+                    spreadsheet_id=sheet_id
+                )
+                # Try to access the sheet by getting its properties
+                if temp_service.service:
+                    result = temp_service.service.spreadsheets().get(spreadsheetId=sheet_id).execute()
+                    # If we get here, we have access
+                    print("✅ Access granted after retry")
+                    has_access = True
+                else:
+                    print("❌ Google Sheets service not initialized")
+            except Exception as e:
+                if "PERMISSION_DENIED" in str(e) or "permission" in str(e).lower():
+                    # Real permission error - show error message
+                    temp_message = await update.message.reply_text(
+                        self.get_text("add_sheet.errors.invalid_url", context, update=update),
+                        parse_mode='HTML'
+                    )
+                    context.user_data['temp_message_id'] = temp_message.message_id
+                    return self.config.AWAITING_SHEET_URL
+                else:
+                    # JWT error - assume access is granted
+                    print("⚠️ JWT error, assuming access is granted (user added service account)")
+                    has_access = True
         
         # Store sheet data in context
         context.user_data['new_sheet_url'] = user_message
@@ -537,7 +562,8 @@ class CallbackHandlers(BaseCallbackHandler):
         if not sheet_url or not sheet_id:
             # Error - missing data
             await update.message.reply_text(
-                self.get_text("add_sheet.errors.save_failed", context, update=update)
+                self.get_text("add_sheet.errors.save_failed", context, update=update),
+                parse_mode='HTML'
             )
             return await self._handle_dashboard_google_sheets_management(update, context)
         
@@ -566,21 +592,23 @@ class CallbackHandlers(BaseCallbackHandler):
                 self._clear_user_sheets_cache(context, update.effective_user.id)
                 
                 # Show success message
-                await update.message.reply_text(success_message)
+                await update.message.reply_text(success_message, parse_mode='HTML')
                 
                 # Return to Google Sheets management
                 return await self._handle_dashboard_google_sheets_management(update, context)
             else:
                 # Save failed
                 await update.message.reply_text(
-                    self.get_text("add_sheet.errors.save_failed", context, update=update)
+                    self.get_text("add_sheet.errors.save_failed", context, update=update),
+                    parse_mode='HTML'
                 )
                 return await self._handle_dashboard_google_sheets_management(update, context)
                 
         except Exception as e:
             print(f"❌ Error saving sheet: {e}")
             await update.message.reply_text(
-                self.get_text("add_sheet.errors.save_failed", context, update=update)
+                self.get_text("add_sheet.errors.save_failed", context, update=update),
+                parse_mode='HTML'
             )
             return await self._handle_dashboard_google_sheets_management(update, context)
     
