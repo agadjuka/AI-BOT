@@ -282,6 +282,40 @@ EN_TRANSLATIONS = {
             "use_default": "✅ Use default",
             "configure_manual": "✏️ Configure manually"
         },
+        "mapping_editor": {
+            "title": "⚙️ **Table Settings Editor**",
+            "description": "Configure the mapping between receipt fields and table columns:",
+            "current_settings": "**Current settings:**",
+            "field_mapping": "{field_name} ➡️ Column {column}",
+            "field_buttons": {
+                "check_date": "🗓️ Current Date",
+                "product_name": "📦 Product Name", 
+                "quantity": "🔢 Quantity",
+                "price_per_item": "💰 Price per Item",
+                "total_price": "💵 Total Price"
+            },
+            "action_buttons": {
+                "save_and_exit": "✅ Save and Exit",
+                "cancel": "⬅️ Cancel",
+            },
+            "column_input": "Укажите новую колонку для поля '{field_name}' (например, `C`) или напишите `-`, чтобы не использовать это поле.",
+            "field_names": {
+                "check_date": "Current Date",
+                "product_name": "Product Name",
+                "quantity": "Quantity", 
+                "price_per_item": "Price per Item",
+                "total_price": "Total Price"
+            },
+            "errors": {
+                "invalid_column": "❌ Invalid column format. Enter a letter (A-Z) or `-` to disable.",
+                "invalid_row_number": "❌ Invalid row number. Enter a positive number (e.g., `2`).",
+                "no_field_selected": "❌ No field selected for editing."
+            },
+            "save_success_existing": "✅ **Table settings updated successfully!**\n\nYour changes have been saved and will be used for future uploads.",
+            "save_success_new": "✅ **Table '{sheet_name}' added successfully!**\n\nYour custom settings have been saved and will be used for future uploads.",
+            "save_error": "❌ **Error saving settings**\n\nThere was an error saving your table settings. Please try again.",
+            "cancel_message": "❌ **Editing cancelled**\n\nNo changes were saved. Returning to table management."
+        },
         "errors": {
             "invalid_url": "🤔 Can't access the table. Please double-check that you gave <b>Editor</b> permissions specifically for this email. Try sending the link again.",
             "invalid_sheet_id": "❌ Could not extract table ID from the link. Please send a correct Google Sheet link.",

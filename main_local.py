@@ -228,6 +228,21 @@ def main() -> None:
                 CallbackQueryHandler(callback_handlers.handle_correction_choice),
                 MessageHandler(filters.PHOTO, message_handlers.handle_photo)
             ],
+            config.EDIT_MAPPING: [
+                CallbackQueryHandler(callback_handlers.handle_correction_choice),
+                CommandHandler("dashboard", message_handlers.dashboard),
+                MessageHandler(filters.PHOTO, message_handlers.handle_photo)
+            ],
+            config.AWAITING_COLUMN_INPUT: [
+                CommandHandler("dashboard", message_handlers.dashboard),
+                MessageHandler(filters.TEXT & ~filters.COMMAND, message_handlers.handle_column_input),
+                MessageHandler(filters.PHOTO, message_handlers.handle_photo)
+            ],
+            config.AWAITING_START_ROW_INPUT: [
+                CommandHandler("dashboard", message_handlers.dashboard),
+                MessageHandler(filters.TEXT & ~filters.COMMAND, message_handlers.handle_start_row_input),
+                MessageHandler(filters.PHOTO, message_handlers.handle_photo)
+            ],
         },
         fallbacks=[
             CommandHandler("cancel", message_handlers.start),

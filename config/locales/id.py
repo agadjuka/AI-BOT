@@ -281,11 +281,39 @@ ID_TRANSLATIONS = {
             "use_default": "✅ Gunakan default",
             "configure_manual": "✏️ Konfigurasi manual"
         },
+        "mapping_editor": {
+            "title": "⚙️ **Editor Pengaturan Tabel**",
+            "description": "Konfigurasi pemetaan antara field struk dan kolom tabel:",
+            "current_settings": "**Pengaturan saat ini:**",
+            "field_mapping": "{field_name} ➡️ Kolom {column}",
+            "field_buttons": {
+                "check_date": "🗓️ Tanggal Saat Ini",
+                "product_name": "📦 Nama Barang", 
+                "quantity": "🔢 Jumlah",
+                "price_per_item": "💰 Harga per Item",
+                "total_price": "💵 Total Harga"
+            },
+            "action_buttons": {
+                "save_and_exit": "✅ Simpan dan Keluar",
+                "cancel": "⬅️ Batal",
+            },
+            "column_input": "Tentukan kolom baru untuk field '{field_name}' (contoh: `C`) atau tulis `-` untuk tidak menggunakan field ini.",
+            "field_names": {
+                "check_date": "Tanggal Saat Ini",
+                "product_name": "Nama Barang",
+                "quantity": "Jumlah", 
+                "price_per_item": "Harga per Item",
+                "total_price": "Total Harga"
+            }
+        },
         "errors": {
             "invalid_url": "🤔 Tidak dapat mengakses tabel. Silakan periksa kembali bahwa Anda memberikan izin <b>Editor</b> khusus untuk email ini. Coba kirim link lagi.",
             "invalid_sheet_id": "❌ Tidak dapat mengekstrak ID tabel dari link. Silakan kirim link Google Sheet yang benar.",
             "save_failed": "⚠️ Error menyimpan tabel. Coba lagi.",
-            "jwt_error": "⚠️ Masalah pemeriksaan akses. Melanjutkan proses penambahan tabel."
+            "jwt_error": "⚠️ Masalah pemeriksaan akses. Melanjutkan proses penambahan tabel.",
+            "invalid_column": "❌ Format kolom tidak valid. Masukkan huruf (A-Z) atau `-` untuk menonaktifkan.",
+            "invalid_row_number": "❌ Nomor baris tidak valid. Masukkan angka positif (contoh: `2`).",
+            "no_field_selected": "❌ Tidak ada field yang dipilih untuk diedit."
         }
     },
     

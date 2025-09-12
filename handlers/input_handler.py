@@ -444,3 +444,89 @@ class InputHandler(BaseMessageHandler):
     def _truncate_name(self, name: str, max_length: int) -> str:
         """Truncate name if too long"""
         return self.common_handlers.truncate_name(name, max_length)
+    
+    async def handle_column_input(self, update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
+        """Handle column input for mapping editor"""
+        user_input = update.message.text.strip().upper()
+        
+        # Store the message ID of the request message to delete it later
+        request_message_id = context.user_data.get('mapping_request_message_id')
+        
+        # Delete user message
+        try:
+            await context.bot.delete_message(
+                chat_id=update.message.chat_id,
+                message_id=update.message.message_id
+            )
+        except Exception as e:
+            print(f"DEBUG: Failed to delete user message: {e}")
+        
+        # Delete request message if it exists
+        if request_message_id:
+            try:
+                await context.bot.delete_message(
+                    chat_id=update.message.chat_id,
+                    message_id=request_message_id
+                )
+                context.user_data.pop('mapping_request_message_id', None)
+            except Exception as e:
+                print(f"DEBUG: Failed to delete request message: {e}")
+        
+        # Validate input
+        if not self._is_valid_column_input(user_input):
+            error_message = self.locale_manager.get_text("add_sheet.mapping_editor.errors.invalid_column", context, update=update)
+            await self.ui_manager.send_temp(
+                update, context, error_message, duration=5
+            )
+            return self.config.AWAITING_COLUMN_INPUT
+        
+        # Get field to edit and current mapping
+        field_to_edit = context.user_data.get('field_to_edit')
+        column_mapping = context.user_data.get('column_mapping', {})
+        
+        if not field_to_edit:
+            error_message = self.locale_manager.get_text("add_sheet.mapping_editor.errors.no_field_selected", context, update=update)
+            await self.ui_manager.send_temp(
+                update, context, error_message, duration=5
+            )
+            return self.config.EDIT_MAPPING
+        
+        # Update mapping
+        if user_input == '-':
+            # Remove field from mapping
+            column_mapping.pop(field_to_edit, None)
+        else:
+            # Check if column is already used by another field
+            for existing_field, existing_column in column_mapping.items():
+                if existing_field != field_to_edit and existing_column == user_input:
+                    # Clear the old field's mapping
+                    column_mapping.pop(existing_field, None)
+            
+            # Set new column for current field
+            column_mapping[field_to_edit] = user_input
+        
+        # Save updated mapping
+        context.user_data['column_mapping'] = column_mapping
+        
+        # Clear field_to_edit
+        context.user_data.pop('field_to_edit', None)
+        
+        # Return to mapping editor
+        return await self._show_mapping_editor(update, context)
+    
+    
+    def _is_valid_column_input(self, user_input: str) -> bool:
+        """Validate column input (A-Z, AA-ZZ, etc. or -)"""
+        if user_input == '-':
+            return True
+        
+        # Check if it's a valid Excel column reference
+        import re
+        pattern = r'^[A-Z]+$'
+        return bool(re.match(pattern, user_input))
+    
+    async def _show_mapping_editor(self, update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
+        """Show mapping editor interface - delegate to callback handler"""
+        from handlers.callback_handlers import CallbackHandlers
+        callback_handler = CallbackHandlers(self.config, self.analysis_service)
+        return await callback_handler._show_mapping_editor(update, context)

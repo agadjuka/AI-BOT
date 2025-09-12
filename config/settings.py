@@ -47,6 +47,9 @@ class BotConfig:
         self.AWAITING_SHEET_URL = 9
         self.AWAITING_SHEET_NAME = 10
         self.AWAITING_CONFIRM_MAPPING = 11
+        self.EDIT_MAPPING = 12
+        self.AWAITING_COLUMN_INPUT = 13
+        self.AWAITING_START_ROW_INPUT = 14
         
         # Message settings
         self.MAX_MESSAGE_LENGTH = 4096

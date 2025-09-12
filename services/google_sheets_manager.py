@@ -96,6 +96,64 @@ class GoogleSheetsManager:
             print(f"❌ Error adding user sheet: {e}")
             return False
     
+    async def add_user_sheet_with_mapping(
+        self, 
+        user_id: int, 
+        sheet_url: str, 
+        sheet_id: str, 
+        friendly_name: str,
+        column_mapping: Dict[str, str],
+        start_row: int
+    ) -> Union[str, bool]:
+        """
+        Add a new Google Sheet for a user with custom column mapping
+        
+        Args:
+            user_id: Telegram user ID
+            sheet_url: Full URL of the Google Sheet
+            sheet_id: Google Sheets document ID
+            friendly_name: User-friendly name for the sheet
+            column_mapping: Custom column mapping dictionary
+            start_row: Starting row for data
+            
+        Returns:
+            Document ID of created sheet or True if successful, False if failed
+        """
+        if not self.db:
+            print("❌ Firestore not available")
+            return False
+        
+        try:
+            # Check if this is the first sheet for the user
+            user_ref = self.db.collection('users').document(str(user_id))
+            sheets_ref = user_ref.collection('google_sheets')
+            
+            # Get existing sheets to determine if this should be default
+            existing_sheets = sheets_ref.get()
+            is_default = len(existing_sheets) == 0
+            
+            # Prepare sheet data with custom mapping
+            sheet_data = {
+                "sheet_url": sheet_url,
+                "sheet_id": sheet_id,
+                "friendly_name": friendly_name,
+                "is_default": is_default,
+                "created_at": datetime.utcnow(),
+                "data_start_row": start_row,
+                "column_mapping": column_mapping
+            }
+            
+            # Add the sheet document
+            doc_ref = sheets_ref.add(sheet_data)
+            sheet_doc_id = doc_ref[1].id
+            
+            print(f"✅ Added sheet '{friendly_name}' with custom mapping for user {user_id} (default: {is_default})")
+            return sheet_doc_id
+            
+        except Exception as e:
+            print(f"❌ Error adding user sheet with mapping: {e}")
+            return False
+    
     async def get_user_sheets(self, user_id: int) -> List[Dict[str, Any]]:
         """
         Get all Google Sheets for a user

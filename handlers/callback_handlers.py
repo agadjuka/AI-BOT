@@ -69,7 +69,11 @@ class CallbackHandlers(BaseCallbackHandler):
         
         elif action in ["add_row", "edit_total", "auto_calculate_total", "finish_editing", "edit_receipt", 
                      "back_to_edit", "delete_row", "edit_line_number", "manual_edit_total", "reanalyze", 
-                     "back_to_receipt", "back_to_main_menu"] or action.startswith("field_") or action.startswith("apply_") or action.startswith("edit_item_") or action.startswith("edit_") or action.startswith("delete_item_"):
+                     "back_to_receipt", "back_to_main_menu"] or action.startswith("field_") or action.startswith("apply_") or action.startswith("edit_item_") or action.startswith("delete_item_"):
+            return await self.receipt_edit_dispatcher._handle_receipt_edit_actions(update, context, action)
+        
+        elif action.startswith("edit_") and not action.startswith("edit_mapping_field_"):
+            # Handle other edit actions (but not mapping field edits)
             return await self.receipt_edit_dispatcher._handle_receipt_edit_actions(update, context, action)
         
         elif action in ["ingredient_matching", "manual_matching", "position_selection", "match_item_", 
@@ -117,6 +121,16 @@ class CallbackHandlers(BaseCallbackHandler):
         
         elif action in ["confirm_use_default_mapping", "confirm_configure_manual_mapping"]:
             return await self._handle_confirm_mapping_actions(update, context, action)
+        
+        elif action.startswith("edit_mapping_field_"):
+            # Handle field editing in mapping editor
+            field_key = action.replace("edit_mapping_field_", "")
+            return await self._handle_mapping_field_edit(update, context, field_key)
+        
+        elif action in ["save_mapping_and_exit", "cancel_mapping_edit"]:
+            # Handle mapping editor actions
+            return await self._handle_mapping_editor_actions(update, context, action)
+        
         
         elif action == "noop":
             await query.answer()
@@ -734,6 +748,58 @@ class CallbackHandlers(BaseCallbackHandler):
         table_content = "\n".join(lines)
         return f"<pre><code>{table_content}</code></pre>"
     
+    def _create_mapping_editor_table_preview(self, column_mapping: dict, context: ContextTypes.DEFAULT_TYPE) -> str:
+        """Create table preview for mapping editor - same as Table Configuration but with field names"""
+        # Use the same table structure as Table Configuration (Step 3 of 3)
+        # Set column widths - first column (row numbers) is 2 characters, others are 10
+        number_width = 2    # First column for row numbers
+        column_width = 10   # Other columns
+        
+        lines = []
+        
+        # First row - column letters (A, B, C, D, E)
+        header_parts = []
+        header_parts.append(f"{'':^{number_width}}")  # Empty cell for row numbers
+        header_parts.append(f"{'A':^{column_width}}")
+        header_parts.append(f"{'B':^{column_width}}")
+        header_parts.append(f"{'C':^{column_width}}")
+        header_parts.append(f"{'D':^{column_width}}")
+        header_parts.append(f"{'E':^{column_width}}")
+        lines.append("|".join(header_parts) + "|")  # Add closing vertical separator
+        
+        # Second row - separator line
+        separator = "─" * (number_width + column_width * 5 + 6)  # 1 number column + 5 data columns + 6 separators
+        lines.append(separator)
+        
+        # Third row - field names mapped to columns (initially all empty with dashes)
+        row_parts = []
+        row_parts.append(f"{'1':^{number_width}}")  # Row number
+        
+        # Map fields to columns - show field names only if mapped, otherwise show dashes
+        columns = ['A', 'B', 'C', 'D', 'E']
+        field_mapping = {
+            'check_date': 'Date',
+            'product_name': 'Product',
+            'quantity': 'Qty',
+            'price_per_item': 'Price',
+            'total_price': 'Sum'
+        }
+        
+        for col in columns:
+            # Find which field is mapped to this column
+            field_name = "---"
+            for field_key, mapped_col in column_mapping.items():
+                if mapped_col == col:
+                    field_name = field_mapping.get(field_key, field_key)
+                    break
+            row_parts.append(f"{field_name:^{column_width}}")
+        
+        lines.append("|".join(row_parts) + "|")
+        
+        # Wrap in HTML pre/code block for monospace font
+        table_content = "\n".join(lines)
+        return f"<pre><code>{table_content}</code></pre>"
+    
     async def _handle_confirm_mapping_actions(self, update: Update, context: ContextTypes.DEFAULT_TYPE, action: str) -> int:
         """Handle confirmation mapping actions"""
         query = update.callback_query
@@ -744,12 +810,8 @@ class CallbackHandlers(BaseCallbackHandler):
             return await self._handle_use_default_mapping(update, context)
         
         elif action == "confirm_configure_manual_mapping":
-            # Configure manual mapping - show message for now
-            await query.edit_message_text(
-                "Переход в режим редактирования...\n\nЭта функция будет реализована в следующем обновлении.",
-                parse_mode='HTML'
-            )
-            return self.config.AWAITING_CORRECTION
+            # Configure manual mapping - enter editor
+            return await self._enter_mapping_editor(update, context)
         
         else:
             # Fallback
@@ -871,3 +933,257 @@ class CallbackHandlers(BaseCallbackHandler):
             elif "invalid_grant" in str(e).lower():
                 print("❌ Invalid credentials - check if service account is properly configured")
             return False
+    
+    async def _enter_mapping_editor(self, update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
+        """Enter mapping editor mode"""
+        query = update.callback_query
+        await query.answer()
+        
+        # Get stored sheet data
+        sheet_id = context.user_data.get('new_sheet_id')
+        if not sheet_id:
+            await query.edit_message_text(
+                self.get_text("add_sheet.errors.save_failed", context, update=update),
+                parse_mode='HTML'
+            )
+            return await self._handle_dashboard_google_sheets_management(update, context)
+        
+        # Set default mapping - initially all empty
+        default_mapping = {}
+        
+        # Store mapping data in FSM state
+        context.user_data['column_mapping'] = default_mapping
+        context.user_data['editing_sheet_id'] = sheet_id
+        
+        # Show mapping editor
+        return await self._show_mapping_editor(update, context)
+    
+    async def _show_mapping_editor(self, update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
+        """Show mapping editor interface"""
+        # Get current settings from FSM state
+        column_mapping = context.user_data.get('column_mapping', {})
+        
+        # Create message text
+        title = self.get_text("add_sheet.mapping_editor.title", context, update=update)
+        description = self.get_text("add_sheet.mapping_editor.description", context, update=update)
+        
+        # Create table preview data
+        table_preview = self._create_mapping_editor_table_preview(column_mapping, context)
+        
+        message_text = f"{title}\n\n{description}\n\n{table_preview}"
+        
+        # Create keyboard with field buttons in two columns
+        keyboard = []
+        
+        # Add field buttons in two columns
+        field_keys = ['check_date', 'product_name', 'quantity', 'price_per_item', 'total_price']
+        field_buttons = []
+        
+        for field_key in field_keys:
+            button_text = self.get_text(f"add_sheet.mapping_editor.field_buttons.{field_key}", context, update=update)
+            field_buttons.append(InlineKeyboardButton(
+                button_text,
+                callback_data=f"edit_mapping_field_{field_key}"
+            ))
+        
+        # Arrange buttons in two columns
+        for i in range(0, len(field_buttons), 2):
+            row = [field_buttons[i]]
+            if i + 1 < len(field_buttons):
+                row.append(field_buttons[i + 1])
+            keyboard.append(row)
+        
+        # Add action buttons
+        keyboard.extend([
+            [InlineKeyboardButton(
+                self.get_text("add_sheet.mapping_editor.action_buttons.save_and_exit", context, update=update),
+                callback_data="save_mapping_and_exit"
+            )],
+            [InlineKeyboardButton(
+                self.get_text("add_sheet.mapping_editor.action_buttons.cancel", context, update=update),
+                callback_data="cancel_mapping_edit"
+            )]
+        ])
+        
+        reply_markup = InlineKeyboardMarkup(keyboard)
+        
+        # Edit the message
+        if hasattr(update, 'callback_query') and update.callback_query:
+            await update.callback_query.edit_message_text(
+                message_text,
+                reply_markup=reply_markup,
+                parse_mode='HTML'
+            )
+        else:
+            await update.message.reply_text(
+                message_text,
+                reply_markup=reply_markup,
+                parse_mode='HTML'
+            )
+        
+        return self.config.EDIT_MAPPING
+    
+    async def _handle_mapping_field_edit(self, update: Update, context: ContextTypes.DEFAULT_TYPE, field_key: str) -> int:
+        """Handle field button press in mapping editor"""
+        query = update.callback_query
+        await query.answer()
+        
+        # Store which field we're editing
+        context.user_data['field_to_edit'] = field_key
+        
+        # Get field name for display
+        field_name = self.get_text(f"add_sheet.mapping_editor.field_names.{field_key}", context, update=update)
+        
+        # Create message text
+        message_text = self.get_text("add_sheet.mapping_editor.column_input", context, update=update, field_name=field_name)
+        
+        # Send new message under the main one (don't edit the main message)
+        sent_message = await update.effective_message.reply_text(
+            message_text,
+            parse_mode='HTML'
+        )
+        
+        # Store the message ID for later deletion
+        context.user_data['mapping_request_message_id'] = sent_message.message_id
+        
+        return self.config.AWAITING_COLUMN_INPUT
+    
+    async def _handle_mapping_editor_actions(self, update: Update, context: ContextTypes.DEFAULT_TYPE, action: str) -> int:
+        """Handle mapping editor action buttons"""
+        query = update.callback_query
+        await query.answer()
+        
+        if action == "save_mapping_and_exit":
+            # Save mapping and exit
+            return await self._handle_save_mapping_and_exit(update, context)
+        
+        elif action == "cancel_mapping_edit":
+            # Cancel editing - return to sheet management
+            return await self._handle_cancel_mapping_edit(update, context)
+        
+        else:
+            # Fallback
+            return await self._handle_dashboard_google_sheets_management(update, context)
+    
+    
+    async def _handle_save_mapping_and_exit(self, update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
+        """Handle save mapping and exit button"""
+        query = update.callback_query
+        
+        # Get final mapping data from FSM state
+        column_mapping = context.user_data.get('column_mapping', {})
+        sheet_doc_id = context.user_data.get('sheet_doc_id')  # For editing existing sheet
+        editing_sheet_id = context.user_data.get('editing_sheet_id')  # For new sheet
+        
+        try:
+            from services.google_sheets_manager import get_google_sheets_manager
+            sheets_manager = get_google_sheets_manager()
+            
+            if sheet_doc_id:
+                # Editing existing sheet - update mapping
+                success = await sheets_manager.update_user_sheet_mapping(
+                    user_id=update.effective_user.id,
+                    sheet_doc_id=sheet_doc_id,
+                    new_mapping=column_mapping,
+                    new_start_row=2  # Default start row
+                )
+                
+                if success:
+                    # Success message
+                    success_text = self.get_text("add_sheet.mapping_editor.save_success_existing", context, update=update)
+                    await query.edit_message_text(success_text, parse_mode='HTML')
+                    
+                    # Clear FSM data
+                    self._clear_mapping_fsm_data(context)
+                    
+                    # Clear user sheets cache since we updated a sheet
+                    self._clear_user_sheets_cache(context, update.effective_user.id)
+                    
+                    # Return to Google Sheets management
+                    return await self._handle_dashboard_google_sheets_management(update, context)
+                else:
+                    # Save failed
+                    error_text = self.get_text("add_sheet.mapping_editor.save_error", context, update=update)
+                    await query.edit_message_text(error_text, parse_mode='HTML')
+                    return await self._handle_dashboard_google_sheets_management(update, context)
+            
+            elif editing_sheet_id:
+                # Adding new sheet with custom mapping
+                sheet_name = context.user_data.get('new_sheet_name')
+                sheet_url = context.user_data.get('new_sheet_url')
+                
+                if not all([sheet_name, sheet_url, editing_sheet_id]):
+                    # Error - missing data
+                    error_text = self.get_text("add_sheet.errors.save_failed", context, update=update)
+                    await query.edit_message_text(error_text, parse_mode='HTML')
+                    return await self._handle_dashboard_google_sheets_management(update, context)
+                
+                # Add new sheet with custom mapping
+                result = await sheets_manager.add_user_sheet_with_mapping(
+                    user_id=update.effective_user.id,
+                    sheet_url=sheet_url,
+                    sheet_id=editing_sheet_id,
+                    friendly_name=sheet_name,
+                    column_mapping=column_mapping,
+                    start_row=2  # Default start row
+                )
+                
+                if result:
+                    # Success message
+                    success_text = self.get_text("add_sheet.mapping_editor.save_success_new", context, update=update, sheet_name=sheet_name)
+                    await query.edit_message_text(success_text, parse_mode='HTML')
+                    
+                    # Clear FSM data
+                    self._clear_mapping_fsm_data(context)
+                    self._clear_new_sheet_fsm_data(context)
+                    
+                    # Clear user sheets cache since we added a new sheet
+                    self._clear_user_sheets_cache(context, update.effective_user.id)
+                    
+                    # Return to Google Sheets management
+                    return await self._handle_dashboard_google_sheets_management(update, context)
+                else:
+                    # Save failed
+                    error_text = self.get_text("add_sheet.mapping_editor.save_error", context, update=update)
+                    await query.edit_message_text(error_text, parse_mode='HTML')
+                    return await self._handle_dashboard_google_sheets_management(update, context)
+            else:
+                # Error - no sheet context
+                error_text = self.get_text("add_sheet.mapping_editor.save_error", context, update=update)
+                await query.edit_message_text(error_text, parse_mode='HTML')
+                return await self._handle_dashboard_google_sheets_management(update, context)
+                
+        except Exception as e:
+            print(f"❌ Error saving mapping: {e}")
+            error_text = self.get_text("add_sheet.mapping_editor.save_error", context, update=update)
+            await query.edit_message_text(error_text, parse_mode='HTML')
+            return await self._handle_dashboard_google_sheets_management(update, context)
+    
+    async def _handle_cancel_mapping_edit(self, update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
+        """Handle cancel mapping edit button"""
+        query = update.callback_query
+        
+        # Clear FSM data
+        self._clear_mapping_fsm_data(context)
+        
+        # Show cancellation message
+        cancel_text = self.get_text("add_sheet.mapping_editor.cancel_message", context, update=update)
+        await query.edit_message_text(cancel_text, parse_mode='HTML')
+        
+        # Return to Google Sheets management
+        return await self._handle_dashboard_google_sheets_management(update, context)
+    
+    def _clear_mapping_fsm_data(self, context: ContextTypes.DEFAULT_TYPE) -> None:
+        """Clear mapping editor FSM data"""
+        context.user_data.pop('column_mapping', None)
+        context.user_data.pop('field_to_edit', None)
+        context.user_data.pop('editing_sheet_id', None)
+        context.user_data.pop('sheet_doc_id', None)
+        context.user_data.pop('mapping_request_message_id', None)
+    
+    def _clear_new_sheet_fsm_data(self, context: ContextTypes.DEFAULT_TYPE) -> None:
+        """Clear new sheet FSM data"""
+        context.user_data.pop('new_sheet_url', None)
+        context.user_data.pop('new_sheet_id', None)
+        context.user_data.pop('new_sheet_name', None)
+        context.user_data.pop('temp_message_id', None)
