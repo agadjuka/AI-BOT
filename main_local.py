@@ -209,34 +209,42 @@ def main() -> None:
                 MessageHandler(filters.PHOTO, message_handlers.handle_photo)  # Add photo handler
             ],
             config.AWAITING_SHEET_URL: [
+                CallbackQueryHandler(callback_handlers.handle_callback_query),
+                CallbackQueryHandler(callback_handlers.handle_correction_choice),
                 CommandHandler("dashboard", message_handlers.dashboard),
                 MessageHandler(filters.TEXT & ~filters.COMMAND, callback_handlers._handle_sheet_url_input),
-                CallbackQueryHandler(callback_handlers.handle_correction_choice),
                 MessageHandler(filters.PHOTO, message_handlers.handle_photo)
             ],
             config.AWAITING_SHEET_NAME: [
+                CallbackQueryHandler(callback_handlers.handle_callback_query),
+                CallbackQueryHandler(callback_handlers.handle_correction_choice),
                 CommandHandler("dashboard", message_handlers.dashboard),
                 MessageHandler(filters.TEXT & ~filters.COMMAND, callback_handlers._handle_sheet_name_input),
-                CallbackQueryHandler(callback_handlers.handle_correction_choice),
                 MessageHandler(filters.PHOTO, message_handlers.handle_photo)
             ],
             config.AWAITING_CONFIRM_MAPPING: [
-                CommandHandler("dashboard", message_handlers.dashboard),
+                CallbackQueryHandler(callback_handlers.handle_callback_query),
                 CallbackQueryHandler(callback_handlers.handle_correction_choice),
+                CommandHandler("dashboard", message_handlers.dashboard),
                 MessageHandler(filters.PHOTO, message_handlers.handle_photo)
             ],
             config.EDIT_MAPPING: [
+                CallbackQueryHandler(callback_handlers.handle_callback_query),
                 CallbackQueryHandler(callback_handlers.handle_correction_choice),
                 CommandHandler("dashboard", message_handlers.dashboard),
                 MessageHandler(filters.TEXT & ~filters.COMMAND, message_handlers.handle_column_input),
                 MessageHandler(filters.PHOTO, message_handlers.handle_photo)
             ],
             config.AWAITING_COLUMN_INPUT: [
+                CallbackQueryHandler(callback_handlers.handle_callback_query),
+                CallbackQueryHandler(callback_handlers.handle_correction_choice),
                 CommandHandler("dashboard", message_handlers.dashboard),
                 MessageHandler(filters.TEXT & ~filters.COMMAND, message_handlers.handle_column_input),
                 MessageHandler(filters.PHOTO, message_handlers.handle_photo)
             ],
             config.AWAITING_START_ROW_INPUT: [
+                CallbackQueryHandler(callback_handlers.handle_callback_query),
+                CallbackQueryHandler(callback_handlers.handle_correction_choice),
                 CommandHandler("dashboard", message_handlers.dashboard),
                 MessageHandler(filters.TEXT & ~filters.COMMAND, message_handlers.handle_start_row_input),
                 MessageHandler(filters.PHOTO, message_handlers.handle_photo)
