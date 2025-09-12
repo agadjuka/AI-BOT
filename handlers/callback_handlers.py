@@ -148,7 +148,7 @@ class CallbackHandlers(BaseCallbackHandler):
         
         # Ingredients management callbacks
         elif action in ["ingredients_view_list", "ingredients_replace_list", "ingredients_delete_list", 
-                       "ingredients_confirm_delete", "ingredients_upload_file"]:
+                       "ingredients_confirm_delete", "ingredients_upload_file", "ingredients_upload_text"]:
             return await self._handle_ingredients_actions(update, context, action)
         
         # Table settings callbacks
@@ -1421,6 +1421,8 @@ class CallbackHandlers(BaseCallbackHandler):
             return await ingredients_handler.handle_confirm_delete(update, context)
         elif action == "ingredients_upload_file":
             return await ingredients_handler.handle_upload_file(update, context)
+        elif action == "ingredients_upload_text":
+            return await ingredients_handler.handle_upload_text(update, context)
         else:
             # Fallback to ingredients management
             return await self._handle_ingredients_management(update, context)

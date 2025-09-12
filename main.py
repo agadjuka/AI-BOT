@@ -188,6 +188,11 @@ def create_application() -> Application:
     sheets_manager = get_google_sheets_manager(db)
     print("✅ GoogleSheetsManager предзагружен с Firestore")
     
+    # Preload IngredientsManager to initialize Firestore connection
+    from services.ingredients_manager import get_ingredients_manager
+    ingredients_manager = get_ingredients_manager(db)
+    print("✅ IngredientsManager предзагружен с Firestore")
+    
     # Preload GoogleSheetsService to initialize Google Sheets API
     from services.google_sheets_service import GoogleSheetsService
     google_sheets_service = GoogleSheetsService(
@@ -316,6 +321,13 @@ def create_application() -> Application:
                 CallbackQueryHandler(callback_handlers.handle_correction_choice),
                 CommandHandler("dashboard", message_handlers.dashboard),
                 MessageHandler(filters.Document.ALL, message_handlers.handle_ingredients_file_upload),
+                MessageHandler(filters.PHOTO, message_handlers.handle_photo)
+            ],
+            config.AWAITING_INGREDIENTS_TEXT: [
+                CallbackQueryHandler(callback_handlers.handle_callback_query),
+                CallbackQueryHandler(callback_handlers.handle_correction_choice),
+                CommandHandler("dashboard", message_handlers.dashboard),
+                MessageHandler(filters.TEXT & ~filters.COMMAND, message_handlers.handle_ingredients_text_upload),
                 MessageHandler(filters.PHOTO, message_handlers.handle_photo)
             ],
         },

@@ -13,6 +13,7 @@ from handlers.input_handler import InputHandler
 from handlers.ingredient_matching_input_handler import IngredientMatchingInputHandler
 from handlers.google_sheets_input_handler import GoogleSheetsInputHandler
 from handlers.ingredients_file_handler import IngredientsFileHandler
+from handlers.ingredients_text_handler import IngredientsTextHandler
 from utils.common_handlers import CommonHandlers
 from config.locales.locale_manager import get_global_locale_manager
 from config.locales.language_buttons import get_language_keyboard
@@ -33,6 +34,7 @@ class MessageHandlers(BaseMessageHandler):
         self.ingredient_matching_handler = IngredientMatchingInputHandler(config, analysis_service)
         self.google_sheets_handler = GoogleSheetsInputHandler(config, analysis_service)
         self.ingredients_file_handler = IngredientsFileHandler(config, analysis_service)
+        self.ingredients_text_handler = IngredientsTextHandler(config, analysis_service)
         self.common_handlers = CommonHandlers(config, analysis_service)
     
     async def start(self, update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
@@ -187,6 +189,10 @@ class MessageHandlers(BaseMessageHandler):
     async def handle_ingredients_file_upload(self, update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
         """Handle ingredients file upload - delegate to ingredients file handler"""
         return await self.ingredients_file_handler.handle_ingredients_file_upload(update, context)
+    
+    async def handle_ingredients_text_upload(self, update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
+        """Handle ingredients text upload - delegate to ingredients text handler"""
+        return await self.ingredients_text_handler.handle_ingredients_text_upload(update, context)
     
     # Delegate methods to specialized handlers
     async def show_final_report_with_edit_button(self, update: Update, context: ContextTypes.DEFAULT_TYPE):

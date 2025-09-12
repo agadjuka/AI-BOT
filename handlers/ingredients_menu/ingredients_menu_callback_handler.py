@@ -48,6 +48,10 @@ class IngredientsMenuCallbackHandler(BaseCallbackHandler):
                 callback_data="ingredients_upload_file"
             )],
             [InlineKeyboardButton(
+                self.get_text("ingredients.management.buttons.upload_text", context, update=update),
+                callback_data="ingredients_upload_text"
+            )],
+            [InlineKeyboardButton(
                 self.get_text("buttons.back_to_main_menu", context, update=update),
                 callback_data="dashboard_main"
             )]
@@ -151,6 +155,9 @@ class IngredientsMenuCallbackHandler(BaseCallbackHandler):
         query = update.callback_query
         await query.answer()
         
+        # Store the main message ID for editing
+        context.user_data['ingredients_main_message_id'] = query.message.message_id
+        
         # Show instruction for file upload and transition to FSM state
         keyboard = [
             [InlineKeyboardButton(
@@ -168,6 +175,32 @@ class IngredientsMenuCallbackHandler(BaseCallbackHandler):
         )
         
         return self.config.AWAITING_INGREDIENTS_FILE
+    
+    async def handle_upload_text(self, update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
+        """Handle upload text callback"""
+        query = update.callback_query
+        await query.answer()
+        
+        # Store the main message ID for editing
+        context.user_data['ingredients_main_message_id'] = query.message.message_id
+        
+        # Show instruction for text upload and transition to FSM state
+        keyboard = [
+            [InlineKeyboardButton(
+                self.get_text("buttons.back", context, update=update),
+                callback_data="ingredients_management"
+            )]
+        ]
+        
+        reply_markup = InlineKeyboardMarkup(keyboard)
+        
+        await query.edit_message_text(
+            self.get_text("ingredients.management.text_upload_request", context, update=update),
+            reply_markup=reply_markup,
+            parse_mode='HTML'
+        )
+        
+        return self.config.AWAITING_INGREDIENTS_TEXT
     
     async def handle_delete_list(self, update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
         """Handle delete ingredients list callback"""
@@ -241,6 +274,9 @@ class IngredientsMenuCallbackHandler(BaseCallbackHandler):
         query = update.callback_query
         await query.answer()
         
+        # Store the main message ID for editing
+        context.user_data['ingredients_main_message_id'] = query.message.message_id
+        
         # Show instruction for file upload and transition to FSM state
         keyboard = [
             [InlineKeyboardButton(
@@ -258,3 +294,29 @@ class IngredientsMenuCallbackHandler(BaseCallbackHandler):
         )
         
         return self.config.AWAITING_INGREDIENTS_FILE
+    
+    async def handle_upload_text(self, update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
+        """Handle upload text callback"""
+        query = update.callback_query
+        await query.answer()
+        
+        # Store the main message ID for editing
+        context.user_data['ingredients_main_message_id'] = query.message.message_id
+        
+        # Show instruction for text upload and transition to FSM state
+        keyboard = [
+            [InlineKeyboardButton(
+                self.get_text("buttons.back", context, update=update),
+                callback_data="ingredients_management"
+            )]
+        ]
+        
+        reply_markup = InlineKeyboardMarkup(keyboard)
+        
+        await query.edit_message_text(
+            self.get_text("ingredients.management.text_upload_request", context, update=update),
+            reply_markup=reply_markup,
+            parse_mode='HTML'
+        )
+        
+        return self.config.AWAITING_INGREDIENTS_TEXT

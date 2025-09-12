@@ -43,6 +43,10 @@ class IngredientsMenuHandler(BaseMessageHandler):
                 callback_data="ingredients_upload_file"
             )],
             [InlineKeyboardButton(
+                self.get_text("ingredients.management.buttons.upload_text", context, update=update),
+                callback_data="ingredients_upload_text"
+            )],
+            [InlineKeyboardButton(
                 self.get_text("buttons.back_to_main_menu", context, update=update),
                 callback_data="dashboard_main"
             )]

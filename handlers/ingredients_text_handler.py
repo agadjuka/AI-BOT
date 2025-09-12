@@ -1,6 +1,6 @@
 """
-Ingredients File Handler
-Обработчик для загрузки и обработки файлов с ингредиентами
+Ingredients Text Handler
+Обработчик для загрузки и обработки текстовых сообщений с ингредиентами
 """
 
 import asyncio
@@ -14,21 +14,21 @@ from config.locales.locale_manager import get_global_locale_manager
 from services.ingredients_manager import get_ingredients_manager
 
 
-class IngredientsFileHandler(BaseMessageHandler):
-    """Handler for ingredients file upload and processing"""
+class IngredientsTextHandler(BaseMessageHandler):
+    """Handler for ingredients text message processing"""
     
     def __init__(self, config: BotConfig, analysis_service: ReceiptAnalysisServiceCompat):
         super().__init__(config, analysis_service)
         self.locale_manager = get_global_locale_manager()
         self.ingredients_manager = get_ingredients_manager()
     
-    async def handle_ingredients_file_upload(self, update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
-        """Handle file upload for ingredients"""
-        # Check if message has document
-        if not update.message or not update.message.document:
+    async def handle_ingredients_text_upload(self, update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
+        """Handle text message upload for ingredients"""
+        # Check if message has text
+        if not update.message or not update.message.text:
             # Send error message and stay in same state
             error_message = await update.message.reply_text(
-                self.get_text("ingredients.management.file_upload_error_format", context, update=update)
+                self.get_text("ingredients.management.text_upload_error_empty", context, update=update)
             )
             
             # Delete error message after 3 seconds
@@ -41,28 +41,9 @@ class IngredientsFileHandler(BaseMessageHandler):
             except Exception as e:
                 print(f"Failed to delete error message: {e}")
             
-            return self.config.AWAITING_INGREDIENTS_FILE
+            return self.config.AWAITING_INGREDIENTS_TEXT
         
-        document = update.message.document
-        
-        # Validate file type
-        if not self._is_valid_text_file(document):
-            # Send error message and stay in same state
-            error_message = await update.message.reply_text(
-                self.get_text("ingredients.management.file_upload_error_format", context, update=update)
-            )
-            
-            # Delete error message after 3 seconds
-            await asyncio.sleep(3)
-            try:
-                await context.bot.delete_message(
-                    chat_id=update.effective_chat.id,
-                    message_id=error_message.message_id
-                )
-            except Exception as e:
-                print(f"Failed to delete error message: {e}")
-            
-            return self.config.AWAITING_INGREDIENTS_FILE
+        text_content = update.message.text.strip()
         
         # Delete user message immediately
         try:
@@ -73,22 +54,16 @@ class IngredientsFileHandler(BaseMessageHandler):
         except Exception as e:
             print(f"Failed to delete user message: {e}")
         
-        # Process the file
+        # Process the text
         try:
-            print(f"Processing file: {document.file_name}, MIME: {document.mime_type}, Size: {document.file_size}")
+            print(f"Processing text content: {len(text_content)} characters")
             
-            # Download file
-            file = await context.bot.get_file(document.file_id)
-            file_content = await file.download_as_bytearray()
-            
-            print(f"Downloaded file content length: {len(file_content)} bytes")
-            
-            # Parse file content
-            ingredients_list = self._parse_ingredients_file(file_content)
+            # Parse text content
+            ingredients_list = self._parse_ingredients_text(text_content)
             print(f"Parsed ingredients: {len(ingredients_list)} items")
             
             if not ingredients_list:
-                # File is empty or contains no valid ingredients
+                # Text is empty or contains no valid ingredients
                 # Edit the main message with error
                 main_message_id = context.user_data.get('ingredients_main_message_id')
                 if main_message_id:
@@ -104,7 +79,7 @@ class IngredientsFileHandler(BaseMessageHandler):
                         await context.bot.edit_message_text(
                             chat_id=update.effective_chat.id,
                             message_id=main_message_id,
-                            text=self.get_text("ingredients.management.file_upload_error_empty", context, update=update),
+                            text=self.get_text("ingredients.management.text_upload_error_empty", context, update=update),
                             reply_markup=reply_markup,
                             parse_mode='HTML'
                         )
@@ -118,7 +93,7 @@ class IngredientsFileHandler(BaseMessageHandler):
                         print(f"Failed to edit main message with error: {e}")
                         # Fallback: send temporary error message
                         error_message = await update.effective_message.reply_text(
-                            self.get_text("ingredients.management.file_upload_error_empty", context, update=update)
+                            self.get_text("ingredients.management.text_upload_error_empty", context, update=update)
                         )
                         
                         # Delete error message after 3 seconds
@@ -131,11 +106,11 @@ class IngredientsFileHandler(BaseMessageHandler):
                         except Exception as e:
                             print(f"Failed to delete error message: {e}")
                         
-                        return self.config.AWAITING_INGREDIENTS_FILE
+                        return self.config.AWAITING_INGREDIENTS_TEXT
                 else:
                     # Fallback: send temporary error message
                     error_message = await update.effective_message.reply_text(
-                        self.get_text("ingredients.management.file_upload_error_empty", context, update=update)
+                        self.get_text("ingredients.management.text_upload_error_empty", context, update=update)
                     )
                     
                     # Delete error message after 3 seconds
@@ -148,7 +123,7 @@ class IngredientsFileHandler(BaseMessageHandler):
                     except Exception as e:
                         print(f"Failed to delete error message: {e}")
                     
-                    return self.config.AWAITING_INGREDIENTS_FILE
+                    return self.config.AWAITING_INGREDIENTS_TEXT
             
             # Save ingredients to database
             user_id = update.effective_user.id
@@ -158,7 +133,7 @@ class IngredientsFileHandler(BaseMessageHandler):
             
             if success:
                 # Success - edit the main message with success and return to management
-                success_text = self.get_text("ingredients.management.file_upload_success", 
+                success_text = self.get_text("ingredients.management.text_upload_success", 
                                            context, update=update, count=len(ingredients_list))
                 
                 # Create keyboard to return to management
@@ -233,7 +208,7 @@ class IngredientsFileHandler(BaseMessageHandler):
             else:
                 # Database error
                 error_message = await update.effective_message.reply_text(
-                    self.get_text("ingredients.management.file_upload_error_processing", context, update=update)
+                    self.get_text("ingredients.management.text_upload_error_processing", context, update=update)
                 )
                 
                 # Delete error message after 3 seconds
@@ -246,16 +221,16 @@ class IngredientsFileHandler(BaseMessageHandler):
                 except Exception as e:
                     print(f"Failed to delete error message: {e}")
                 
-                return self.config.AWAITING_INGREDIENTS_FILE
+                return self.config.AWAITING_INGREDIENTS_TEXT
                 
         except Exception as e:
-            print(f"Error processing ingredients file: {e}")
+            print(f"Error processing ingredients text: {e}")
             import traceback
             traceback.print_exc()
             
             # Send error message
             error_message = await update.effective_message.reply_text(
-                self.get_text("ingredients.management.file_upload_error_processing", context, update=update)
+                self.get_text("ingredients.management.text_upload_error_processing", context, update=update)
             )
             
             # Delete error message after 3 seconds
@@ -268,27 +243,11 @@ class IngredientsFileHandler(BaseMessageHandler):
             except Exception as e:
                 print(f"Failed to delete error message: {e}")
             
-            return self.config.AWAITING_INGREDIENTS_FILE
+            return self.config.AWAITING_INGREDIENTS_TEXT
     
-    def _is_valid_text_file(self, document) -> bool:
-        """Check if document is a valid text file"""
-        # Check MIME type
-        if document.mime_type and document.mime_type != 'text/plain':
-            return False
-        
-        # Check file extension
-        if document.file_name:
-            return document.file_name.lower().endswith('.txt')
-        
-        # If no file name, assume it's valid if MIME type is text/plain
-        return document.mime_type == 'text/plain'
-    
-    def _parse_ingredients_file(self, file_content: bytes) -> List[str]:
-        """Parse ingredients from file content"""
+    def _parse_ingredients_text(self, text_content: str) -> List[str]:
+        """Parse ingredients from text content"""
         try:
-            # Decode file content
-            text_content = file_content.decode('utf-8')
-            
             # Split into lines and clean
             lines = text_content.split('\n')
             ingredients = []
@@ -301,22 +260,8 @@ class IngredientsFileHandler(BaseMessageHandler):
             
             return ingredients
             
-        except UnicodeDecodeError:
-            # Try with different encodings
-            try:
-                text_content = file_content.decode('latin-1')
-                lines = text_content.split('\n')
-                ingredients = []
-                
-                for line in lines:
-                    cleaned_line = line.strip()
-                    if cleaned_line:
-                        ingredients.append(cleaned_line)
-                
-                return ingredients
-            except Exception:
-                return []
-        except Exception:
+        except Exception as e:
+            print(f"Error parsing ingredients text: {e}")
             return []
     
     async def _return_to_ingredients_management(self, update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
@@ -334,4 +279,3 @@ class IngredientsFileHandler(BaseMessageHandler):
             traceback.print_exc()
             # Fallback to dashboard
             return self.config.AWAITING_DASHBOARD
-

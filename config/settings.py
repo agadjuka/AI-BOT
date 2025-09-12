@@ -51,6 +51,7 @@ class BotConfig:
         
         # Ingredients management states
         self.AWAITING_INGREDIENTS_FILE = 15
+        self.AWAITING_INGREDIENTS_TEXT = 16
         
         # Message settings
         self.MAX_MESSAGE_LENGTH = 4096
