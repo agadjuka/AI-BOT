@@ -12,8 +12,10 @@ from handlers.base_callback_handler import BaseCallbackHandler
 from models.ingredient_matching import IngredientMatchingResult, IngredientMatch, MatchStatus
 from services.google_sheets_service import GoogleSheetsService
 from services.file_generator_service import FileGeneratorService
+from services.google_sheets_manager import get_google_sheets_manager
 from utils.common_handlers import CommonHandlers
 from config.locales.locale_manager import get_global_locale_manager
+from config.table_config import TableConfig, ColumnConfig, TableStyle, DeviceType
 
 
 class GoogleSheetsCallbackHandler(BaseCallbackHandler):
@@ -62,7 +64,7 @@ class GoogleSheetsCallbackHandler(BaseCallbackHandler):
     
     async def _show_google_sheets_preview(self, update: Update, context: ContextTypes.DEFAULT_TYPE,
                                         receipt_data=None, matching_result=None):
-        """Show Google Sheets upload preview with confirmation buttons"""
+        """Show Google Sheets upload preview with dynamic table structure based on user's default sheet"""
         query = update.callback_query
         await query.answer()
         
@@ -76,15 +78,45 @@ class GoogleSheetsCallbackHandler(BaseCallbackHandler):
             await query.edit_message_text(text)
             return
         
-        # Create table preview with Google Sheets data
-        table_preview = self._format_google_sheets_table_preview(receipt_data, matching_result, context)
+        # Get user ID
+        user_id = update.effective_user.id
+        
+        # Get user's default sheet configuration
+        default_sheet = await self._get_user_default_sheet(user_id)
+        if not default_sheet:
+            error_text = self.locale_manager.get_text("sheets.callback.no_default_sheet_found", context)
+            await query.edit_message_text(error_text)
+            return
+        
+        # Get column mapping from the default sheet
+        column_mapping = default_sheet.get('column_mapping', {})
+        if not column_mapping:
+            error_text = self.locale_manager.get_text("sheets.callback.no_column_mapping_found", context)
+            await query.edit_message_text(error_text)
+            return
+        
+        print(f"📊 Using column mapping: {column_mapping}")
+        
+        # Determine device type
+        device_type = DeviceType.MOBILE  # Default
+        if context and hasattr(context, 'user_data'):
+            device_type_str = context.user_data.get('device_type')
+            if device_type_str:
+                try:
+                    device_type = DeviceType(device_type_str)
+                except ValueError:
+                    pass
+        
+        # Create dynamic table preview
+        table_preview = self._format_dynamic_google_sheets_preview(
+            receipt_data, matching_result, column_mapping, device_type, context
+        )
+        
         preview_title = self.locale_manager.get_text("sheets.callback.upload_preview_title", context)
         text = f"{preview_title}\n\n```\n{table_preview}\n```"
         
         keyboard = self._create_preview_keyboard(context)
         reply_markup = InlineKeyboardMarkup(keyboard)
-        
-        # Data is already saved in dispatcher, no need to save again
         
         try:
             await query.edit_message_text(text, reply_markup=reply_markup, parse_mode='Markdown')
@@ -379,6 +411,188 @@ class GoogleSheetsCallbackHandler(BaseCallbackHandler):
             await self.ui_manager.send_temp(update, context, error_text, duration=5)
     
     # ==================== HELPER METHODS ====================
+    
+    async def _get_user_default_sheet(self, user_id: int) -> Optional[Dict[str, Any]]:
+        """
+        Получает основную (дефолтную) таблицу пользователя из Firestore
+        
+        Args:
+            user_id: ID пользователя Telegram
+            
+        Returns:
+            Dict с данными основной таблицы или None если не найдена
+        """
+        try:
+            sheets_manager = get_google_sheets_manager()
+            user_sheets = await sheets_manager.get_user_sheets(user_id)
+            
+            if not user_sheets:
+                print(f"❌ No sheets found for user {user_id}")
+                return None
+            
+            # Ищем основную таблицу (is_default = True)
+            for sheet in user_sheets:
+                if sheet.get('is_default', False):
+                    print(f"✅ Found default sheet for user {user_id}: {sheet.get('friendly_name', 'Unknown')}")
+                    return sheet
+            
+            # Если основная таблица не найдена, берем первую попавшуюся
+            if user_sheets:
+                print(f"⚠️ No default sheet found for user {user_id}, using first available: {user_sheets[0].get('friendly_name', 'Unknown')}")
+                return user_sheets[0]
+            
+            return None
+            
+        except Exception as e:
+            print(f"❌ Error getting user default sheet: {e}")
+            return None
+    
+    def _create_dynamic_columns_from_mapping(self, column_mapping: Dict[str, str], device_type: DeviceType) -> List[ColumnConfig]:
+        """
+        Создает динамические колонки на основе column_mapping пользователя
+        
+        Args:
+            column_mapping: Маппинг полей на колонки (например, {'check_date': 'A', 'product_name': 'B'})
+            device_type: Тип устройства для определения ширины колонок
+            
+        Returns:
+            List[ColumnConfig]: Список конфигураций колонок
+        """
+        if not column_mapping:
+            print("❌ No column mapping provided")
+            return []
+        
+        # Получаем все используемые колонки и сортируем их по алфавиту
+        used_columns = sorted(column_mapping.values())
+        print(f"📊 Creating dynamic columns for: {used_columns}")
+        
+        # Определяем ширину колонок в зависимости от типа устройства
+        base_width = 12 if device_type == DeviceType.MOBILE else 18
+        
+        columns = []
+        for column_letter in used_columns:
+            # Определяем ширину колонки
+            if device_type == DeviceType.MOBILE:
+                width = min(base_width, 15)  # Максимум 15 для мобильных
+            else:
+                width = min(base_width, 25)  # Максимум 25 для десктопа
+            
+            # Создаем конфигурацию колонки
+            column_config = ColumnConfig(
+                key=column_letter.lower(),  # Используем букву как ключ
+                title=column_letter,  # Заголовок - это буква колонки
+                width=width,
+                align="left"  # По умолчанию выравнивание по левому краю
+            )
+            columns.append(column_config)
+        
+        return columns
+    
+    def _get_field_name_for_column(self, column_letter: str, column_mapping: Dict[str, str]) -> str:
+        """
+        Получает человекочитаемое название поля для колонки
+        
+        Args:
+            column_letter: Буква колонки (A, B, C, etc.)
+            column_mapping: Маппинг полей на колонки
+            
+        Returns:
+            str: Человекочитаемое название поля
+        """
+        # Обратный поиск: ищем поле, которое соответствует этой колонке
+        for field_name, col_letter in column_mapping.items():
+            if col_letter == column_letter:
+                # Преобразуем snake_case в читаемый текст
+                field_display_names = {
+                    'check_date': 'Дата',
+                    'product_name': 'Название товара',
+                    'quantity': 'Количество',
+                    'price_per_item': 'Цена за единицу',
+                    'total_price': 'Сумма',
+                    'store_name': 'Магазин',
+                    'category': 'Категория',
+                    'notes': 'Примечания'
+                }
+                return field_display_names.get(field_name, field_name.replace('_', ' ').title())
+        
+        return "---"  # Если поле не найдено
+    
+    def _prepare_dynamic_table_data(self, receipt_data, matching_result, column_mapping: Dict[str, str]) -> List[Dict[str, Any]]:
+        """
+        Подготавливает данные для динамической таблицы на основе column_mapping
+        
+        Args:
+            receipt_data: Данные чека
+            matching_result: Результат сопоставления ингредиентов
+            column_mapping: Маппинг полей на колонки
+            
+        Returns:
+            List[Dict[str, Any]]: Подготовленные данные для таблицы
+        """
+        if not receipt_data.items or not matching_result.matches:
+            return []
+        
+        table_data = []
+        
+        for i, item in enumerate(receipt_data.items):
+            # Получаем сопоставленный ингредиент
+            match = None
+            if i < len(matching_result.matches):
+                match = matching_result.matches[i]
+            
+            # Создаем строку данных
+            row_data = {}
+            
+            # Заполняем данные для каждой колонки
+            for field_name, column_letter in column_mapping.items():
+                if field_name == 'check_date':
+                    row_data[column_letter.lower()] = datetime.now().strftime('%d.%m.%Y')
+                elif field_name == 'product_name':
+                    row_data[column_letter.lower()] = match.matched_ingredient_name if match and match.matched_ingredient_name else ""
+                elif field_name == 'quantity':
+                    quantity = item.quantity if item.quantity is not None else 0
+                    # Извлекаем объем из названия товара
+                    volume_from_name = self._extract_volume_from_name(item.name)
+                    if volume_from_name > 0:
+                        total_volume = volume_from_name * quantity
+                        if total_volume == int(total_volume):
+                            row_data[column_letter.lower()] = str(int(total_volume))
+                        else:
+                            row_data[column_letter.lower()] = f"{total_volume:.2f}"
+                    elif quantity > 0:
+                        if quantity == int(quantity):
+                            row_data[column_letter.lower()] = str(int(quantity))
+                        else:
+                            row_data[column_letter.lower()] = f"{quantity:.2f}"
+                    else:
+                        row_data[column_letter.lower()] = "-"
+                elif field_name == 'price_per_item':
+                    price = item.price if item.price is not None else 0
+                    if price > 0:
+                        if price == int(price):
+                            row_data[column_letter.lower()] = f"{int(price):,}".replace(",", " ")
+                        else:
+                            row_data[column_letter.lower()] = f"{price:,.1f}".replace(",", " ")
+                    else:
+                        row_data[column_letter.lower()] = "-"
+                elif field_name == 'total_price':
+                    price = item.price if item.price is not None else 0
+                    quantity = item.quantity if item.quantity is not None else 0
+                    total = price * quantity
+                    if total > 0:
+                        if total == int(total):
+                            row_data[column_letter.lower()] = f"{int(total):,}".replace(",", " ")
+                        else:
+                            row_data[column_letter.lower()] = f"{total:,.1f}".replace(",", " ")
+                    else:
+                        row_data[column_letter.lower()] = "-"
+                else:
+                    # Для других полей используем пустую строку
+                    row_data[column_letter.lower()] = ""
+            
+            table_data.append(row_data)
+        
+        return table_data
     
     def _get_data_from_context_or_params(self, context: ContextTypes.DEFAULT_TYPE, 
                                        receipt_data=None, matching_result=None) -> Tuple[Optional[Any], Optional[IngredientMatchingResult]]:
@@ -704,93 +918,77 @@ class GoogleSheetsCallbackHandler(BaseCallbackHandler):
     
     # ==================== DELEGATED METHODS ====================
     
-    def _format_google_sheets_table_preview(self, receipt_data, matching_result, context=None) -> str:
-        """Format table preview for Google Sheets upload"""
+    def _format_dynamic_google_sheets_preview(self, receipt_data, matching_result, column_mapping: Dict[str, str], device_type: DeviceType, context=None) -> str:
+        """
+        Форматирует динамическую таблицу предпросмотра Google Sheets на основе column_mapping пользователя
+        
+        Args:
+            receipt_data: Данные чека
+            matching_result: Результат сопоставления ингредиентов
+            column_mapping: Маппинг полей на колонки
+            device_type: Тип устройства
+            context: Контекст Telegram
+            
+        Returns:
+            str: Отформатированная таблица
+        """
         if not receipt_data.items or not matching_result.matches:
             if context:
                 return self.locale_manager.get_text("sheets.callback.no_data_to_display", context)
             return "Нет данных для отображения"
         
-        # Set fixed column widths (total max 58 characters)
-        date_width = 8        # Fixed width for date
-        volume_width = 6      # Fixed width for volume
-        price_width = 10      # Fixed width for price
-        product_width = 22    # Fixed width for product
+        # Создаем динамические колонки
+        dynamic_columns = self._create_dynamic_columns_from_mapping(column_mapping, device_type)
+        if not dynamic_columns:
+            return "Ошибка создания колонок таблицы"
         
-        # Create header using the new format
-        if context:
-            date_header = self.locale_manager.get_text("sheets.callback.date_header", context)
-            volume_header = self.locale_manager.get_text("sheets.callback.volume_header", context)
-            price_header = self.locale_manager.get_text("sheets.callback.price_header", context)
-            product_header = self.locale_manager.get_text("sheets.callback.product_header", context)
-        else:
-            date_header = "Date"
-            volume_header = "Vol"
-            price_header = "цена"
-            product_header = "Product"
-        header = f"{date_header:<{date_width}} | {volume_header:<{volume_width}} | {price_header:<{price_width}} | {product_header:<{product_width}}"
-        separator = "─" * (date_width + volume_width + price_width + product_width + 12)  # 12 characters for separators
+        # Подготавливаем данные
+        table_data = self._prepare_dynamic_table_data(receipt_data, matching_result, column_mapping)
+        if not table_data:
+            return "Нет данных для отображения"
         
-        lines = [header, separator]
+        # Создаем заголовок таблицы
+        lines = []
         
-        # Add data rows using the new format
-        for i, item in enumerate(receipt_data.items):
-            # Get matching result for this item
-            match = None
-            if i < len(matching_result.matches):
-                match = matching_result.matches[i]
-            
-            # Prepare row data
-            current_date = datetime.now().strftime('%d.%m.%Y')
-            quantity = item.quantity if item.quantity is not None else 0
-            price = item.price if item.price is not None else 0
-            matched_product = match.matched_ingredient_name if match and match.matched_ingredient_name else ""
-            
-            # Extract volume from product name and multiply by quantity
-            volume_from_name = self._extract_volume_from_name(item.name)
-            if volume_from_name > 0:
-                # Multiply extracted volume by quantity
-                total_volume = volume_from_name * quantity
-                if total_volume == int(total_volume):
-                    volume_str = str(int(total_volume))
-                else:
-                    # Round to 2 decimal places
-                    volume_str = f"{total_volume:.2f}"
-            elif quantity > 0:
-                # Fallback to original behavior if no volume found in name
-                if quantity == int(quantity):
-                    volume_str = str(int(quantity))
-                else:
-                    # Round to 2 decimal places
-                    volume_str = f"{quantity:.2f}"
-            else:
-                volume_str = "-"
-            
-            # Format price using the same format as other tables (with spaces)
-            if price > 0:
-                if price == int(price):
-                    price_str = f"{int(price):,}".replace(",", " ")
-                else:
-                    price_str = f"{price:,.1f}".replace(",", " ")
-            else:
-                price_str = "-"
-            
-            # Handle long product names with word wrapping
-            matched_product_parts = self._wrap_text(matched_product, product_width)
-            
-            # Create multiple lines if product name is wrapped
-            for line_idx in range(len(matched_product_parts)):
-                current_product = matched_product_parts[line_idx]
+        # Первая строка: буквы колонок (A, B, C, ...)
+        column_headers = []
+        for column in dynamic_columns:
+            column_headers.append(f"{column.title:^{column.width}}")
+        lines.append(" | ".join(column_headers))
+        
+        # Вторая строка: человекочитаемые названия полей
+        field_headers = []
+        for column in dynamic_columns:
+            field_name = self._get_field_name_for_column(column.title, column_mapping)
+            field_headers.append(f"{field_name:^{column.width}}")
+        lines.append(" | ".join(field_headers))
+        
+        # Разделитель
+        total_width = sum(column.width for column in dynamic_columns) + (len(dynamic_columns) - 1) * 3
+        lines.append("─" * total_width)
+        
+        # Строки данных
+        for row_data in table_data:
+            row_parts = []
+            for column in dynamic_columns:
+                value = str(row_data.get(column.key, ""))
                 
-                # Only show date, volume, and price on first line
-                if line_idx == 0:
-                    line = f"{current_date:<{date_width}} | {volume_str:<{volume_width}} | {price_str:<{price_width}} | {current_product:<{product_width}}"
-                else:
-                    line = f"{'':<{date_width}} | {'':<{volume_width}} | {'':<{price_width}} | {current_product:<{product_width}}"
+                # Ограничиваем длину текста
+                if len(value) > column.width:
+                    value = value[:column.width-3] + "..."
                 
-                lines.append(line)
+                # Выравнивание
+                if column.align == "right":
+                    row_parts.append(f"{value:>{column.width}}")
+                elif column.align == "center":
+                    row_parts.append(f"{value:^{column.width}}")
+                else:  # left
+                    row_parts.append(f"{value:<{column.width}}")
+            
+            lines.append(" | ".join(row_parts))
         
         return "\n".join(lines)
+    
     
     def _format_google_sheets_matching_table(self, matching_result: IngredientMatchingResult, context=None) -> str:
         """Format Google Sheets matching table for editing"""

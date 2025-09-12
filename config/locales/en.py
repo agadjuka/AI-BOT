@@ -437,7 +437,9 @@ EN_TRANSLATIONS = {
             "generate_file": "📄 Generate file",
             "upload_new_receipt": "📸 Upload new receipt",
             "back_to_receipt_button": "📋 Back to receipt",
-            "preview_google_sheets": "👁️ Preview Google Sheets"
+            "preview_google_sheets": "👁️ Preview Google Sheets",
+            "no_default_sheet_found": "❌ User's default sheet not found",
+            "no_column_mapping_found": "❌ Column mapping not found for default sheet"
         }
     },
     

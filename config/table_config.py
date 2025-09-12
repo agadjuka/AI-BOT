@@ -183,18 +183,11 @@ class TableConfigManager:
             max_items_per_page=20
         )
         
-        # Таблица предпросмотра Google Sheets - мобильная версия
+        # Таблица предпросмотра Google Sheets - мобильная версия (динамическая)
         self._configs["google_sheets_preview_mobile"] = TableConfig(
             table_type=TableType.GOOGLE_SHEETS_PREVIEW,
             device_type=DeviceType.MOBILE,
-            columns=[
-                ColumnConfig("row_number", "", 2, "right"),
-                ColumnConfig("date", "Дата чека", 12, "left"),
-                ColumnConfig("item", "Название товара", 15, "left"),
-                ColumnConfig("quantity", "Кол-во", 6, "right"),
-                ColumnConfig("price", "Цена", 8, "right"),
-                ColumnConfig("total", "Сумма", 8, "right")
-            ],
+            columns=[],  # Будет заполняться динамически на основе column_mapping пользователя
             style=TableStyle(
                 max_name_length=15,
                 compact_mode=True,
@@ -204,18 +197,11 @@ class TableConfigManager:
             max_items_per_page=10
         )
         
-        # Таблица предпросмотра Google Sheets - десктопная версия
+        # Таблица предпросмотра Google Sheets - десктопная версия (динамическая)
         self._configs["google_sheets_preview_desktop"] = TableConfig(
             table_type=TableType.GOOGLE_SHEETS_PREVIEW,
             device_type=DeviceType.DESKTOP,
-            columns=[
-                ColumnConfig("row_number", "", 2, "right"),
-                ColumnConfig("date", "Дата чека", 15, "left"),
-                ColumnConfig("item", "Название товара", 25, "left"),
-                ColumnConfig("quantity", "Кол-во", 8, "right"),
-                ColumnConfig("price", "Цена", 10, "right"),
-                ColumnConfig("total", "Сумма", 10, "right")
-            ],
+            columns=[],  # Будет заполняться динамически на основе column_mapping пользователя
             style=TableStyle(
                 max_name_length=25,
                 compact_mode=False,

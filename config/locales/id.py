@@ -431,7 +431,9 @@ ID_TRANSLATIONS = {
             "generate_file": "📄 Buat file",
             "upload_new_receipt": "📸 Upload struk baru",
             "back_to_receipt_button": "📋 Kembali ke struk",
-            "preview_google_sheets": "👁️ Preview Google Sheets"
+            "preview_google_sheets": "👁️ Preview Google Sheets",
+            "no_default_sheet_found": "❌ Sheet default pengguna tidak ditemukan",
+            "no_column_mapping_found": "❌ Mapping kolom tidak ditemukan untuk sheet default"
         }
     },
     
