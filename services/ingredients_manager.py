@@ -96,12 +96,21 @@ class IngredientsManager:
             
             user_ref = self.db.collection('users').document(str(user_id))
             
-            # Update the ingredient_list field
-            user_ref.update({
-                'ingredient_list': clean_ingredients
-            })
+            # Check if user document exists
+            user_doc = user_ref.get()
+            if not user_doc.exists:
+                # Create user document with ingredient_list
+                user_ref.set({
+                    'ingredient_list': clean_ingredients
+                })
+                print(f"✅ Created user document and ingredient list for user {user_id} with {len(clean_ingredients)} ingredients")
+            else:
+                # Update existing user document
+                user_ref.update({
+                    'ingredient_list': clean_ingredients
+                })
+                print(f"✅ Updated ingredient list for user {user_id} with {len(clean_ingredients)} ingredients")
             
-            print(f"✅ Updated ingredient list for user {user_id} with {len(clean_ingredients)} ingredients")
             return True
             
         except Exception as e:
