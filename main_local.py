@@ -228,6 +228,7 @@ def main() -> None:
             config.EDIT_MAPPING: [
                 CallbackQueryHandler(callback_handlers.handle_correction_choice),
                 CommandHandler("dashboard", message_handlers.dashboard),
+                MessageHandler(filters.TEXT & ~filters.COMMAND, message_handlers.handle_column_input),
                 MessageHandler(filters.PHOTO, message_handlers.handle_photo)
             ],
             config.AWAITING_COLUMN_INPUT: [
