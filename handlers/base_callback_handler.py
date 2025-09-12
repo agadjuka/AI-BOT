@@ -15,6 +15,7 @@ from utils.receipt_processor import ReceiptProcessor
 from utils.ui_manager import UIManager
 from utils.common_handlers import CommonHandlers
 from utils.language_middleware import save_user_id_to_context
+from utils.table_manager import TableManager
 from validators.receipt_validator import ReceiptValidator
 
 
@@ -33,6 +34,7 @@ class BaseCallbackHandler:
         self.ingredient_storage = IngredientStorage()
         self.ui_manager = UIManager(config)
         self.common_handlers = CommonHandlers(config, analysis_service)
+        self.table_manager = TableManager(self.locale_manager)
     
     async def _ensure_poster_ingredients_loaded(self, context: ContextTypes.DEFAULT_TYPE) -> bool:
         """Ensure poster ingredients are loaded, load them if necessary"""

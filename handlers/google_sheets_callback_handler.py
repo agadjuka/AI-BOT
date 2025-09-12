@@ -794,6 +794,11 @@ class GoogleSheetsCallbackHandler(BaseCallbackHandler):
     
     def _format_google_sheets_matching_table(self, matching_result: IngredientMatchingResult, context=None) -> str:
         """Format Google Sheets matching table for editing"""
+        # Используем TableManager если доступен
+        if hasattr(self, 'table_manager') and self.table_manager:
+            return self.table_manager.format_google_sheets_matching_table(matching_result, context)
+        
+        # Fallback на старую логику
         if not matching_result.matches:
             if context:
                 return self.locale_manager.get_text("sheets.callback.no_ingredients_for_matching", context)

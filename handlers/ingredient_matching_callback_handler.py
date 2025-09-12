@@ -18,7 +18,7 @@ class IngredientMatchingCallbackHandler(BaseCallbackHandler):
         super().__init__(config, analysis_service)
         self.locale_manager = get_global_locale_manager()
         self.ingredient_matching_service = IngredientMatchingService()
-        self.ingredient_formatter = IngredientFormatter()
+        self.ingredient_formatter = IngredientFormatter(self.table_manager)
     
     async def _show_ingredient_matching_results(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         """Show ingredient matching results"""
@@ -31,7 +31,7 @@ class IngredientMatchingCallbackHandler(BaseCallbackHandler):
             return
         
         # Format matching results
-        results_text = self.ingredient_formatter.format_matching_results(matching_result)
+        results_text = self.ingredient_formatter.format_matching_table(matching_result, context=context)
         
         # Create action buttons
         keyboard = [

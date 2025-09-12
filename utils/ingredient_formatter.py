@@ -1,28 +1,37 @@
 """
 Formatter for ingredient matching results
 """
-from typing import List
+from typing import List, Optional
+from telegram.ext import ContextTypes
 from models.ingredient_matching import IngredientMatchingResult, IngredientMatch, MatchStatus
+from utils.table_manager import TableManager
 
 
 class IngredientFormatter:
     """Formatter for ingredient matching results"""
     
-    def __init__(self):
+    def __init__(self, table_manager: Optional[TableManager] = None):
         self.max_name_length = 15  # Maximum length for ingredient names in table
         self.max_suggestion_length = 15  # Maximum length for suggestion names
+        self.table_manager = table_manager
     
-    def format_matching_table(self, result: IngredientMatchingResult, changed_indices: set = None) -> str:
+    def format_matching_table(self, result: IngredientMatchingResult, changed_indices: set = None, context: Optional[ContextTypes.DEFAULT_TYPE] = None) -> str:
         """
         Format ingredient matching results as a table
         
         Args:
             result: IngredientMatchingResult to format
             changed_indices: Set of indices that were manually changed (0-based)
+            context: Telegram context for device detection and localization
             
         Returns:
             Formatted table string
         """
+        # Используем новый TableManager если доступен
+        if self.table_manager:
+            return self.table_manager.format_ingredient_matching_table(result, context, changed_indices)
+        
+        # Fallback на старую логику
         if not result.matches:
             return "Нет ингредиентов для сопоставления."
         

@@ -10,6 +10,7 @@ from telegram.ext import ContextTypes
 from config.settings import BotConfig
 from services.ai_service import ReceiptAnalysisServiceCompat
 from config.locales.locale_manager import get_global_locale_manager
+from utils.table_manager import TableManager
 
 
 class CommonHandlers:
@@ -19,6 +20,7 @@ class CommonHandlers:
         self.config = config
         self.analysis_service = analysis_service
         self.locale_manager = get_global_locale_manager()
+        self.table_manager = TableManager(self.locale_manager)
     
     async def send_long_message_with_keyboard(self, message, text: str, reply_markup) -> None:
         """
@@ -128,6 +130,14 @@ class CommonHandlers:
         Returns:
             Tuple[str, InlineKeyboardMarkup]: Текст таблицы и клавиатура навигации
         """
+        # Используем TableManager если доступен
+        if hasattr(self, 'table_manager') and self.table_manager:
+            from config.table_config import TableType
+            return self.table_manager.format_table_with_pagination(
+                data, page, TableType.GENERAL_PAGINATED, context
+            )
+        
+        # Fallback на старую логику
         if not data:
             no_data_text = self.locale_manager.get_text("common.no_data_to_display", context)
             return no_data_text, InlineKeyboardMarkup([])
