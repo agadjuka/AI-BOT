@@ -261,19 +261,20 @@ ID_TRANSLATIONS = {
     
     # Pesan tambah sheet baru
     "add_sheet": {
-        "step1_title": "➕ Menambah Sheet Baru (Langkah 1 dari 3)",
-        "step1_instruction": "Untuk menghubungkan sheet, ikuti langkah-langkah berikut:\n1. Buat Google Sheet baru, atau gunakan yang sudah ada (pastikan tidak ada informasi rahasia).\n2. Klik tombol 'Bagikan' di pojok kanan atas.\n3. Di field 'Tambahkan orang dan grup', tempel email ini:\n\n`366461711404-compute@developer.gserviceaccount.com`\n\n4. Pastikan Anda memberikan izin **Editor**.\n5. Salin link sheet dari browser dan kirim ke saya dalam pesan berikutnya.",
-        "step2_title": "➕ Menambah Sheet Baru (Langkah 2 dari 3)",
-        "step2_instruction": "Bagus, kita punya akses ke sheet! Sekarang buat nama yang pendek dan jelas untuknya. Contoh: 'Sayuran' atau 'Pembelian / Agustus'.",
-        "step3_title": "➕ Menambah Sheet Baru (Langkah 3 dari 3)",
-        "step3_success": "✅ Sheet '{sheet_name}' berhasil ditambahkan.",
+        "step1_title": "📄 Menambah Tabel (Langkah 1 dari 2)",
+        "step1_instruction": "Untuk menghubungkan tabel, ikuti langkah-langkah berikut:\n\n📝 1. Buat Google Sheet baru, atau gunakan yang sudah ada (pastikan tidak ada informasi rahasia).\n\n🔗 2. Klik tombol 'Bagikan' di pojok kanan atas.\n\n📧 3. Di field 'Tambahkan orang dan grup', tempel email ini:\n\n<code>{service_email}</code>\n\n✅ 4. Pastikan Anda memberikan izin <b>Editor</b>.\n\n📋 5. Salin link sheet dari browser dan kirim ke saya dalam pesan berikutnya.",
+        "step2_title": "📝 Pilih Nama (Langkah 2 dari 2)",
+        "step2_instruction": "✅ Bagus, akses diberikan! Sekarang pilih nama sederhana untuk tabel agar tidak bingung. Contoh: <i>Pengeluaran Rumah</i>.",
+        "step3_title": "✅ Selesai!",
+        "step3_success": "🎉 Tabel '{sheet_name}' berhasil ditambahkan!",
         "buttons": {
-            "cancel": "❌ Batal"
+            "cancel": "⬅️ Batal"
         },
         "errors": {
-            "invalid_url": "Tidak dapat mengakses sheet. Silakan periksa bahwa Anda benar menuliskan email dan memberikan izin **Editor**. Coba kirim link lagi.",
-            "invalid_sheet_id": "Tidak dapat mengekstrak ID sheet dari link. Silakan kirim link Google Sheet yang benar.",
-            "save_failed": "Error menyimpan sheet. Coba lagi."
+            "invalid_url": "🤔 Tidak dapat mengakses tabel. Silakan periksa kembali bahwa Anda memberikan izin <b>Editor</b> khusus untuk email ini. Coba kirim link lagi.",
+            "invalid_sheet_id": "❌ Tidak dapat mengekstrak ID tabel dari link. Silakan kirim link Google Sheet yang benar.",
+            "save_failed": "⚠️ Error menyimpan tabel. Coba lagi.",
+            "jwt_error": "⚠️ Masalah pemeriksaan akses. Melanjutkan proses penambahan tabel."
         }
     },
     
