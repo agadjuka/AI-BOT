@@ -263,12 +263,23 @@ ID_TRANSLATIONS = {
     "add_sheet": {
         "step1_title": "📄 Menambah Tabel (Langkah 1 dari 2)",
         "step1_instruction": "Untuk menghubungkan tabel, ikuti langkah-langkah berikut:\n\n📝 1. Buat Google Sheet baru, atau gunakan yang sudah ada (pastikan tidak ada informasi rahasia).\n\n🔗 2. Klik tombol 'Bagikan' di pojok kanan atas.\n\n📧 3. Di field 'Tambahkan orang dan grup', tempel email ini:\n\n<code>{service_email}</code>\n\n✅ 4. Pastikan Anda memberikan izin <b>Editor</b>.\n\n📋 5. Salin link sheet dari browser dan kirim ke saya dalam pesan berikutnya.",
-        "step2_title": "📝 Pilih Nama (Langkah 2 dari 2)",
+        "step2_title": "📝 Pilih Nama (Langkah 2 dari 3)",
         "step2_instruction": "✅ Bagus, akses diberikan! Sekarang pilih nama sederhana untuk tabel agar tidak bingung. Contoh: <i>Pengeluaran Rumah</i>.",
-        "step3_title": "✅ Selesai!",
+        "step3_title": "📊 Konfigurasi Tabel (Langkah 3 dari 3)",
+        "step3_instruction": "Sempurna! Tabel terhubung. Secara default, data akan ditulis sebagai berikut:",
+        "step3_question": "Gunakan pengaturan ini atau konfigurasi sendiri?",
+        "table_headers": {
+            "date": "Tanggal",
+            "product": "Barang", 
+            "quantity": "Jml",
+            "price": "Harga",
+            "sum": "Jumlah"
+        },
         "step3_success": "🎉 Tabel '{sheet_name}' berhasil ditambahkan!",
         "buttons": {
-            "cancel": "⬅️ Batal"
+            "cancel": "⬅️ Batal",
+            "use_default": "✅ Gunakan default",
+            "configure_manual": "✏️ Konfigurasi manual"
         },
         "errors": {
             "invalid_url": "🤔 Tidak dapat mengakses tabel. Silakan periksa kembali bahwa Anda memberikan izin <b>Editor</b> khusus untuk email ini. Coba kirim link lagi.",

@@ -223,6 +223,11 @@ def main() -> None:
                 CallbackQueryHandler(callback_handlers.handle_correction_choice),
                 MessageHandler(filters.PHOTO, message_handlers.handle_photo)
             ],
+            config.AWAITING_CONFIRM_MAPPING: [
+                CommandHandler("dashboard", message_handlers.dashboard),
+                CallbackQueryHandler(callback_handlers.handle_correction_choice),
+                MessageHandler(filters.PHOTO, message_handlers.handle_photo)
+            ],
         },
         fallbacks=[
             CommandHandler("cancel", message_handlers.start),

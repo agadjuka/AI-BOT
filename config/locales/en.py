@@ -262,14 +262,25 @@ EN_TRANSLATIONS = {
     
     # Add new sheet messages
     "add_sheet": {
-        "step1_title": "📄 Adding Table (Step 1 of 2)",
+        "step1_title": "📄 Adding Table (Step 1 of 3)",
         "step1_instruction": "To connect a table, follow these steps:\n\n📝 1. Create a new Google Sheet, or use an existing one (make sure there's no confidential information).\n\n🔗 2. Click 'Share' button in the top right corner.\n\n📧 3. In the 'Add people and groups' field, paste this email:\n\n<code>{service_email}</code>\n\n✅ 4. Make sure you gave <b>Editor</b> permissions.\n\n📋 5. Copy the sheet link from your browser and send it to me in the next message.",
-        "step2_title": "📝 Choose a Name (Step 2 of 2)",
+        "step2_title": "📝 Choose a Name (Step 2 of 3)",
         "step2_instruction": "✅ Great, access granted! Now choose a simple name for the table so you won't get confused. For example: <i>Home Expenses</i>.",
-        "step3_title": "✅ Done!",
+        "step3_title": "📊 Table Configuration (Step 3 of 3)",
+        "step3_instruction": "Perfect! Table connected. By default, data will be written as follows:",
+        "step3_question": "Use these settings or configure your own?",
+        "table_headers": {
+            "date": "Date",
+            "product": "Product", 
+            "quantity": "Qty",
+            "price": "Price",
+            "sum": "Sum"
+        },
         "step3_success": "🎉 Table '{sheet_name}' successfully added!",
         "buttons": {
-            "cancel": "⬅️ Cancel"
+            "cancel": "⬅️ Cancel",
+            "use_default": "✅ Use default",
+            "configure_manual": "✏️ Configure manually"
         },
         "errors": {
             "invalid_url": "🤔 Can't access the table. Please double-check that you gave <b>Editor</b> permissions specifically for this email. Try sending the link again.",

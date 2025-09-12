@@ -46,6 +46,7 @@ class BotConfig:
         # Google Sheets management states
         self.AWAITING_SHEET_URL = 9
         self.AWAITING_SHEET_NAME = 10
+        self.AWAITING_CONFIRM_MAPPING = 11
         
         # Message settings
         self.MAX_MESSAGE_LENGTH = 4096

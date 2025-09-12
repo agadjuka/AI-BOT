@@ -382,6 +382,35 @@ class TableManager:
         
         return " | ".join(row_parts)
     
+    def _create_google_sheets_preview_row(self, item: Dict[str, Any], config: TableConfig) -> str:
+        """Создает строку таблицы предпросмотра Google Sheets"""
+        row_parts = []
+        for column in config.columns:
+            if column.key == "row_number":
+                value = str(item.get('row_number', ''))
+            elif column.key == "date":
+                value = self._wrap_text(str(item.get('date', '')), column.width, config.style.max_name_length)
+            elif column.key == "item":
+                value = self._wrap_text(str(item.get('item', '')), column.width, config.style.max_name_length)
+            elif column.key == "quantity":
+                value = str(item.get('quantity', ''))
+            elif column.key == "price":
+                value = str(item.get('price', ''))
+            elif column.key == "total":
+                value = str(item.get('total', ''))
+            else:
+                value = ""
+            
+            # Выравнивание
+            if column.align == "right":
+                row_parts.append(f"{value:>{column.width}}")
+            elif column.align == "center":
+                row_parts.append(f"{value:^{column.width}}")
+            else:  # left
+                row_parts.append(f"{value:<{column.width}}")
+        
+        return " | ".join(row_parts)
+    
     def _create_next_items_row(self, row_number: int, item: Dict[str, Any], config: TableConfig) -> str:
         """Создает строку таблицы следующих товаров"""
         row_parts = []

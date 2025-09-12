@@ -115,6 +115,9 @@ class CallbackHandlers(BaseCallbackHandler):
         elif action == "sheets_add_new" or action.startswith("sheets_manage_"):
             return await self._handle_sheets_management_actions(update, context, action)
         
+        elif action in ["confirm_use_default_mapping", "confirm_configure_manual_mapping"]:
+            return await self._handle_confirm_mapping_actions(update, context, action)
+        
         elif action == "noop":
             await query.answer()
             return self.config.AWAITING_CORRECTION
@@ -552,7 +555,7 @@ class CallbackHandlers(BaseCallbackHandler):
         return self.config.AWAITING_SHEET_NAME
     
     async def _handle_sheet_name_input(self, update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
-        """Handle Step 3: Process sheet name input and save"""
+        """Handle Step 2: Process sheet name input and show confirmation screen"""
         sheet_name = update.message.text.strip()
         
         # Get stored sheet data
@@ -562,6 +565,208 @@ class CallbackHandlers(BaseCallbackHandler):
         if not sheet_url or not sheet_id:
             # Error - missing data
             await update.message.reply_text(
+                self.get_text("add_sheet.errors.save_failed", context, update=update),
+                parse_mode='HTML'
+            )
+            return await self._handle_dashboard_google_sheets_management(update, context)
+        
+        # Store sheet name in context for confirmation screen
+        context.user_data['new_sheet_name'] = sheet_name
+        
+        # Show confirmation screen with table preview
+        return await self._handle_confirm_mapping_screen(update, context)
+    
+    async def _handle_confirm_mapping_screen(self, update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
+        """Handle Step 3: Show confirmation screen with table preview"""
+        # Get stored sheet data
+        sheet_name = context.user_data.get('new_sheet_name')
+        sheet_url = context.user_data.get('new_sheet_url')
+        sheet_id = context.user_data.get('new_sheet_id')
+        
+        if not all([sheet_name, sheet_url, sheet_id]):
+            # Error - missing data
+            await update.message.reply_text(
+                self.get_text("add_sheet.errors.save_failed", context, update=update),
+                parse_mode='HTML'
+            )
+            return await self._handle_dashboard_google_sheets_management(update, context)
+        
+        # Create table preview data
+        table_data = self._create_table_preview_data(context)
+        
+        # Generate table preview using TableManager
+        table_preview = self._generate_table_preview(table_data, context)
+        
+        # Create message text
+        title = self.get_text("add_sheet.step3_title", context, update=update, sheet_name=sheet_name)
+        instruction = self.get_text("add_sheet.step3_instruction", context, update=update)
+        question = self.get_text("add_sheet.step3_question", context, update=update)
+        
+        message_text = f"{title}\n\n{instruction}\n\n{table_preview}\n\n{question}"
+        
+        # Create keyboard
+        keyboard = [
+            [InlineKeyboardButton(
+                self.get_text("add_sheet.buttons.use_default", context, update=update),
+                callback_data="confirm_use_default_mapping"
+            )],
+            [InlineKeyboardButton(
+                self.get_text("add_sheet.buttons.configure_manual", context, update=update),
+                callback_data="confirm_configure_manual_mapping"
+            )],
+            [InlineKeyboardButton(
+                self.get_text("add_sheet.buttons.cancel", context, update=update),
+                callback_data="dashboard_google_sheets_management"
+            )]
+        ]
+        reply_markup = InlineKeyboardMarkup(keyboard)
+        
+        # Edit the message
+        await update.message.reply_text(
+            message_text,
+            reply_markup=reply_markup,
+            parse_mode='HTML'
+        )
+        
+        # Set state to await confirmation
+        return self.config.AWAITING_CONFIRM_MAPPING
+    
+    def _create_table_preview_data(self, context: ContextTypes.DEFAULT_TYPE) -> list:
+        """Create table preview data for confirmation screen"""
+        # First row - column letters (A, B, C, D, E)
+        column_headers = ['', 'A', 'B', 'C', 'D', 'E']
+        
+        # Second row - field headers (localized)
+        field_headers = [
+            '1',
+            self.get_text("add_sheet.table_headers.date", context),
+            self.get_text("add_sheet.table_headers.product", context),
+            self.get_text("add_sheet.table_headers.quantity", context),
+            self.get_text("add_sheet.table_headers.price", context),
+            self.get_text("add_sheet.table_headers.sum", context)
+        ]
+        
+        return [column_headers, field_headers]
+    
+    def _generate_table_preview(self, table_data: list, context: ContextTypes.DEFAULT_TYPE) -> str:
+        """Generate table preview using ReceiptFormatter style"""
+        try:
+            # Set column widths - first column (row numbers) is 2 characters, others are 10
+            number_width = 2    # First column for row numbers
+            column_width = 10   # Other columns
+            
+            lines = []
+            
+            # First row - column letters (A, B, C, D, E)
+            if len(table_data) > 0:
+                row = table_data[0]
+                header_parts = []
+                for j, cell in enumerate(row):
+                    if j == 0:  # Empty cell for row numbers
+                        header_parts.append(f"{'':^{number_width}}")
+                    else:  # Column letters
+                        header_parts.append(f"{cell:^{column_width}}")
+                lines.append("|".join(header_parts) + "|")  # Add closing vertical separator
+            
+            # Second row - separator line
+            separator = "─" * (number_width + column_width * 5 + 6)  # 1 number column + 5 data columns + 6 separators
+            lines.append(separator)
+            
+            # Third row - field headers
+            if len(table_data) > 1:
+                row = table_data[1]
+                line_number = row[0] if len(row) > 0 else "1"
+                date = row[1] if len(row) > 1 else ""
+                product = row[2] if len(row) > 2 else ""
+                quantity = row[3] if len(row) > 3 else ""
+                price = row[4] if len(row) > 4 else ""
+                total = row[5] if len(row) > 5 else ""
+                
+                line = f"{line_number:^{number_width}}|{date:^{column_width}}|{product:^{column_width}}|{quantity:^{column_width}}|{price:^{column_width}}|{total:^{column_width}}|"
+                lines.append(line)
+            
+            # Wrap in HTML pre/code block for monospace font
+            table_content = "\n".join(lines)
+            result = f"<pre><code>{table_content}</code></pre>"
+            return result
+            
+        except Exception as e:
+            print(f"❌ Error generating table preview: {e}")
+            # Fallback to simple table
+            return self._create_simple_table_preview(table_data)
+    
+    def _create_simple_table_preview(self, table_data: list) -> str:
+        """Create simple table preview as fallback"""
+        # Use same column widths as main method
+        number_width = 2    # First column for row numbers
+        column_width = 10   # Other columns
+        
+        lines = []
+        
+        # First row - column letters (A, B, C, D, E)
+        if len(table_data) > 0:
+            row = table_data[0]
+            header_parts = []
+            for j, cell in enumerate(row):
+                if j == 0:  # Empty cell for row numbers
+                    header_parts.append(f"{'':^{number_width}}")
+                else:  # Column letters
+                    header_parts.append(f"{cell:^{column_width}}")
+            lines.append("|".join(header_parts) + "|")  # Add closing vertical separator
+        
+        # Second row - separator line
+        separator = "─" * (number_width + column_width * 5 + 6)  # 1 number column + 5 data columns + 6 separators
+        lines.append(separator)
+        
+        # Third row - field headers
+        if len(table_data) > 1:
+            row = table_data[1]
+            line_number = row[0] if len(row) > 0 else "1"
+            date = row[1] if len(row) > 1 else ""
+            product = row[2] if len(row) > 2 else ""
+            quantity = row[3] if len(row) > 3 else ""
+            price = row[4] if len(row) > 4 else ""
+            total = row[5] if len(row) > 5 else ""
+            
+            line = f"{line_number:^{number_width}}|{date:^{column_width}}|{product:^{column_width}}|{quantity:^{column_width}}|{price:^{column_width}}|{total:^{column_width}}|"
+            lines.append(line)
+        
+        table_content = "\n".join(lines)
+        return f"<pre><code>{table_content}</code></pre>"
+    
+    async def _handle_confirm_mapping_actions(self, update: Update, context: ContextTypes.DEFAULT_TYPE, action: str) -> int:
+        """Handle confirmation mapping actions"""
+        query = update.callback_query
+        await query.answer()
+        
+        if action == "confirm_use_default_mapping":
+            # Use default mapping - save sheet and finish
+            return await self._handle_use_default_mapping(update, context)
+        
+        elif action == "confirm_configure_manual_mapping":
+            # Configure manual mapping - show message for now
+            await query.edit_message_text(
+                "Переход в режим редактирования...\n\nЭта функция будет реализована в следующем обновлении.",
+                parse_mode='HTML'
+            )
+            return self.config.AWAITING_CORRECTION
+        
+        else:
+            # Fallback
+            return await self._handle_dashboard_google_sheets_management(update, context)
+    
+    async def _handle_use_default_mapping(self, update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
+        """Handle using default mapping - save sheet and finish"""
+        query = update.callback_query
+        
+        # Get stored sheet data
+        sheet_name = context.user_data.get('new_sheet_name')
+        sheet_url = context.user_data.get('new_sheet_url')
+        sheet_id = context.user_data.get('new_sheet_id')
+        
+        if not all([sheet_name, sheet_url, sheet_id]):
+            # Error - missing data
+            await query.edit_message_text(
                 self.get_text("add_sheet.errors.save_failed", context, update=update),
                 parse_mode='HTML'
             )
@@ -586,19 +791,20 @@ class CallbackHandlers(BaseCallbackHandler):
                 # Clear stored data
                 context.user_data.pop('new_sheet_url', None)
                 context.user_data.pop('new_sheet_id', None)
+                context.user_data.pop('new_sheet_name', None)
                 context.user_data.pop('temp_message_id', None)
                 
                 # Clear user sheets cache since we added a new sheet
                 self._clear_user_sheets_cache(context, update.effective_user.id)
                 
                 # Show success message
-                await update.message.reply_text(success_message, parse_mode='HTML')
+                await query.edit_message_text(success_message, parse_mode='HTML')
                 
                 # Return to Google Sheets management
                 return await self._handle_dashboard_google_sheets_management(update, context)
             else:
                 # Save failed
-                await update.message.reply_text(
+                await query.edit_message_text(
                     self.get_text("add_sheet.errors.save_failed", context, update=update),
                     parse_mode='HTML'
                 )
@@ -606,7 +812,7 @@ class CallbackHandlers(BaseCallbackHandler):
                 
         except Exception as e:
             print(f"❌ Error saving sheet: {e}")
-            await update.message.reply_text(
+            await query.edit_message_text(
                 self.get_text("add_sheet.errors.save_failed", context, update=update),
                 parse_mode='HTML'
             )
