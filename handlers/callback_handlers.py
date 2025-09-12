@@ -71,7 +71,7 @@ class CallbackHandlers(BaseCallbackHandler):
                      "edit_google_sheets_matching", "preview_google_sheets_upload", "confirm_google_sheets_upload",
                      "select_google_sheets_position", "back_to_google_sheets_matching",
                      "back_to_google_sheets_preview", "undo_google_sheets_upload", "generate_excel_file",
-                     "gs_skip_item", "gs_next_item", "skip_ingredient", "next_ingredient_match"] or action.startswith("edit_google_sheets_item_") or action.startswith("select_google_sheets_line_") or action.startswith("select_google_sheets_suggestion_") or action.startswith("search_google_sheets_ingredient_") or action.startswith("select_google_sheets_search_") or action.startswith("select_google_sheets_position_match_"):
+                     "gs_skip_item", "gs_next_item", "skip_ingredient", "next_ingredient_match"] or action.startswith("edit_google_sheets_item_") or action.startswith("select_google_sheets_line_") or action.startswith("select_google_sheets_suggestion_") or action.startswith("search_google_sheets_ingredient_") or action.startswith("select_google_sheets_search_") or action.startswith("select_google_sheets_position_match_") or action.startswith("gs_select_sheet_"):
             return await self.google_sheets_dispatcher._handle_google_sheets_actions(update, context, action)
         
         elif action in ["add_row", "edit_total", "auto_calculate_total", "finish_editing", "edit_receipt", 

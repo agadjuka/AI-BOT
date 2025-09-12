@@ -185,6 +185,35 @@ class GoogleSheetsDispatcher(BaseCallbackHandler):
             
             # Show Google Sheets preview
             await self.google_sheets_handler._show_google_sheets_preview(update, context, receipt_data, matching_result)
+        elif action.startswith("gs_select_sheet_"):
+            # User selected a different sheet for preview
+            sheet_id = action.replace("gs_select_sheet_", "")
+            await query.answer(self.locale_manager.get_text("sheets.callback.switching_sheet", context))
+            
+            # Get pending data
+            pending_data = context.user_data.get('pending_google_sheets_upload')
+            if not pending_data:
+                await query.edit_message_text(
+                    self.locale_manager.get_text("sheets.callback.preview_data_not_found", context),
+                    reply_markup=InlineKeyboardMarkup([
+                        [InlineKeyboardButton(
+                            self.locale_manager.get_text("buttons.upload_to_google_sheets", context), 
+                            callback_data="upload_to_google_sheets"
+                        )],
+                        [InlineKeyboardButton(
+                            self.locale_manager.get_text("buttons.back_to_receipt", context), 
+                            callback_data="back_to_receipt"
+                        )]
+                    ]),
+                    parse_mode='Markdown'
+                )
+                return self.config.AWAITING_CORRECTION
+            
+            receipt_data = pending_data['receipt_data']
+            matching_result = pending_data['matching_result']
+            
+            # Show Google Sheets preview with selected sheet
+            await self.google_sheets_handler._show_google_sheets_preview(update, context, receipt_data, matching_result, sheet_id)
         elif action == "confirm_google_sheets_upload":
             # User confirmed Google Sheets upload
             await query.answer(self.locale_manager.get_text("sheets.callback.uploading_data", context))
@@ -363,27 +392,58 @@ class GoogleSheetsDispatcher(BaseCallbackHandler):
     
     async def _execute_google_sheets_upload(self, update: Update, context: ContextTypes.DEFAULT_TYPE,
                                           receipt_data, matching_result):
-        """Execute actual Google Sheets upload - EXACT COPY from original callback_handlers.py"""
+        """Execute actual Google Sheets upload with selected sheet"""
         try:
             # Save Google Sheets matching result to context for Excel generation
             context.user_data['google_sheets_matching_result'] = matching_result
             
-            # Show upload summary
-            summary = self.google_sheets_service.get_upload_summary(receipt_data, matching_result)
+            # Get selected sheet ID from context
+            selected_sheet_id = context.user_data.get('selected_sheet_id')
+            if not selected_sheet_id:
+                # Fallback to default sheet
+                user_id = update.effective_user.id
+                default_sheet = await self.google_sheets_handler._get_user_default_sheet(user_id)
+                if not default_sheet:
+                    error_text = self.locale_manager.get_text("sheets.callback.no_sheet_selected", context)
+                    await self.ui_manager.send_menu(update, context, error_text, InlineKeyboardMarkup([]), 'Markdown')
+                    return
+                selected_sheet_id = default_sheet.get('doc_id')
             
-            # Upload data
-            success, message = self.google_sheets_service.upload_receipt_data(
+            # Get sheet data
+            from services.google_sheets_manager import get_google_sheets_manager
+            sheets_manager = get_google_sheets_manager()
+            sheet_data = await sheets_manager.get_user_sheet_by_id(update.effective_user.id, selected_sheet_id)
+            
+            if not sheet_data:
+                error_text = self.locale_manager.get_text("sheets.callback.sheet_not_found", context)
+                await self.ui_manager.send_menu(update, context, error_text, InlineKeyboardMarkup([]), 'Markdown')
+                return
+            
+            # Create GoogleSheetsService instance for the selected sheet
+            from services.google_sheets_service import GoogleSheetsService
+            sheet_service = GoogleSheetsService(
+                credentials_path=self.config.GOOGLE_SHEETS_CREDENTIALS,
+                spreadsheet_id=sheet_data.get('sheet_id')
+            )
+            
+            # Show upload summary
+            summary = sheet_service.get_upload_summary(receipt_data, matching_result)
+            
+            # Upload data using the selected sheet's configuration
+            success, message = sheet_service.upload_receipt_data(
                 receipt_data, 
                 matching_result,
-                self.config.GOOGLE_SHEETS_WORKSHEET_NAME
+                sheet_data.get('worksheet_name', 'Receipts')
             )
             
             if success:
                 # Save upload data for potential undo
                 context.user_data['last_google_sheets_upload'] = {
-                    'worksheet_name': self.config.GOOGLE_SHEETS_WORKSHEET_NAME,
+                    'worksheet_name': sheet_data.get('worksheet_name', 'Receipts'),
                     'row_count': len(receipt_data.items),
-                    'timestamp': datetime.now().isoformat()
+                    'timestamp': datetime.now().isoformat(),
+                    'sheet_id': sheet_data.get('sheet_id'),
+                    'sheet_name': sheet_data.get('friendly_name', 'Unknown')
                 }
                 
                 # Show new success page interface

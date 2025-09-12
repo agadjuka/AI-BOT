@@ -63,8 +63,8 @@ class GoogleSheetsCallbackHandler(BaseCallbackHandler):
         await query.edit_message_text(schema_text, reply_markup=reply_markup, parse_mode='Markdown')
     
     async def _show_google_sheets_preview(self, update: Update, context: ContextTypes.DEFAULT_TYPE,
-                                        receipt_data=None, matching_result=None):
-        """Show Google Sheets upload preview with dynamic table structure based on user's default sheet"""
+                                        receipt_data=None, matching_result=None, selected_sheet_id=None):
+        """Show Google Sheets upload preview with dynamic table structure based on selected sheet"""
         query = update.callback_query
         await query.answer()
         
@@ -81,21 +81,43 @@ class GoogleSheetsCallbackHandler(BaseCallbackHandler):
         # Get user ID
         user_id = update.effective_user.id
         
-        # Get user's default sheet configuration
-        default_sheet = await self._get_user_default_sheet(user_id)
-        if not default_sheet:
-            error_text = self.locale_manager.get_text("sheets.callback.no_default_sheet_found", context)
+        # Get all user sheets
+        user_sheets = await self._get_user_sheets(user_id)
+        if not user_sheets:
+            error_text = self.locale_manager.get_text("sheets.callback.no_sheets_found", context)
             await query.edit_message_text(error_text)
             return
         
-        # Get column mapping from the default sheet
-        column_mapping = default_sheet.get('column_mapping', {})
+        # Determine which sheet to use
+        selected_sheet = None
+        if selected_sheet_id:
+            # Find the selected sheet by ID
+            for sheet in user_sheets:
+                if sheet.get('doc_id') == selected_sheet_id:
+                    selected_sheet = sheet
+                    break
+        else:
+            # Use default sheet or first available
+            selected_sheet = await self._get_user_default_sheet(user_id)
+            if not selected_sheet and user_sheets:
+                selected_sheet = user_sheets[0]
+        
+        if not selected_sheet:
+            error_text = self.locale_manager.get_text("sheets.callback.no_sheet_selected", context)
+            await query.edit_message_text(error_text)
+            return
+        
+        # Get column mapping from the selected sheet
+        column_mapping = selected_sheet.get('column_mapping', {})
         if not column_mapping:
             error_text = self.locale_manager.get_text("sheets.callback.no_column_mapping_found", context)
             await query.edit_message_text(error_text)
             return
         
-        print(f"📊 Using column mapping: {column_mapping}")
+        print(f"📊 Using column mapping from sheet '{selected_sheet.get('friendly_name', 'Unknown')}': {column_mapping}")
+        
+        # Store selected sheet ID in context for upload
+        context.user_data['selected_sheet_id'] = selected_sheet.get('doc_id')
         
         # Determine device type
         device_type = DeviceType.MOBILE  # Default
@@ -115,7 +137,7 @@ class GoogleSheetsCallbackHandler(BaseCallbackHandler):
         preview_title = self.locale_manager.get_text("sheets.callback.upload_preview_title", context)
         text = f"{preview_title}\n\n```\n{table_preview}\n```"
         
-        keyboard = self._create_preview_keyboard(context)
+        keyboard = self._create_preview_keyboard(context, user_sheets, selected_sheet)
         reply_markup = InlineKeyboardMarkup(keyboard)
         
         try:
@@ -412,6 +434,31 @@ class GoogleSheetsCallbackHandler(BaseCallbackHandler):
     
     # ==================== HELPER METHODS ====================
     
+    async def _get_user_sheets(self, user_id: int) -> List[Dict[str, Any]]:
+        """
+        Получает все таблицы пользователя из Firestore
+        
+        Args:
+            user_id: ID пользователя Telegram
+            
+        Returns:
+            List[Dict] с данными всех таблиц пользователя
+        """
+        try:
+            sheets_manager = get_google_sheets_manager()
+            user_sheets = await sheets_manager.get_user_sheets(user_id)
+            
+            if not user_sheets:
+                print(f"❌ No sheets found for user {user_id}")
+                return []
+            
+            print(f"✅ Found {len(user_sheets)} sheets for user {user_id}")
+            return user_sheets
+            
+        except Exception as e:
+            print(f"❌ Error getting user sheets: {e}")
+            return []
+
     async def _get_user_default_sheet(self, user_id: int) -> Optional[Dict[str, Any]]:
         """
         Получает основную (дефолтную) таблицу пользователя из Firestore
@@ -466,23 +513,42 @@ class GoogleSheetsCallbackHandler(BaseCallbackHandler):
         used_columns = sorted(column_mapping.values())
         print(f"📊 Creating dynamic columns for: {used_columns}")
         
-        # Определяем ширину колонок в зависимости от типа устройства
-        base_width = 12 if device_type == DeviceType.MOBILE else 18
+        # Определяем ширину колонок согласно требованиям:
+        # дата 10 (было 9, увеличили на 1), название 20 (было 21, уменьшили на 1), 
+        # количество 6, цена 10, сумма 10
+        field_widths = {
+            'check_date': 10,
+            'product_name': 20,
+            'quantity': 6,
+            'unit_price': 10,
+            'total_price': 10
+        }
         
         columns = []
         for column_letter in used_columns:
-            # Определяем ширину колонки
-            if device_type == DeviceType.MOBILE:
-                width = min(base_width, 15)  # Максимум 15 для мобильных
+            # Находим поле, которое соответствует этой колонке
+            field_name = None
+            for field, col in column_mapping.items():
+                if col == column_letter:
+                    field_name = field
+                    break
+            
+            # Определяем ширину колонки на основе поля
+            if field_name in field_widths:
+                width = field_widths[field_name]
             else:
-                width = min(base_width, 25)  # Максимум 25 для десктопа
+                # Для неизвестных полей используем базовую ширину
+                width = 12 if device_type == DeviceType.MOBILE else 15
+            
+            # Все колонки выравниваем по левому краю
+            align = "left"
             
             # Создаем конфигурацию колонки
             column_config = ColumnConfig(
                 key=column_letter.lower(),  # Используем букву как ключ
                 title=column_letter,  # Заголовок - это буква колонки
                 width=width,
-                align="left"  # По умолчанию выравнивание по левому краю
+                align=align
             )
             columns.append(column_config)
         
@@ -720,13 +786,45 @@ class GoogleSheetsCallbackHandler(BaseCallbackHandler):
             [InlineKeyboardButton(self.locale_manager.get_text("sheets.callback.back_to_receipt", context), callback_data="back_to_receipt")]
         ]
     
-    def _create_preview_keyboard(self, context) -> List[List[InlineKeyboardButton]]:
-        """Create preview keyboard"""
-        return [
-            [InlineKeyboardButton(self.locale_manager.get_text("sheets.callback.upload_to_google_sheets", context), callback_data="confirm_google_sheets_upload")],
+    def _create_preview_keyboard(self, context, user_sheets: List[Dict[str, Any]], selected_sheet: Dict[str, Any]) -> List[List[InlineKeyboardButton]]:
+        """Create preview keyboard with sheet selection"""
+        keyboard = []
+        
+        # Find default sheet
+        default_sheet = None
+        for sheet in user_sheets:
+            if sheet.get('is_default', False):
+                default_sheet = sheet
+                break
+        
+        # If no default sheet found, use first one
+        if not default_sheet and user_sheets:
+            default_sheet = user_sheets[0]
+        
+        # Main upload button for selected sheet
+        selected_sheet_name = selected_sheet.get('friendly_name', 'Unknown')
+        if selected_sheet.get('is_default', False):
+            upload_text = f"✅ Загрузить в '{selected_sheet_name}'"
+        else:
+            upload_text = f"✅ Загрузить в '{selected_sheet_name}'"
+        
+        keyboard.append([InlineKeyboardButton(upload_text, callback_data="confirm_google_sheets_upload")])
+        
+        # Add buttons for other sheets
+        for sheet in user_sheets:
+            if sheet.get('doc_id') != selected_sheet.get('doc_id'):  # Skip currently selected sheet
+                sheet_name = sheet.get('friendly_name', 'Unknown')
+                button_text = f"📊 Загрузить в '{sheet_name}'"
+                callback_data = f"gs_select_sheet_{sheet.get('doc_id')}"
+                keyboard.append([InlineKeyboardButton(button_text, callback_data=callback_data)])
+        
+        # Add control buttons
+        keyboard.extend([
             [InlineKeyboardButton(self.locale_manager.get_text("sheets.callback.edit_matching", context), callback_data="edit_google_sheets_matching")],
             [InlineKeyboardButton(self.locale_manager.get_text("sheets.callback.back", context), callback_data="upload_to_google_sheets")]
-        ]
+        ])
+        
+        return keyboard
     
     def _create_matching_table_keyboard(self, matching_result: IngredientMatchingResult, context) -> List[List[InlineKeyboardButton]]:
         """Create keyboard for matching table"""
@@ -956,13 +1054,6 @@ class GoogleSheetsCallbackHandler(BaseCallbackHandler):
             column_headers.append(f"{column.title:^{column.width}}")
         lines.append(" | ".join(column_headers))
         
-        # Вторая строка: человекочитаемые названия полей
-        field_headers = []
-        for column in dynamic_columns:
-            field_name = self._get_field_name_for_column(column.title, column_mapping)
-            field_headers.append(f"{field_name:^{column.width}}")
-        lines.append(" | ".join(field_headers))
-        
         # Разделитель
         total_width = sum(column.width for column in dynamic_columns) + (len(dynamic_columns) - 1) * 3
         lines.append("─" * total_width)
@@ -973,9 +1064,32 @@ class GoogleSheetsCallbackHandler(BaseCallbackHandler):
             for column in dynamic_columns:
                 value = str(row_data.get(column.key, ""))
                 
-                # Ограничиваем длину текста
+                # Переносим длинный текст по словам внутри столбца
                 if len(value) > column.width:
-                    value = value[:column.width-3] + "..."
+                    words = value.split()
+                    lines_to_add = []
+                    current_line = ""
+                    
+                    for word in words:
+                        # Проверяем, поместится ли слово на текущей строке
+                        test_line = current_line + (" " if current_line else "") + word
+                        if len(test_line) <= column.width:
+                            current_line = test_line
+                        else:
+                            # Если текущая строка не пустая, сохраняем её и начинаем новую
+                            if current_line:
+                                lines_to_add.append(current_line)
+                                current_line = word
+                            else:
+                                # Если слово само по себе длиннее ширины колонки, обрезаем его
+                                current_line = word[:column.width-3] + "..."
+                    
+                    # Добавляем последнюю строку
+                    if current_line:
+                        lines_to_add.append(current_line)
+                    
+                    # Берем только первую строку для основной таблицы
+                    value = lines_to_add[0] if lines_to_add else ""
                 
                 # Выравнивание
                 if column.align == "right":
