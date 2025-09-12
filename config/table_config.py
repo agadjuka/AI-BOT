@@ -115,15 +115,14 @@ class TableConfigManager:
             table_type=TableType.GOOGLE_SHEETS_MATCHING,
             device_type=DeviceType.MOBILE,
             columns=[
-                ColumnConfig("number", "№", 4, "right"),
-                ColumnConfig("receipt_item", "Наименование", 15, "left"),
+                ColumnConfig("number", "№", 2, "right"),
+                ColumnConfig("receipt_item", "Наименование", 19, "left"),
                 ColumnConfig("google_sheets", "Ингредиент", 15, "left"),
-                ColumnConfig("status", "Статус", 6, "center")
+                ColumnConfig("status", "Статус", 4, "center")
             ],
             style=TableStyle(
                 max_name_length=15,
-                compact_mode=True,
-                use_emojis=False
+                compact_mode=True
             ),
             title="Сопоставление с Google Таблицами",
             max_items_per_page=8
@@ -135,9 +134,9 @@ class TableConfigManager:
             device_type=DeviceType.DESKTOP,
             columns=[
                 ColumnConfig("number", "№", 2, "right"),
-                ColumnConfig("receipt_item", "Наименование", 25, "left", emoji="📦"),
-                ColumnConfig("google_sheets", "Google Таблицы", 25, "left", emoji="📊"),
-                ColumnConfig("status", "Статус", 6, "center", emoji="📈")
+                ColumnConfig("receipt_item", "Наименование", 29, "left"),
+                ColumnConfig("google_sheets", "Ингредиент", 25, "left"),
+                ColumnConfig("status", "Статус", 6, "center")
             ],
             style=TableStyle(
                 max_name_length=25,

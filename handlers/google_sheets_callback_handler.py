@@ -830,16 +830,16 @@ class GoogleSheetsCallbackHandler(BaseCallbackHandler):
         if context:
             header_template = self.locale_manager.get_text("sheets.callback.table_header", context)
             return header_template
-        return f"{'№':<2} | {'Наименование':<20} | {'Google Таблицы':<20} | {'Статус':<4}"
+        return f"{'№':<2} | {'Наименование':<24} | {'Ингредиент':<20} | {'Статус':<4}"
     
     def _create_google_sheets_table_separator(self) -> str:
         """Create Google Sheets table separator"""
-        return "-" * 50  # Fixed width to match table structure (2 + 20 + 20 + 4 + 4 = 50)
+        return "-" * 54  # Fixed width to match table structure (2 + 24 + 20 + 4 + 4 = 54)
     
     def _create_google_sheets_table_row(self, row_number: int, match: IngredientMatch) -> str:
         """Create a Google Sheets table row for a match"""
         # Wrap names instead of truncating
-        receipt_name_lines = self._wrap_text(match.receipt_item_name, 20)
+        receipt_name_lines = self._wrap_text(match.receipt_item_name, 24)
         ingredient_name_lines = self._wrap_text(
             match.matched_ingredient_name or "—", 
             20
@@ -858,23 +858,23 @@ class GoogleSheetsCallbackHandler(BaseCallbackHandler):
             
             if line_idx == 0:
                 # First line includes row number and status
-                line = f"{row_number:<2} | {receipt_name:<20} | {ingredient_name:<20} | {status_emoji:<4}"
+                line = f"{row_number:<2} | {receipt_name:<24} | {ingredient_name:<20} | {status_emoji:<4}"
             else:
                 # Subsequent lines are indented
-                line = f"{'':<2} | {receipt_name:<20} | {ingredient_name:<20} | {'':<4}"
+                line = f"{'':<2} | {receipt_name:<24} | {ingredient_name:<20} | {'':<4}"
             
             lines.append(line)
         
         return "\n".join(lines)
     
     def _get_google_sheets_status_emoji(self, status) -> str:
-        """Get emoji for Google Sheets match status"""
+        """Get status text for Google Sheets match status"""
         if status == MatchStatus.EXACT_MATCH:
-            return "🟢"
+            return "OK"
         elif status == MatchStatus.PARTIAL_MATCH:
-            return "🟡"
+            return "OK"
         else:
-            return "🔴"
+            return "NO"
     
     def _calculate_similarity(self, text1: str, text2: str) -> float:
         """Calculate text similarity (simple implementation)"""
