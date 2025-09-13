@@ -183,15 +183,16 @@ class CallbackHandlers(BaseCallbackHandler):
         
         if success:
             # Show main menu in selected language
+            print(f"DEBUG: Language '{language_code}' set successfully, showing welcome message")
             
-            # Create main menu with localized buttons
+            # Create main menu with localized buttons - explicitly pass selected language
             keyboard = [
                 [InlineKeyboardButton(
-                    self.get_text("buttons.personal_dashboard", context, update=update), 
+                    self.get_text("buttons.personal_dashboard", context, update=update, language=language_code), 
                     callback_data="dashboard_main"
                 )],
                 [InlineKeyboardButton(
-                    self.get_text("buttons.scan_receipt", context, update=update), 
+                    self.get_text("buttons.scan_receipt", context, update=update, language=language_code), 
                     callback_data="start_new_receipt"
                 )]
             ]
@@ -199,14 +200,14 @@ class CallbackHandlers(BaseCallbackHandler):
             # Add back button if there's existing receipt data
             if context.user_data.get('receipt_data'):
                 keyboard.append([InlineKeyboardButton(
-                    self.get_text("buttons.back_to_receipt", context, update=update), 
+                    self.get_text("buttons.back_to_receipt", context, update=update, language=language_code), 
                     callback_data="back_to_receipt"
                 )])
             
             reply_markup = InlineKeyboardMarkup(keyboard)
             
             await query.edit_message_text(
-                self.get_text("welcome.start_instruction", context, update=update),
+                self.get_text("welcome.start_instruction", context, update=update, language=language_code),
                 reply_markup=reply_markup,
                 parse_mode='Markdown'
             )
@@ -215,7 +216,7 @@ class CallbackHandlers(BaseCallbackHandler):
         else:
             # Fallback to Russian if language not supported
             await query.edit_message_text(
-                self.get_text("errors.language_fallback", context, update=update)
+                self.get_text("errors.language_fallback", context, update=update, language='ru')
             )
             return self.config.AWAITING_CORRECTION
     

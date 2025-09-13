@@ -7,6 +7,7 @@ EN_TRANSLATIONS = {
     # Welcome messages
     "welcome": {
         "start_message": "Hello, {user}! 👋\n\nChoose an action:",
+        "start_instruction": "Welcome to the receipt scanning bot! 👋\n\nI will help you automatically transfer data from receipts directly to your Google Sheets, saving you time.\n\n**To get started, follow three simple steps:**\n\n📊 **1. Connect Google Sheets**\nThis is where all data will be saved. Go to **Personal Dashboard** to add your spreadsheet link and grant the bot access.\n\n📝 **2. Upload ingredients list**\nThis is your personal product guide. When I scan «Tomato ketchup Heinz Spicy» in the receipt, I will find «Tomato sauce» in your list and write exactly that name in the spreadsheet. This way your data will always be clean and consistent.\n\n📸 **3. Scan receipts!**\nWhen everything is set up, just send me a receipt photo, and I'll do all the work.",
         "instruction": "📖 **Bot Usage Instructions**\n\n**Main Features:**\n\n🔹 **Receipt Scanning** - send a receipt photo and the bot will automatically extract all items and prices\n\n🔹 **Ingredient Matching** - the bot will find items from the receipt in your ingredients list for consistent naming\n\n🔹 **Google Sheets Upload** - all data is automatically saved to your spreadsheet\n\n**How to Get Started:**\n\n1️⃣ **Set up Google Sheets** in the personal dashboard\n2️⃣ **Upload ingredients list** for proper item matching\n3️⃣ **Send receipt photo** for analysis\n\n**Additional Features:**\n\n✏️ **Editing** - you can correct any data before uploading\n🔄 **Re-analysis** - if something goes wrong\n📊 **Preview** - view data before saving\n\n**Commands:**\n• `/start` - main menu\n• `/dashboard` - personal dashboard\n• `/reset_language` - reset language",
         "analyze_receipt": "📸 Receipt Analysis\n\nSend a photo of the receipt for analysis:",
         "main_menu": "🏠 Main Menu\n\nUse /start to begin new work.",
@@ -27,6 +28,8 @@ EN_TRANSLATIONS = {
     "buttons": {
         # Main actions
         "analyze_receipt": "📸 Analyze receipt",
+        "scan_receipt": "📸 Scan receipt",
+        "personal_dashboard": "⚙️ Personal Dashboard",
         "back_to_receipt": "◀️ Back to receipt",
         "back_to_main_menu": "◀️ Back",
         "back": "⬅️ Back",

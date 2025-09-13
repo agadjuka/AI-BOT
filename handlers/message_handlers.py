@@ -44,22 +44,26 @@ class MessageHandlers(BaseMessageHandler):
         # Save user_id to context for language loading
         self.save_user_context(update, context)
         
-        # Get current language - this will automatically load from Firestore if needed
-        current_language = self.locale_manager.get_language_from_context(context, update)
-        print(f"DEBUG: Current language: '{current_language}' for user {update.effective_user.id}")
+        # Check if user has explicitly set a language (not just default)
+        user_id = update.effective_user.id
+        stored_language = self.locale_manager.language_service.get_user_language(user_id)
+        print(f"DEBUG: Stored language in Firestore: '{stored_language}' for user {user_id}")
         
-        if current_language:
+        if stored_language and self.locale_manager.is_language_supported(stored_language):
             # User has a saved language, show welcome instruction with buttons
-            print(f"DEBUG: Using saved language '{current_language}' for user {update.effective_user.id}")
+            print(f"DEBUG: Using saved language '{stored_language}' for user {user_id}")
             
-            # Create welcome instruction with localized buttons
+            # Set language in context
+            context.user_data['language'] = stored_language
+            
+            # Create welcome instruction with localized buttons - explicitly pass language
             keyboard = [
                 [InlineKeyboardButton(
-                    self.get_text("buttons.personal_dashboard", context, update=update), 
+                    self.get_text("buttons.personal_dashboard", context, update=update, language=stored_language), 
                     callback_data="dashboard_main"
                 )],
                 [InlineKeyboardButton(
-                    self.get_text("buttons.scan_receipt", context, update=update), 
+                    self.get_text("buttons.scan_receipt", context, update=update, language=stored_language), 
                     callback_data="start_new_receipt"
                 )]
             ]
@@ -67,17 +71,17 @@ class MessageHandlers(BaseMessageHandler):
             reply_markup = InlineKeyboardMarkup(keyboard)
             
             await update.message.reply_text(
-                self.get_text("welcome.start_instruction", context, update=update),
+                self.get_text("welcome.start_instruction", context, update=update, language=stored_language),
                 reply_markup=reply_markup,
                 parse_mode='Markdown'
             )
         else:
             # No saved language, show language selection
-            print(f"DEBUG: No saved language found for user {update.effective_user.id}, showing language selection")
+            print(f"DEBUG: No saved language found for user {user_id}, showing language selection")
             from config.locales.language_buttons import get_language_keyboard
             language_keyboard = get_language_keyboard()
             await update.message.reply_html(
-                self.get_text("welcome.choose_language", context, update=update),
+                self.get_text("welcome.choose_language", context, update=update, language='ru'),
                 reply_markup=language_keyboard
             )
         
