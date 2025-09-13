@@ -1,97 +1,89 @@
 #!/usr/bin/env python3
 """
-Скрипт для тестирования keep-alive функции
-Можно запустить локально для проверки работы
+Тестовый скрипт для проверки keep-alive механизма
+Можно запустить локально для тестирования логики
 """
+import os
 import asyncio
 import httpx
-import time
 from datetime import datetime
 
-async def test_keepalive_endpoint():
-    """Тестирует /keepalive endpoint"""
-    base_url = "http://localhost:8080"
-    
-    print("🧪 Тестирование keep-alive endpoint...")
-    
-    try:
-        async with httpx.AsyncClient() as client:
-            # Тестируем /keepalive endpoint
-            response = await client.get(f"{base_url}/keepalive")
-            
-            if response.status_code == 200:
-                data = response.json()
-                print(f"✅ Keep-alive endpoint работает")
-                print(f"📊 Ответ: {data}")
-                return True
-            else:
-                print(f"❌ Ошибка keep-alive endpoint: {response.status_code}")
-                return False
-                
-    except Exception as e:
-        print(f"❌ Ошибка подключения: {e}")
-        print("💡 Убедитесь, что сервер запущен на localhost:8080")
-        return False
-
-async def test_health_check():
-    """Тестирует / endpoint (health check)"""
-    base_url = "http://localhost:8080"
-    
-    print("🧪 Тестирование health check endpoint...")
-    
-    try:
-        async with httpx.AsyncClient() as client:
-            response = await client.get(f"{base_url}/")
-            
-            if response.status_code == 200:
-                data = response.json()
-                print(f"✅ Health check работает")
-                print(f"📊 Ответ: {data}")
-                return True
-            else:
-                print(f"❌ Ошибка health check: {response.status_code}")
-                return False
-                
-    except Exception as e:
-        print(f"❌ Ошибка подключения: {e}")
-        return False
-
-async def simulate_keepalive_requests():
-    """Симулирует периодические запросы для тестирования"""
-    print("🔄 Симуляция периодических keep-alive запросов...")
-    print("💡 Нажмите Ctrl+C для остановки")
-    
-    try:
-        while True:
-            print(f"\n⏰ {datetime.now().strftime('%H:%M:%S')} - Отправка keep-alive запроса...")
-            
-            success = await test_keepalive_endpoint()
-            if success:
-                print("✅ Keep-alive запрос успешен")
-            else:
-                print("❌ Keep-alive запрос неудачен")
-            
-            # Ждем 30 секунд перед следующим запросом
-            await asyncio.sleep(30)
-            
-    except KeyboardInterrupt:
-        print("\n🛑 Тестирование остановлено пользователем")
-
-async def main():
-    """Основная функция тестирования"""
-    print("🚀 Тестирование keep-alive функции")
+async def test_keep_alive_ping(service_url: str, test_duration: int = 30):
+    """Тестирует keep-alive ping в течение указанного времени"""
+    print(f"🧪 Тестирование keep-alive ping для {service_url}")
+    print(f"⏱️ Длительность теста: {test_duration} секунд")
     print("=" * 50)
     
-    # Тестируем базовые endpoints
-    health_ok = await test_health_check()
-    keepalive_ok = await test_keepalive_endpoint()
+    start_time = datetime.now()
+    ping_count = 0
+    success_count = 0
+    error_count = 0
     
-    if health_ok and keepalive_ok:
-        print("\n✅ Все базовые тесты прошли успешно!")
-        print("🔄 Запускаем симуляцию периодических запросов...")
-        await simulate_keepalive_requests()
+    while (datetime.now() - start_time).total_seconds() < test_duration:
+        try:
+            ping_count += 1
+            current_time = datetime.now().strftime("%H:%M:%S")
+            
+            print(f"[{current_time}] Ping #{ping_count}...", end=" ")
+            
+            async with httpx.AsyncClient(timeout=10.0) as client:
+                response = await client.get(f"{service_url}/health")
+                
+                if response.status_code == 200:
+                    success_count += 1
+                    print("✅ Success")
+                else:
+                    error_count += 1
+                    print(f"❌ HTTP {response.status_code}")
+                    
+        except Exception as e:
+            error_count += 1
+            print(f"❌ Error: {e}")
+        
+        # Ждем 10 секунд между пингами для тестирования
+        await asyncio.sleep(10)
+    
+    # Статистика
+    print("=" * 50)
+    print("📊 Результаты тестирования:")
+    print(f"   Всего пингов: {ping_count}")
+    print(f"   Успешных: {success_count}")
+    print(f"   Ошибок: {error_count}")
+    print(f"   Успешность: {(success_count/ping_count*100):.1f}%")
+
+async def test_local_health_endpoint():
+    """Тестирует локальный health endpoint"""
+    print("🧪 Тестирование локального health endpoint...")
+    
+    try:
+        async with httpx.AsyncClient(timeout=5.0) as client:
+            response = await client.get("http://localhost:8080/health")
+            print(f"✅ Локальный health endpoint: HTTP {response.status_code}")
+            print(f"   Ответ: {response.json()}")
+    except Exception as e:
+        print(f"❌ Ошибка подключения к локальному серверу: {e}")
+        print("💡 Убедитесь, что сервер запущен на localhost:8080")
+
+def main():
+    """Основная функция тестирования"""
+    print("🚀 Тестирование keep-alive механизма")
+    print("=" * 50)
+    
+    # Проверяем переменную SERVICE_URL
+    service_url = os.getenv("SERVICE_URL")
+    
+    if service_url:
+        print(f"✅ SERVICE_URL найден: {service_url}")
+        print("🧪 Запускаем тест keep-alive ping...")
+        asyncio.run(test_keep_alive_ping(service_url, test_duration=60))
     else:
-        print("\n❌ Некоторые тесты не прошли. Проверьте настройки сервера.")
+        print("⚠️ SERVICE_URL не установлен")
+        print("💡 Для тестирования в Cloud Run установите переменную SERVICE_URL")
+        print("💡 Для локального тестирования запустите сервер и используйте localhost")
+        
+        # Тестируем локальный сервер
+        print("\n🧪 Тестируем локальный сервер...")
+        asyncio.run(test_local_health_endpoint())
 
 if __name__ == "__main__":
-    asyncio.run(main())
+    main()
