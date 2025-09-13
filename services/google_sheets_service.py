@@ -296,8 +296,8 @@ class GoogleSheetsService:
             except Exception as e:
                 print(f"⚠️ Could not verify worksheet existence: {e}")
             
-            # Find the next empty row to avoid overwriting existing data
-            next_row = self._find_next_empty_row(worksheet_name, data_start_row)
+            # Find the next empty row in the specified columns to avoid overwriting existing data
+            next_row = self._find_next_empty_row(worksheet_name, data_start_row, column_mapping)
             
             # Calculate the range for the data based on column mapping
             if data_rows and len(data_rows[0]) > 0 and column_mapping:
@@ -358,12 +358,12 @@ class GoogleSheetsService:
             if "429" in error_msg or "quota" in error_msg.lower():
                 print(f"⚠️ API quota exceeded, trying fallback method...")
                 # Fallback: try to find empty row with retry
-                return self._upload_to_sheets_fallback(data_rows, worksheet_name, data_start_row)
+                return self._upload_to_sheets_fallback(data_rows, worksheet_name, data_start_row, column_mapping)
             else:
                 print(f"❌ Upload error: {e}")
                 raise e
 
-    def _upload_to_sheets_fallback(self, data_rows: List[List[Any]], worksheet_name: str, data_start_row: int = 2):
+    def _upload_to_sheets_fallback(self, data_rows: List[List[Any]], worksheet_name: str, data_start_row: int = 2, column_mapping: Dict[str, str] = None):
         """Fallback upload method when append fails"""
         import time
         
@@ -371,16 +371,28 @@ class GoogleSheetsService:
             return {"updatedCells": 0}
         
         # Find the next empty row
-        next_row = self._find_next_empty_row(worksheet_name, data_start_row)
+        next_row = self._find_next_empty_row(worksheet_name, data_start_row, column_mapping)
         
         # Calculate the range for appending data dynamically
-        if data_rows and len(data_rows[0]) > 0:
-            start_col = 1  # Start from column A (1-based)
-            end_col = len(data_rows[0])  # End column based on data length
-            # Use simple range format: just specify the start and end cells
-            start_col_letter = chr(ord('A') + start_col - 1)
-            end_col_letter = chr(ord('A') + end_col - 1)
-            range_name = f"{worksheet_name}!{start_col_letter}{next_row}:{end_col_letter}{next_row + len(data_rows) - 1}"
+        if data_rows and len(data_rows[0]) > 0 and column_mapping:
+            # Get the column range from the column mapping
+            column_letters = list(column_mapping.values())
+            if column_letters:
+                min_col = min(ord(col) - ord('A') for col in column_letters)
+                max_col = max(ord(col) - ord('A') for col in column_letters)
+                
+                # Convert to column letters (1-based)
+                start_col_letter = chr(ord('A') + min_col)
+                end_col_letter = chr(ord('A') + max_col)
+                
+                # Create range for the specific data area
+                range_name = f"{worksheet_name}!{start_col_letter}{next_row}:{end_col_letter}{next_row + len(data_rows) - 1}"
+            else:
+                # Fallback to A column if no mapping
+                range_name = f"{worksheet_name}!A{next_row}:A{next_row + len(data_rows) - 1}"
+        elif data_rows and len(data_rows[0]) > 0:
+            # Fallback to A column if no mapping provided
+            range_name = f"{worksheet_name}!A{next_row}:A{next_row + len(data_rows) - 1}"
         else:
             return {"updatedCells": 0}
         
@@ -424,30 +436,68 @@ class GoogleSheetsService:
         
         return {"updatedCells": 0}
     
-    def _find_next_empty_row(self, worksheet_name: str, data_start_row: int = 2) -> int:
-        """Find the next empty row in the worksheet with retry logic"""
+    def _find_next_empty_row(self, worksheet_name: str, data_start_row: int = 2, column_mapping: Dict[str, str] = None) -> int:
+        """Find the next empty row in the specified columns with retry logic"""
         import time
         max_retries = 3
         retry_delay = 2  # seconds
         
         for attempt in range(max_retries):
             try:
-                # Get all data in the worksheet starting from data_start_row
-                # Use simple range format
+                if column_mapping:
+                    # Get the columns from mapping
+                    column_letters = list(column_mapping.values())
+                    if column_letters:
+                        min_col = min(ord(col) - ord('A') for col in column_letters)
+                        max_col = max(ord(col) - ord('A') for col in column_letters)
+                        
+                        # Convert to column letters
+                        start_col_letter = chr(ord('A') + min_col)
+                        end_col_letter = chr(ord('A') + max_col)
+                        
+                        # Check the range of columns used in mapping
+                        range_name = f"{worksheet_name}!{start_col_letter}{data_start_row}:{end_col_letter}"
+                    else:
+                        # Fallback to column A if no mapping
+                        range_name = f"{worksheet_name}!A{data_start_row}:A"
+                else:
+                    # Fallback to column A if no mapping provided
+                    range_name = f"{worksheet_name}!A{data_start_row}:A"
+                
+                print(f"📊 Checking for empty rows in range: {range_name}")
+                
                 result = self.service.spreadsheets().values().get(
                     spreadsheetId=self.spreadsheet_id,
-                    range=f"{worksheet_name}!A{data_start_row}:A"  # Check column A starting from data_start_row
+                    range=range_name
                 ).execute()
                 
                 values = result.get('values', [])
                 
-                # Find the first empty row
+                # Find the first row where ALL specified columns are empty
                 for i in range(len(values)):
-                    if not values[i] or not values[i][0].strip():
-                        return i + data_start_row  # +data_start_row because we started from data_start_row and Google Sheets is 1-indexed
+                    row = values[i]
+                    is_empty = True
+                    
+                    if column_mapping:
+                        # Check only the columns specified in mapping
+                        for col_letter in column_mapping.values():
+                            col_index = ord(col_letter) - ord('A')
+                            if col_index < len(row) and row[col_index].strip():
+                                is_empty = False
+                                break
+                    else:
+                        # Check only first column if no mapping
+                        if len(row) > 0 and row[0].strip():
+                            is_empty = False
+                    
+                    if is_empty:
+                        print(f"📊 Found empty row at position {i + data_start_row}")
+                        return i + data_start_row
                 
                 # If no empty rows found, return the next row after the last data
-                return len(values) + data_start_row
+                next_row = len(values) + data_start_row
+                print(f"📊 No empty rows found, using row {next_row}")
+                return next_row
                 
             except Exception as e:
                 error_msg = str(e)
