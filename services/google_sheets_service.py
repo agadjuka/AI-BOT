@@ -36,9 +36,15 @@ class GoogleSheetsService:
             # First try to load from environment variable (for cloud deployment)
             google_credentials_json = os.getenv('GOOGLE_APPLICATION_CREDENTIALS_JSON')
             if google_credentials_json:
+                print(f"🔍 Found GOOGLE_APPLICATION_CREDENTIALS_JSON (length: {len(google_credentials_json)})")
                 try:
                     import json
                     credentials_info = json.loads(google_credentials_json)
+                    print(f"🔍 Parsed credentials JSON successfully")
+                    print(f"  - Project ID: {credentials_info.get('project_id', 'Не найден')}")
+                    print(f"  - Client Email: {credentials_info.get('client_email', 'Не найден')}")
+                    print(f"  - Type: {credentials_info.get('type', 'Не найден')}")
+                    
                     credentials = Credentials.from_service_account_info(
                         credentials_info,
                         scopes=['https://www.googleapis.com/auth/spreadsheets']
@@ -46,7 +52,11 @@ class GoogleSheetsService:
                     print("✅ Google Sheets credentials loaded from GOOGLE_APPLICATION_CREDENTIALS_JSON")
                 except Exception as e:
                     print(f"⚠️ Error loading credentials from environment variable: {e}")
+                    import traceback
+                    traceback.print_exc()
                     credentials = None
+            else:
+                print("🔍 GOOGLE_APPLICATION_CREDENTIALS_JSON not found in environment")
             
             # If environment variable failed, try file path
             if not credentials and self.credentials_path and os.path.exists(self.credentials_path):

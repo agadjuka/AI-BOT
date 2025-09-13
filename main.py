@@ -207,6 +207,35 @@ def create_application() -> Application:
     print(f"  - Spreadsheet ID: {config.GOOGLE_SHEETS_SPREADSHEET_ID}")
     print(f"  - Service available: {google_sheets_service.is_available()}")
     print(f"  - GOOGLE_APPLICATION_CREDENTIALS_JSON set: {bool(os.getenv('GOOGLE_APPLICATION_CREDENTIALS_JSON'))}")
+    
+    # Подробная отладка credentials
+    google_credentials_json = os.getenv('GOOGLE_APPLICATION_CREDENTIALS_JSON')
+    if google_credentials_json:
+        try:
+            import json
+            credentials_info = json.loads(google_credentials_json)
+            print(f"  - Credentials project_id: {credentials_info.get('project_id', 'Не найден')}")
+            print(f"  - Credentials client_email: {credentials_info.get('client_email', 'Не найден')}")
+            print(f"  - Credentials type: {credentials_info.get('type', 'Не найден')}")
+        except Exception as e:
+            print(f"  - Ошибка парсинга credentials JSON: {e}")
+    else:
+        print("  - GOOGLE_APPLICATION_CREDENTIALS_JSON не установлена")
+    
+    # Проверяем файл credentials
+    if os.path.exists(config.GOOGLE_SHEETS_CREDENTIALS):
+        print(f"  - Файл credentials существует: ✅")
+        try:
+            with open(config.GOOGLE_SHEETS_CREDENTIALS, 'r') as f:
+                file_content = f.read()
+                if file_content.strip():
+                    print(f"  - Размер файла: {len(file_content)} символов")
+                else:
+                    print(f"  - Файл пустой: ❌")
+        except Exception as e:
+            print(f"  - Ошибка чтения файла: {e}")
+    else:
+        print(f"  - Файл credentials не существует: ❌")
 
     # Create conversation handler
     conv_handler = ConversationHandler(
