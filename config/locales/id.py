@@ -410,6 +410,7 @@ ID_TRANSLATIONS = {
             "worksheet_name": "📋 **Lembar kerja:** {worksheet_name}",
             "undo_time": "🕒 **Waktu pembatalan:** {time}",
             "data_deleted_from_sheets": "Data telah dihapus dari Google Sheets.",
+            "no_data_for_preview": "❌ **Tidak ada data untuk pratinjau**\n\nTidak dapat menemukan data struk untuk menampilkan pratinjau Google Sheets.",
             "excel_file_created": "📄 **File Excel dengan data struk dibuat!**",
             "excel_success_title": "✅ **File Excel berhasil dibuat!**",
             "excel_success_description": "File berisi data yang sama yang diupload ke Google Sheets.",

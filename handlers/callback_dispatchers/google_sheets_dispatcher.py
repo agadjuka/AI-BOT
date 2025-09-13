@@ -420,11 +420,14 @@ class GoogleSheetsDispatcher(BaseCallbackHandler):
             # Show upload summary
             summary = sheet_service.get_upload_summary(receipt_data, matching_result)
             
+            # Get the actual worksheet name from Google Sheets API
+            actual_worksheet_name = await self._get_actual_worksheet_name(sheet_service, sheet_data.get('worksheet_name', 'Receipts'))
+            
             # Upload data using the selected sheet's configuration with column mapping
             success, message = sheet_service.upload_receipt_data(
                 receipt_data, 
                 matching_result,
-                sheet_data.get('worksheet_name', 'Receipts'),
+                actual_worksheet_name,
                 column_mapping=sheet_data.get('column_mapping', {}),
                 data_start_row=sheet_data.get('data_start_row', 2)
             )
@@ -433,14 +436,16 @@ class GoogleSheetsDispatcher(BaseCallbackHandler):
             # No need for complex JWT error handling since we're using the same credentials as in _check_sheet_access
             
             if success:
-                # Save upload data for potential undo
-                context.user_data['last_google_sheets_upload'] = {
-                    'worksheet_name': sheet_data.get('worksheet_name', 'Receipts'),
+                # Save upload data for potential undo with actual worksheet name
+                upload_data = {
+                    'worksheet_name': actual_worksheet_name,
                     'row_count': len(receipt_data.items),
                     'timestamp': datetime.now().isoformat(),
                     'sheet_id': sheet_data.get('sheet_id'),
-                    'sheet_name': sheet_data.get('friendly_name', 'Unknown')
+                    'sheet_name': sheet_data.get('friendly_name', 'Unknown'),
+                    'data_start_row': sheet_data.get('data_start_row', 2)
                 }
+                context.user_data['last_google_sheets_upload'] = upload_data
                 
                 # Show new success page interface
                 await self._show_upload_success_page(update, context, summary, message)
@@ -536,6 +541,34 @@ class GoogleSheetsDispatcher(BaseCallbackHandler):
             'no_match': '❌'
         }
         return status_emojis.get(match_status.value, '❓')
+    
+    async def _get_actual_worksheet_name(self, sheet_service, configured_name: str) -> str:
+        """Get the actual worksheet name from Google Sheets API"""
+        try:
+            # Get spreadsheet info to find the actual worksheet name
+            spreadsheet = sheet_service.service.spreadsheets().get(spreadsheetId=sheet_service.spreadsheet_id).execute()
+            
+            # Look for worksheet with configured name or similar
+            for sheet in spreadsheet.get('sheets', []):
+                sheet_title = sheet['properties']['title']
+                
+                # Check if this is the worksheet we're looking for
+                if sheet_title == configured_name:
+                    return sheet_title
+                # Check if it's the first sheet (often default)
+                elif sheet_title == 'Лист1' or sheet_title == 'Sheet1':
+                    return sheet_title
+            
+            # If not found, return the first sheet name
+            if spreadsheet.get('sheets'):
+                first_sheet_name = spreadsheet['sheets'][0]['properties']['title']
+                return first_sheet_name
+            
+            # Fallback to configured name
+            return configured_name
+            
+        except Exception as e:
+            return configured_name
     
     async def _send_long_message_with_keyboard_callback(self, message, text: str, reply_markup):
         """Send long message with keyboard (for callback query)"""

@@ -416,6 +416,7 @@ EN_TRANSLATIONS = {
             "worksheet_name": "📋 **Worksheet:** {worksheet_name}",
             "undo_time": "🕒 **Undo time:** {time}",
             "data_deleted_from_sheets": "Data was deleted from Google Sheets.",
+            "no_data_for_preview": "❌ **No data for preview**\n\nCould not find receipt data to display Google Sheets preview.",
             "excel_file_created": "📄 **Excel file with receipt data created!**",
             "excel_success_title": "✅ **Excel file successfully created!**",
             "excel_success_description": "File contains the same data that was uploaded to Google Sheets.",

@@ -426,14 +426,28 @@ class GoogleSheetsCallbackHandler(BaseCallbackHandler):
             # Get upload details
             worksheet_name = last_upload.get('worksheet_name', 'Receipts')
             row_count = last_upload.get('row_count', 0)
+            sheet_id = last_upload.get('sheet_id')
+            data_start_row = last_upload.get('data_start_row', 2)
             
             if row_count <= 0:
                 error_text = self.locale_manager.get_text("sheets.callback.no_data_to_undo", context)
                 await self._show_undo_error(update, error_text, context)
                 return self.config.AWAITING_CORRECTION
             
-            # Attempt to delete the uploaded rows
-            success, message = self.google_sheets_service.delete_last_uploaded_rows(worksheet_name, row_count)
+            if not sheet_id:
+                error_text = self.locale_manager.get_text("sheets.callback.sheet_not_found", context)
+                await self._show_undo_error(update, error_text, context)
+                return self.config.AWAITING_CORRECTION
+            
+            # Create GoogleSheetsService instance with the same sheet_id as used for upload
+            from services.google_sheets_service import GoogleSheetsService
+            sheet_service = GoogleSheetsService(
+                credentials_path=self.config.GOOGLE_SHEETS_CREDENTIALS,
+                spreadsheet_id=sheet_id
+            )
+            
+            # Attempt to delete the uploaded rows using the correct service
+            success, message = sheet_service.delete_last_uploaded_rows(worksheet_name, row_count, data_start_row)
             
             if success:
                 context.user_data.pop('last_google_sheets_upload', None)
@@ -987,29 +1001,32 @@ class GoogleSheetsCallbackHandler(BaseCallbackHandler):
     
     async def _handle_successful_undo(self, update: Update, context: ContextTypes.DEFAULT_TYPE, 
                                     worksheet_name: str, row_count: int):
-        """Handle successful undo operation"""
+        """Handle successful undo operation - immediately show Google Sheets preview"""
+        # Always try to show Google Sheets preview after successful undo
         pending_data = context.user_data.get('pending_google_sheets_upload')
         if pending_data:
             receipt_data = pending_data['receipt_data']
             matching_result = pending_data['matching_result']
             await self._show_google_sheets_preview(update, context, receipt_data, matching_result)
         else:
-            undo_successful = self.locale_manager.get_text("sheets.callback.undo_successful", context)
-            cancelled_rows = self.locale_manager.get_text("sheets.callback.cancelled_rows", context).format(row_count=row_count)
-            worksheet_name_text = self.locale_manager.get_text("sheets.callback.worksheet_name", context).format(worksheet_name=worksheet_name)
-            undo_time = self.locale_manager.get_text("sheets.callback.undo_time", context).format(time=datetime.now().strftime('%Y-%m-%d %H:%M:%S'))
-            data_deleted = self.locale_manager.get_text("sheets.callback.data_deleted_from_sheets", context)
-            back_to_receipt_text = self.locale_manager.get_text("sheets.callback.back_to_receipt", context)
-            upload_new_receipt_text = self.locale_manager.get_text("sheets.callback.upload_new_receipt", context)
+            # If no pending data, try to get data from user_data
+            receipt_data = context.user_data.get('receipt_data')
+            matching_result = context.user_data.get('google_sheets_matching_result')
             
-            await update.callback_query.edit_message_text(
-                f"{undo_successful}\n\n{cancelled_rows}\n{worksheet_name_text}\n{undo_time}\n\n{data_deleted}",
-                reply_markup=InlineKeyboardMarkup([
-                    [InlineKeyboardButton(back_to_receipt_text, callback_data="back_to_receipt")],
-                    [InlineKeyboardButton(upload_new_receipt_text, callback_data="start_new_receipt")]
-                ]),
-                parse_mode='Markdown'
-            )
+            if receipt_data and matching_result:
+                await self._show_google_sheets_preview(update, context, receipt_data, matching_result)
+            else:
+                # Fallback: show error and return to receipt
+                error_text = self.locale_manager.get_text("sheets.callback.no_data_for_preview", context)
+                back_to_receipt_text = self.locale_manager.get_text("sheets.callback.back_to_receipt", context)
+                
+                await update.callback_query.edit_message_text(
+                    error_text,
+                    reply_markup=InlineKeyboardMarkup([
+                        [InlineKeyboardButton(back_to_receipt_text, callback_data="back_to_receipt")]
+                    ]),
+                    parse_mode='Markdown'
+                )
     
     async def _send_excel_file(self, update: Update, context: ContextTypes.DEFAULT_TYPE, file_path: str):
         """Send Excel file to user"""

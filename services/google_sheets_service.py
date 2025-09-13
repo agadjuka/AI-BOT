@@ -625,13 +625,14 @@ class GoogleSheetsService:
         
         return summary
     
-    def delete_last_uploaded_rows(self, worksheet_name: str, row_count: int) -> tuple[bool, str]:
+    def delete_last_uploaded_rows(self, worksheet_name: str, row_count: int, data_start_row: int = 2) -> tuple[bool, str]:
         """
         Delete the last uploaded rows from Google Sheets
         
         Args:
             worksheet_name: Name of the worksheet
             row_count: Number of rows to delete from the end
+            data_start_row: Starting row where data was uploaded (default: 2)
             
         Returns:
             (success, message)
@@ -640,7 +641,24 @@ class GoogleSheetsService:
             return False, "Google Sheets service is not available."
         
         try:
+            # First, check if the worksheet exists
+            try:
+                # Try to get worksheet info
+                spreadsheet = self.service.spreadsheets().get(spreadsheetId=self.spreadsheet_id).execute()
+                worksheet_found = False
+                for sheet in spreadsheet.get('sheets', []):
+                    if sheet['properties']['title'] == worksheet_name:
+                        worksheet_found = True
+                        break
+                
+                if not worksheet_found:
+                    return False, f"Worksheet '{worksheet_name}' not found in the spreadsheet"
+                    
+            except Exception as e:
+                return False, f"Error checking worksheet existence: {str(e)}"
+            
             # Get the current data range to find the last rows
+            # Use the same format as other functions in this service
             range_name = f"{worksheet_name}!A:Z"
             result = self.service.spreadsheets().values().get(
                 spreadsheetId=self.spreadsheet_id,
@@ -655,10 +673,14 @@ class GoogleSheetsService:
             last_row = len(values)
             
             # Calculate the range to delete (last row_count rows)
-            start_row = max(1, last_row - row_count + 1)
+            # Ensure we don't delete header rows (before data_start_row)
+            start_row = max(data_start_row, last_row - row_count + 1)
             end_row = last_row
             
-            # Delete the rows
+            if start_row > end_row:
+                return False, "No data rows to delete (all data is before data_start_row)"
+            
+            # Delete the rows - use same format as other functions
             delete_range = f"{worksheet_name}!{start_row}:{end_row}"
             
             # Clear the range
