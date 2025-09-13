@@ -248,7 +248,7 @@ def create_application() -> Application:
     # Preload GoogleSheetsService to initialize Google Sheets API
     from services.google_sheets_service import GoogleSheetsService
     google_sheets_service = GoogleSheetsService(
-        credentials_path=config.GOOGLE_SHEETS_CREDENTIALS,
+        credentials_path=config.GOOGLE_SHEETS_CREDENTIALS if os.path.exists(config.GOOGLE_SHEETS_CREDENTIALS) else None,
         spreadsheet_id=config.GOOGLE_SHEETS_SPREADSHEET_ID
     )
     print("✅ GoogleSheetsService предзагружен")
@@ -259,6 +259,65 @@ def create_application() -> Application:
     print(f"  - Spreadsheet ID: {config.GOOGLE_SHEETS_SPREADSHEET_ID}")
     print(f"  - Service available: {google_sheets_service.is_available()}")
     print(f"  - GOOGLE_APPLICATION_CREDENTIALS_JSON set: {bool(os.getenv('GOOGLE_APPLICATION_CREDENTIALS_JSON'))}")
+    print(f"  - GOOGLE_SHEETS_CREDENTIALS_JSON set: {bool(os.getenv('GOOGLE_SHEETS_CREDENTIALS_JSON'))}")
+    
+    # Test Google Sheets access
+    if google_sheets_service.is_available():
+        try:
+            # Try to access the spreadsheet to verify credentials
+            spreadsheet = google_sheets_service.service.spreadsheets().get(spreadsheetId=config.GOOGLE_SHEETS_SPREADSHEET_ID).execute()
+            print(f"✅ Google Sheets access verified - spreadsheet title: {spreadsheet.get('properties', {}).get('title', 'Unknown')}")
+        except Exception as e:
+            print(f"❌ Google Sheets access failed: {e}")
+            print(f"💡 This might be due to:")
+            print(f"   - Invalid credentials")
+            print(f"   - Insufficient permissions")
+            print(f"   - Spreadsheet not accessible")
+    else:
+        print("❌ Google Sheets service not available")
+    
+    # Подробная отладка credentials
+    google_sheets_credentials_json = os.getenv('GOOGLE_SHEETS_CREDENTIALS_JSON')
+    if google_sheets_credentials_json:
+        try:
+            import json
+            credentials_info = json.loads(google_sheets_credentials_json)
+            print(f"  - NEW Credentials project_id: {credentials_info.get('project_id', 'Не найден')}")
+            print(f"  - NEW Credentials client_email: {credentials_info.get('client_email', 'Не найден')}")
+            print(f"  - NEW Credentials type: {credentials_info.get('type', 'Не найден')}")
+        except Exception as e:
+            print(f"  - Ошибка парсинга NEW credentials JSON: {e}")
+    else:
+        print("  - GOOGLE_SHEETS_CREDENTIALS_JSON не установлена")
+        
+        # Fallback to old credentials
+        google_credentials_json = os.getenv('GOOGLE_APPLICATION_CREDENTIALS_JSON')
+        if google_credentials_json:
+            try:
+                import json
+                credentials_info = json.loads(google_credentials_json)
+                print(f"  - OLD Credentials project_id: {credentials_info.get('project_id', 'Не найден')}")
+                print(f"  - OLD Credentials client_email: {credentials_info.get('client_email', 'Не найден')}")
+                print(f"  - OLD Credentials type: {credentials_info.get('type', 'Не найден')}")
+            except Exception as e:
+                print(f"  - Ошибка парсинга OLD credentials JSON: {e}")
+        else:
+            print("  - GOOGLE_APPLICATION_CREDENTIALS_JSON также не установлена")
+    
+    # Проверяем файл credentials
+    if os.path.exists(config.GOOGLE_SHEETS_CREDENTIALS):
+        print(f"  - Файл credentials существует: ✅")
+        try:
+            with open(config.GOOGLE_SHEETS_CREDENTIALS, 'r') as f:
+                file_content = f.read()
+                if file_content.strip():
+                    print(f"  - Размер файла: {len(file_content)} символов")
+                else:
+                    print(f"  - Файл пустой: ❌")
+        except Exception as e:
+            print(f"  - Ошибка чтения файла: {e}")
+    else:
+        print(f"  - Файл credentials не существует: ❌")
 
     # Create conversation handler
     conv_handler = ConversationHandler(
@@ -416,7 +475,7 @@ async def initialize_bot():
     # Debug: Print all environment variables
     print("🔍 Debug: Environment variables:")
     for key, value in os.environ.items():
-        if "TOKEN" in key or "PROJECT" in key or "WEBHOOK" in key:
+        if any(keyword in key.upper() for keyword in ["TOKEN", "PROJECT", "WEBHOOK", "GOOGLE", "CREDENTIALS"]):
             print(f"  {key}: {'*' * len(value) if value else 'NOT SET'}")
     
     # Check if BOT_TOKEN is available

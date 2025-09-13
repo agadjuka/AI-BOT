@@ -17,7 +17,7 @@ steps:
       - '--image'
       - 'gcr.io/$PROJECT_ID/ai-bot:latest'
       - '--region'
-      - 'europe-west1'
+      - 'asia-southeast1'
       - '--platform'
       - 'managed'
       - '--allow-unauthenticated'
@@ -34,7 +34,9 @@ steps:
       - '--timeout'
       - '300'
       - '--set-env-vars'
-      - 'BOT_TOKEN=${_BOT_TOKEN},PROJECT_ID=${_PROJECT_ID},GOOGLE_APPLICATION_CREDENTIALS_JSON=${_GOOGLE_APPLICATION_CREDENTIALS_JSON}'
+      - 'BOT_TOKEN=${_BOT_TOKEN},PROJECT_ID=${_PROJECT_ID},GOOGLE_APPLICATION_CREDENTIALS_JSON=${_GOOGLE_APPLICATION_CREDENTIALS_JSON},GOOGLE_SHEETS_CREDENTIALS_JSON=${_GOOGLE_SHEETS_CREDENTIALS_JSON}'
+      - '--service-account'
+      - 'ai-bot-service-account@${_PROJECT_ID}.iam.gserviceaccount.com'
 
 # Переменные для подстановки
 substitutions:

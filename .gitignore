@@ -139,6 +139,7 @@ receipt_data_*.xlsx
 
 # Google Cloud credentials
 google_sheets_credentials.json
+ai-bot-key.json
 
 # JSON files (except requirements)
 *.json
