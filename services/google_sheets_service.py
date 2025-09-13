@@ -93,7 +93,7 @@ class GoogleSheetsService:
             # Create data rows using dynamic column mapping
             data_rows = self._create_sheets_data(receipt_data, matching_result, column_mapping)
             # Upload with proper column positioning
-            result = self._upload_to_sheets(data_rows, worksheet_name, data_start_row)
+            result = self._upload_to_sheets(data_rows, worksheet_name, data_start_row, column_mapping)
             
             return True, f"Successfully uploaded {len(data_rows)} items to Google Sheets"
             
@@ -221,7 +221,7 @@ class GoogleSheetsService:
             return ""
     
     def _convert_row_data_to_array(self, row_data: Dict[str, str], column_mapping: Dict[str, str]) -> List[str]:
-        """Convert row_data dictionary to array with proper column order"""
+        """Convert row_data dictionary to array with proper column order, preserving empty columns"""
         # Find the range of columns used
         column_letters = list(column_mapping.values())
         if not column_letters:
@@ -231,7 +231,8 @@ class GoogleSheetsService:
         min_col = min(ord(col) - ord('A') for col in column_letters)
         max_col = max(ord(col) - ord('A') for col in column_letters)
         
-        # Create array with proper length
+        # Create array that spans from min_col to max_col (inclusive)
+        # This preserves empty columns between used columns
         row_array = [''] * (max_col - min_col + 1)
         
         # Fill in the values at correct positions
@@ -241,9 +242,14 @@ class GoogleSheetsService:
             if 0 <= array_index < len(row_array):
                 row_array[array_index] = value
         
+        print(f"📊 Converted row data: {row_data}")
+        print(f"📊 Column mapping: {column_mapping}")
+        print(f"📊 Result array: {row_array}")
+        print(f"📊 Array spans columns {chr(ord('A') + min_col)} to {chr(ord('A') + max_col)}")
+        
         return row_array
     
-    def _upload_to_sheets(self, data_rows: List[List[Any]], worksheet_name: str, data_start_row: int = 2):
+    def _upload_to_sheets(self, data_rows: List[List[Any]], worksheet_name: str, data_start_row: int = 2, column_mapping: Dict[str, str] = None):
         """Upload data to Google Sheets by appending to the next empty row with formatting"""
         import time
         
@@ -272,13 +278,6 @@ class GoogleSheetsService:
         # Use append method instead of finding empty row to avoid quota issues
         # This is more efficient and avoids the need to check existing data
         try:
-            # Use append method which automatically finds the next empty row
-            body = {
-                'values': data_rows
-            }
-            
-            # For append operations, use the full range format
-            # Google Sheets API append method needs a proper range specification
             # First check if the worksheet exists, if not use the first sheet
             try:
                 # Try to get the sheet to verify it exists
@@ -297,13 +296,41 @@ class GoogleSheetsService:
             except Exception as e:
                 print(f"⚠️ Could not verify worksheet existence: {e}")
             
-            range_name = f"{worksheet_name}!A:Z"  # Use full range to avoid parsing errors
+            # Find the next empty row to avoid overwriting existing data
+            next_row = self._find_next_empty_row(worksheet_name, data_start_row)
             
-            result = self.service.spreadsheets().values().append(
+            # Calculate the range for the data based on column mapping
+            if data_rows and len(data_rows[0]) > 0 and column_mapping:
+                # Get the column range from the column mapping
+                column_letters = list(column_mapping.values())
+                if column_letters:
+                    min_col = min(ord(col) - ord('A') for col in column_letters)
+                    max_col = max(ord(col) - ord('A') for col in column_letters)
+                    
+                    # Convert to column letters (1-based)
+                    start_col_letter = chr(ord('A') + min_col)
+                    end_col_letter = chr(ord('A') + max_col)
+                    
+                    # Create range for the specific data area
+                    range_name = f"{worksheet_name}!{start_col_letter}{next_row}:{end_col_letter}{next_row + len(data_rows) - 1}"
+                else:
+                    # Fallback to A column if no mapping
+                    range_name = f"{worksheet_name}!A{next_row}:A{next_row + len(data_rows) - 1}"
+            else:
+                # Fallback to A column if no data or no mapping
+                range_name = f"{worksheet_name}!A{next_row}:A{next_row + len(data_rows) - 1}" if data_rows else f"{worksheet_name}!A{next_row}:A{next_row}"
+            
+            print(f"📊 Uploading to range: {range_name}")
+            
+            # Use update method instead of append to have precise control over positioning
+            body = {
+                'values': data_rows
+            }
+            
+            result = self.service.spreadsheets().values().update(
                 spreadsheetId=self.spreadsheet_id,
                 range=range_name,
                 valueInputOption='RAW',
-                insertDataOption='INSERT_ROWS',
                 body=body
             ).execute()
             
