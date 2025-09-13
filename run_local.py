@@ -33,7 +33,7 @@ def load_env_file():
 
 def check_required_vars():
     """Проверяет наличие обязательных переменных окружения"""
-    required_vars = ['BOT_TOKEN', 'POSTER_TOKEN', 'PROJECT_ID']
+    required_vars = ['BOT_TOKEN', 'PROJECT_ID']
     missing_vars = []
     
     for var in required_vars:

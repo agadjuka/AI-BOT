@@ -67,47 +67,15 @@ class InputHandler(BaseMessageHandler):
                                 user_input: str, line_number: int, field_to_edit: str) -> int:
         """Handle field-specific editing"""
         try:
-            # Clean up the input request message
+            # Delete the user's input message first
             try:
                 if hasattr(update, 'message') and update.message:
-                    # Delete the user's input message
                     await context.bot.delete_message(
                         chat_id=update.message.chat_id,
                         message_id=update.message.message_id
                     )
-                
-                # Delete all messages from messages_to_cleanup (including "Editing quantity for line" messages)
-                messages_to_cleanup = context.user_data.get('messages_to_cleanup', [])
-                print(f"DEBUG: Cleaning up {len(messages_to_cleanup)} messages: {messages_to_cleanup}")
-                for message_id in messages_to_cleanup:
-                    try:
-                        await context.bot.delete_message(
-                            chat_id=update.message.chat_id,
-                            message_id=message_id
-                        )
-                        print(f"DEBUG: Successfully deleted message {message_id}")
-                    except Exception as e:
-                        print(f"DEBUG: Failed to delete message {message_id}: {e}")
-                
-                # Clear the cleanup list after deletion
-                context.user_data['messages_to_cleanup'] = []
-                
-                # Also try to delete the input request message
-                input_request_message_id = context.user_data.get('input_request_message_id')
-                if input_request_message_id:
-                    try:
-                        await context.bot.delete_message(
-                            chat_id=update.message.chat_id,
-                            message_id=input_request_message_id
-                        )
-                        print(f"DEBUG: Successfully deleted input request message {input_request_message_id}")
-                        # Clear the stored message ID
-                        context.user_data['input_request_message_id'] = None
-                    except Exception as e:
-                        print(f"DEBUG: Failed to delete input request message {input_request_message_id}: {e}")
-                
             except Exception as e:
-                print(f"DEBUG: Error cleaning up messages: {e}")
+                print(f"DEBUG: Error deleting user input message: {e}")
             
             data: ReceiptData = context.user_data['receipt_data']
             item_to_edit = data.get_item(line_number)
@@ -122,17 +90,33 @@ class InputHandler(BaseMessageHandler):
                 field_name = self.locale_manager.get_text("analysis.field_display_names.name", context)
                 is_valid, message = self.validator.validate_text_input(user_input, field_name)
                 if not is_valid:
-                    # Delete the input request message first
-                    input_request_message_id = context.user_data.get('input_request_message_id')
-                    if input_request_message_id:
-                        try:
-                            await context.bot.delete_message(
-                                chat_id=update.message.chat_id,
-                                message_id=input_request_message_id
-                            )
-                            context.user_data['input_request_message_id'] = None
-                        except:
-                            pass
+                    # Delete the input request message and cleanup messages
+                    try:
+                        # Delete all messages from messages_to_cleanup
+                        messages_to_cleanup = context.user_data.get('messages_to_cleanup', [])
+                        for message_id in messages_to_cleanup:
+                            try:
+                                await context.bot.delete_message(
+                                    chat_id=update.message.chat_id,
+                                    message_id=message_id
+                                )
+                            except:
+                                pass
+                        context.user_data['messages_to_cleanup'] = []
+                        
+                        # Delete the input request message
+                        input_request_message_id = context.user_data.get('input_request_message_id')
+                        if input_request_message_id:
+                            try:
+                                await context.bot.delete_message(
+                                    chat_id=update.message.chat_id,
+                                    message_id=input_request_message_id
+                                )
+                                context.user_data['input_request_message_id'] = None
+                            except:
+                                pass
+                    except:
+                        pass
                     
                     error_message = self.locale_manager.get_text("errors.field_edit_error", context, error=message)
                     await self.ui_manager.send_temp(
@@ -149,17 +133,33 @@ class InputHandler(BaseMessageHandler):
                 # Parse number, considering possible separators (including decimal fractions)
                 numeric_value = self.text_parser.parse_user_input_number(user_input)
                 if numeric_value < 0:
-                    # Delete the input request message first
-                    input_request_message_id = context.user_data.get('input_request_message_id')
-                    if input_request_message_id:
-                        try:
-                            await context.bot.delete_message(
-                                chat_id=update.message.chat_id,
-                                message_id=input_request_message_id
-                            )
-                            context.user_data['input_request_message_id'] = None
-                        except:
-                            pass
+                    # Delete the input request message and cleanup messages
+                    try:
+                        # Delete all messages from messages_to_cleanup
+                        messages_to_cleanup = context.user_data.get('messages_to_cleanup', [])
+                        for message_id in messages_to_cleanup:
+                            try:
+                                await context.bot.delete_message(
+                                    chat_id=update.message.chat_id,
+                                    message_id=message_id
+                                )
+                            except:
+                                pass
+                        context.user_data['messages_to_cleanup'] = []
+                        
+                        # Delete the input request message
+                        input_request_message_id = context.user_data.get('input_request_message_id')
+                        if input_request_message_id:
+                            try:
+                                await context.bot.delete_message(
+                                    chat_id=update.message.chat_id,
+                                    message_id=input_request_message_id
+                                )
+                                context.user_data['input_request_message_id'] = None
+                            except:
+                                pass
+                    except:
+                        pass
                     
                     error_message = self.locale_manager.get_text("validation.negative_value", context)
                     await self.ui_manager.send_temp(
@@ -202,6 +202,41 @@ class InputHandler(BaseMessageHandler):
             new_value = getattr(item_to_edit, field_to_edit, '')
             if field_to_edit in ['quantity', 'price', 'total'] and isinstance(new_value, (int, float)):
                 new_value = self.number_formatter.format_number_with_spaces(new_value)
+            
+            # Clean up the input request messages after successful update
+            try:
+                # Delete all messages from messages_to_cleanup (including "Editing quantity for line" messages)
+                messages_to_cleanup = context.user_data.get('messages_to_cleanup', [])
+                print(f"DEBUG: Cleaning up {len(messages_to_cleanup)} messages after successful update: {messages_to_cleanup}")
+                for message_id in messages_to_cleanup:
+                    try:
+                        await context.bot.delete_message(
+                            chat_id=update.message.chat_id,
+                            message_id=message_id
+                        )
+                        print(f"DEBUG: Successfully deleted message {message_id}")
+                    except Exception as e:
+                        print(f"DEBUG: Failed to delete message {message_id}: {e}")
+                
+                # Clear the cleanup list after deletion
+                context.user_data['messages_to_cleanup'] = []
+                
+                # Also try to delete the input request message
+                input_request_message_id = context.user_data.get('input_request_message_id')
+                if input_request_message_id:
+                    try:
+                        await context.bot.delete_message(
+                            chat_id=update.message.chat_id,
+                            message_id=input_request_message_id
+                        )
+                        print(f"DEBUG: Successfully deleted input request message {input_request_message_id}")
+                        # Clear the stored message ID
+                        context.user_data['input_request_message_id'] = None
+                    except Exception as e:
+                        print(f"DEBUG: Failed to delete input request message {input_request_message_id}: {e}")
+                
+            except Exception as e:
+                print(f"DEBUG: Error cleaning up messages after update: {e}")
             
             # Update the existing edit menu message with new data
             edit_menu_message_id = context.user_data.get('edit_menu_message_id')
