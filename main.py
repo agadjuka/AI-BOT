@@ -88,20 +88,34 @@ TELEGRAM_API = None
 # Global variables for keep-alive task
 keep_alive_task_obj: Optional[asyncio.Task] = None
 
+def get_service_url():
+    """Получает URL сервиса из переменных окружения Cloud Run"""
+    # Сначала проверяем SERVICE_URL (если установлен вручную)
+    service_url = os.getenv("SERVICE_URL")
+    if service_url:
+        return service_url
+    
+    # Если SERVICE_URL не установлен, используем известный URL Cloud Run
+    return "https://ai-bot-366461711404.asia-southeast1.run.app"
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """Lifespan manager для FastAPI приложения"""
     # Код, который выполняется при старте
     print("🚀 Запуск приложения...")
     
-    # Запускаем keep-alive задачу, если SERVICE_URL доступен
-    service_url = os.getenv("SERVICE_URL")
+    # Получаем URL сервиса
+    service_url = get_service_url()
     if service_url:
-        print(f"💓 Starting keep-alive ping to {service_url}")
+        # Проверяем, взят ли URL по умолчанию
+        if os.getenv("SERVICE_URL"):
+            print(f"💓 Starting keep-alive ping to {service_url} (из переменной SERVICE_URL)")
+        else:
+            print(f"💓 Starting keep-alive ping to {service_url} (URL по умолчанию)")
         global keep_alive_task_obj
         keep_alive_task_obj = asyncio.create_task(keep_alive_ping(service_url))
     else:
-        print("⚠️ SERVICE_URL не установлен - keep-alive отключен")
+        print("⚠️ Не удалось определить URL сервиса - keep-alive отключен")
     
     yield
     
@@ -158,13 +172,13 @@ async def keep_alive_ping(service_url: str) -> None:
             await asyncio.sleep(60)  # Ждем минуту перед следующей попыткой
 
 async def start_keep_alive_task():
-    """Запускает keep-alive задачу, если SERVICE_URL доступен"""
+    """Запускает keep-alive задачу, если URL сервиса доступен"""
     global keep_alive_task_obj
     
-    # Получаем SERVICE_URL из переменных окружения
-    service_url = os.getenv("SERVICE_URL")
+    # Получаем URL сервиса
+    service_url = get_service_url()
     if not service_url:
-        print("⚠️ SERVICE_URL не установлен - keep-alive отключен (локальный режим)")
+        print("⚠️ Не удалось определить URL сервиса - keep-alive отключен")
         return
     
     if keep_alive_task_obj is None or keep_alive_task_obj.done():

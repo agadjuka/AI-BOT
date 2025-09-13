@@ -77,6 +77,20 @@ class InputHandler(BaseMessageHandler):
                         message_id=update.message.message_id
                     )
                 
+                # Delete all messages from messages_to_cleanup (including "Editing amount for line" messages)
+                messages_to_cleanup = context.user_data.get('messages_to_cleanup', [])
+                for message_id in messages_to_cleanup:
+                    try:
+                        await context.bot.delete_message(
+                            chat_id=update.message.chat_id,
+                            message_id=message_id
+                        )
+                    except:
+                        pass  # Message might already be deleted
+                
+                # Clear the cleanup list after deletion
+                context.user_data['messages_to_cleanup'] = []
+                
                 # Try to delete the input request message (the one with "Enter new value:")
                 # This is usually the last message from the bot
                 if context.user_data.get('last_bot_message_id'):
