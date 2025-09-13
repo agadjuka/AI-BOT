@@ -525,6 +525,47 @@ class InputHandler(BaseMessageHandler):
         pattern = r'^[A-Z]+$'
         return bool(re.match(pattern, user_input))
     
+    async def handle_sheet_name_input(self, update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
+        """Handle sheet name input for mapping editor"""
+        user_input = update.message.text.strip()
+        
+        # Store the message ID of the request message to delete it later
+        request_message_id = context.user_data.get('sheet_name_request_message_id')
+        
+        # Delete user message
+        try:
+            await context.bot.delete_message(
+                chat_id=update.message.chat_id,
+                message_id=update.message.message_id
+            )
+        except Exception as e:
+            print(f"DEBUG: Failed to delete user message: {e}")
+        
+        # Delete request message if it exists
+        if request_message_id:
+            try:
+                await context.bot.delete_message(
+                    chat_id=update.message.chat_id,
+                    message_id=request_message_id
+                )
+                context.user_data.pop('sheet_name_request_message_id', None)
+            except Exception as e:
+                print(f"DEBUG: Failed to delete request message: {e}")
+        
+        # Validate input - basic validation (not empty)
+        if not user_input:
+            error_message = "❌ Название листа не может быть пустым."
+            await self.ui_manager.send_temp(
+                update, context, error_message, duration=5
+            )
+            return self.config.AWAITING_SHEET_NAME_INPUT
+        
+        # Update sheet name in FSM state
+        context.user_data['sheet_name'] = user_input
+        
+        # Return to mapping editor (this will edit the original message)
+        return await self._show_mapping_editor(update, context)
+    
     async def _show_mapping_editor(self, update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
         """Show mapping editor interface - delegate to callback handler"""
         from handlers.callback_handlers import CallbackHandlers

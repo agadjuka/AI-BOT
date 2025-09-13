@@ -15,6 +15,7 @@ users/{telegram_user_id}/
           ├── sheet_url (string)
           ├── sheet_id (string) 
           ├── friendly_name (string)
+          ├── sheet_name (string) - Default: "Sheet1"
           ├── is_default (boolean)
           ├── created_at (timestamp)
           ├── data_start_row (integer)
@@ -67,7 +68,7 @@ manager = get_google_sheets_manager(db_instance)
 **Особенности:**
 - Первая таблица пользователя автоматически становится дефолтной (`is_default = True`)
 - Автоматически создается дефолтный `column_mapping`
-- `data_start_row` устанавливается в `2`
+- `data_start_row` устанавливается в `1`
 
 #### `get_user_sheets(user_id)`
 

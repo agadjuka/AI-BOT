@@ -301,6 +301,7 @@ EN_TRANSLATIONS = {
         "step2_instruction": "✅ Great, access granted! Now choose a simple name for the table so you won't get confused. For example: <i>Home Expenses</i>.",
         "step3_title": "📊 Table Configuration (Step 3 of 3)",
         "step3_instruction": "Perfect! Table connected. By default, data will be written as follows:",
+        "step3_sheet_info": "Data will be written to sheet: <code>Sheet1</code>",
         "step3_question": "Use these settings or configure your own?",
         "table_headers": {
             "date": "Date",
@@ -316,8 +317,9 @@ EN_TRANSLATIONS = {
             "configure_manual": "✏️ Configure manually"
         },
         "mapping_editor": {
-            "title": "⚙️ **Table Settings Editor**",
+            "title": "⚙️ Table Settings Editor",
             "description": "Configure the mapping between receipt fields and table columns:",
+            "sheet_info": "Sheet: <code>{sheet_name}</code>",
             "current_settings": "**Current settings:**",
             "field_mapping": "{field_name} ➡️ Column {column}",
             "field_buttons": {
@@ -330,6 +332,7 @@ EN_TRANSLATIONS = {
             "action_buttons": {
                 "save_and_exit": "✅ Save and Exit",
                 "cancel": "⬅️ Cancel",
+                "sheet": "📄 Sheet",
             },
             "column_input": "Specify the **new column** for field '{field_name}'.\n\nYou can use any column (e.g., <code>C</code> or <code>AA</code>). To not use this field, just send <code>-</code> (dash).",
             "field_names": {
@@ -339,6 +342,7 @@ EN_TRANSLATIONS = {
                 "price_per_item": "Price per Item",
                 "total_price": "Total Price"
             },
+            "sheet_name_input": "Specify the **new sheet name** (e.g., `Sales Data`). The name must exactly match the sheet name in your Google Spreadsheet.",
             "errors": {
                 "invalid_column": "❌ Invalid column format. Enter a letter (A-Z) or `-` to disable.",
                 "invalid_row_number": "❌ Invalid row number. Enter a positive number (e.g., `2`).",
@@ -449,7 +453,8 @@ EN_TRANSLATIONS = {
             "back_to_receipt_button": "📋 Back to receipt",
             "preview_google_sheets": "👁️ Preview Google Sheets",
             "no_default_sheet_found": "❌ User's default sheet not found",
-            "no_column_mapping_found": "❌ Column mapping not found for default sheet"
+            "no_column_mapping_found": "❌ Column mapping not found for default sheet",
+            "sheet_name_label": "**Sheet:** `{sheet_name}`"
         }
     },
     

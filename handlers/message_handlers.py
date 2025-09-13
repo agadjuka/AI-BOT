@@ -182,6 +182,10 @@ class MessageHandlers(BaseMessageHandler):
         """Handle column input for mapping editor - delegate to input handler"""
         return await self.input_handler.handle_column_input(update, context)
     
+    async def handle_sheet_name_input(self, update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
+        """Handle sheet name input for mapping editor - delegate to input handler"""
+        return await self.input_handler.handle_sheet_name_input(update, context)
+    
     async def handle_start_row_input(self, update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
         """Handle start row input for mapping editor - delegate to input handler"""
         return await self.input_handler.handle_start_row_input(update, context)

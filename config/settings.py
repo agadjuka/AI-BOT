@@ -45,11 +45,12 @@ class BotConfig:
         self.AWAITING_CONFIRM_MAPPING = 11
         self.EDIT_MAPPING = 12
         self.AWAITING_COLUMN_INPUT = 13
-        self.AWAITING_START_ROW_INPUT = 14
+        self.AWAITING_SHEET_NAME_INPUT = 14
+        self.AWAITING_START_ROW_INPUT = 15
         
         # Ingredients management states
-        self.AWAITING_INGREDIENTS_FILE = 15
-        self.AWAITING_INGREDIENTS_TEXT = 16
+        self.AWAITING_INGREDIENTS_FILE = 16
+        self.AWAITING_INGREDIENTS_TEXT = 17
         
         # Message settings
         self.MAX_MESSAGE_LENGTH = 4096

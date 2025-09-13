@@ -190,6 +190,10 @@ class GoogleSheetsDispatcher(BaseCallbackHandler):
             sheet_id = action.replace("gs_select_sheet_", "")
             await query.answer(self.locale_manager.get_text("sheets.callback.switching_sheet", context))
             
+            # Store selected sheet ID in context for upload
+            context.user_data['selected_sheet_id'] = sheet_id
+            print(f"DEBUG: Selected sheet ID stored in context: {sheet_id}")
+            
             # Get pending data
             pending_data = context.user_data.get('pending_google_sheets_upload')
             if not pending_data:
@@ -226,6 +230,19 @@ class GoogleSheetsDispatcher(BaseCallbackHandler):
             
             receipt_data = pending_data['receipt_data']
             matching_result = pending_data['matching_result']
+            
+            # Ensure selected_sheet_id is preserved in context for upload
+            if 'selected_sheet_id' not in context.user_data:
+                # If no sheet was explicitly selected, use the default sheet
+                user_id = update.effective_user.id
+                default_sheet = await self.google_sheets_handler._get_user_default_sheet(user_id)
+                if default_sheet:
+                    context.user_data['selected_sheet_id'] = default_sheet.get('doc_id')
+                    print(f"DEBUG: Using default sheet ID: {default_sheet.get('doc_id')}")
+                else:
+                    print("DEBUG: No default sheet found, will use fallback in _execute_google_sheets_upload")
+            else:
+                print(f"DEBUG: Using selected sheet ID from context: {context.user_data['selected_sheet_id']}")
             
             # Execute upload with column mapping from Firestore
             await self._execute_google_sheets_upload(update, context, receipt_data, matching_result)
@@ -389,6 +406,8 @@ class GoogleSheetsDispatcher(BaseCallbackHandler):
             
             # Get selected sheet ID from context
             selected_sheet_id = context.user_data.get('selected_sheet_id')
+            print(f"DEBUG: _execute_google_sheets_upload - selected_sheet_id from context: {selected_sheet_id}")
+            
             if not selected_sheet_id:
                 # Fallback to default sheet
                 user_id = update.effective_user.id
@@ -398,6 +417,9 @@ class GoogleSheetsDispatcher(BaseCallbackHandler):
                     await self.ui_manager.send_menu(update, context, error_text, InlineKeyboardMarkup([]), 'Markdown')
                     return
                 selected_sheet_id = default_sheet.get('doc_id')
+                print(f"DEBUG: Using fallback default sheet ID: {selected_sheet_id}")
+            else:
+                print(f"DEBUG: Using selected sheet ID from context: {selected_sheet_id}")
             
             # Get sheet data
             from services.google_sheets_manager import get_google_sheets_manager
@@ -421,7 +443,10 @@ class GoogleSheetsDispatcher(BaseCallbackHandler):
             summary = sheet_service.get_upload_summary(receipt_data, matching_result)
             
             # Get the actual worksheet name from Google Sheets API
-            actual_worksheet_name = await self._get_actual_worksheet_name(sheet_service, sheet_data.get('worksheet_name', 'Receipts'))
+            configured_sheet_name = sheet_data.get('sheet_name', 'Sheet1')
+            print(f"DEBUG: Using sheet_name from Firestore: {configured_sheet_name}")
+            actual_worksheet_name = await self._get_actual_worksheet_name(sheet_service, configured_sheet_name)
+            print(f"DEBUG: Final worksheet name for upload: {actual_worksheet_name}")
             
             # Upload data using the selected sheet's configuration with column mapping
             success, message = sheet_service.upload_receipt_data(
@@ -429,7 +454,7 @@ class GoogleSheetsDispatcher(BaseCallbackHandler):
                 matching_result,
                 actual_worksheet_name,
                 column_mapping=sheet_data.get('column_mapping', {}),
-                data_start_row=sheet_data.get('data_start_row', 2)
+                data_start_row=sheet_data.get('data_start_row', 1)
             )
             
             # If upload failed, show the error message directly
@@ -443,7 +468,7 @@ class GoogleSheetsDispatcher(BaseCallbackHandler):
                     'timestamp': datetime.now().isoformat(),
                     'sheet_id': sheet_data.get('sheet_id'),
                     'sheet_name': sheet_data.get('friendly_name', 'Unknown'),
-                    'data_start_row': sheet_data.get('data_start_row', 2)
+                    'data_start_row': sheet_data.get('data_start_row', 1)
                 }
                 context.user_data['last_google_sheets_upload'] = upload_data
                 
@@ -548,26 +573,38 @@ class GoogleSheetsDispatcher(BaseCallbackHandler):
             # Get spreadsheet info to find the actual worksheet name
             spreadsheet = sheet_service.service.spreadsheets().get(spreadsheetId=sheet_service.spreadsheet_id).execute()
             
+            print(f"DEBUG: Looking for worksheet '{configured_name}' in spreadsheet")
+            print(f"DEBUG: Available sheets: {[sheet['properties']['title'] for sheet in spreadsheet.get('sheets', [])]}")
+            
             # Look for worksheet with configured name or similar
             for sheet in spreadsheet.get('sheets', []):
                 sheet_title = sheet['properties']['title']
+                print(f"DEBUG: Checking sheet: '{sheet_title}'")
                 
                 # Check if this is the worksheet we're looking for
                 if sheet_title == configured_name:
-                    return sheet_title
-                # Check if it's the first sheet (often default)
-                elif sheet_title == 'Лист1' or sheet_title == 'Sheet1':
+                    print(f"DEBUG: Found exact match: '{sheet_title}'")
                     return sheet_title
             
-            # If not found, return the first sheet name
+            # If exact match not found, try case-insensitive search
+            for sheet in spreadsheet.get('sheets', []):
+                sheet_title = sheet['properties']['title']
+                if sheet_title.lower() == configured_name.lower():
+                    print(f"DEBUG: Found case-insensitive match: '{sheet_title}'")
+                    return sheet_title
+            
+            # If still not found, return the first sheet name as fallback
             if spreadsheet.get('sheets'):
                 first_sheet_name = spreadsheet['sheets'][0]['properties']['title']
+                print(f"DEBUG: No match found, using first sheet: '{first_sheet_name}'")
                 return first_sheet_name
             
-            # Fallback to configured name
+            # Final fallback to configured name
+            print(f"DEBUG: No sheets found, using configured name: '{configured_name}'")
             return configured_name
             
         except Exception as e:
+            print(f"DEBUG: Error getting worksheet name: {e}")
             return configured_name
     
     async def _send_long_message_with_keyboard_callback(self, message, text: str, reply_markup):

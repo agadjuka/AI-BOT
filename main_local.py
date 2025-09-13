@@ -247,6 +247,13 @@ def main() -> None:
                 MessageHandler(filters.TEXT & ~filters.COMMAND, message_handlers.handle_column_input),
                 MessageHandler(filters.PHOTO, message_handlers.handle_photo)
             ],
+            config.AWAITING_SHEET_NAME_INPUT: [
+                CallbackQueryHandler(callback_handlers.handle_callback_query),
+                CallbackQueryHandler(callback_handlers.handle_correction_choice),
+                CommandHandler("dashboard", message_handlers.dashboard),
+                MessageHandler(filters.TEXT & ~filters.COMMAND, message_handlers.handle_sheet_name_input),
+                MessageHandler(filters.PHOTO, message_handlers.handle_photo)
+            ],
             config.AWAITING_START_ROW_INPUT: [
                 CallbackQueryHandler(callback_handlers.handle_callback_query),
                 CallbackQueryHandler(callback_handlers.handle_correction_choice),

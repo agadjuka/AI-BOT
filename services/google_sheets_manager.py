@@ -79,9 +79,10 @@ class GoogleSheetsManager:
                 "sheet_url": sheet_url,
                 "sheet_id": sheet_id,
                 "friendly_name": friendly_name,
+                "sheet_name": "Sheet1",  # Default sheet name
                 "is_default": is_default,
                 "created_at": datetime.utcnow(),
-                "data_start_row": 2,
+                "data_start_row": 1,
                 "column_mapping": default_mapping
             }
             
@@ -103,7 +104,8 @@ class GoogleSheetsManager:
         sheet_id: str, 
         friendly_name: str,
         column_mapping: Dict[str, str],
-        start_row: int
+        start_row: int,
+        sheet_name: str = "Sheet1"
     ) -> Union[str, bool]:
         """
         Add a new Google Sheet for a user with custom column mapping
@@ -115,6 +117,7 @@ class GoogleSheetsManager:
             friendly_name: User-friendly name for the sheet
             column_mapping: Custom column mapping dictionary
             start_row: Starting row for data
+            sheet_name: Name of the sheet (default: "Sheet1")
             
         Returns:
             Document ID of created sheet or True if successful, False if failed
@@ -137,6 +140,7 @@ class GoogleSheetsManager:
                 "sheet_url": sheet_url,
                 "sheet_id": sheet_id,
                 "friendly_name": friendly_name,
+                "sheet_name": sheet_name,  # Use provided sheet name
                 "is_default": is_default,
                 "created_at": datetime.utcnow(),
                 "data_start_row": start_row,
@@ -226,7 +230,8 @@ class GoogleSheetsManager:
         user_id: int, 
         sheet_doc_id: str, 
         new_mapping: Dict[str, str], 
-        new_start_row: int
+        new_start_row: int,
+        new_sheet_name: str = None
     ) -> bool:
         """
         Update column mapping and start row for a user's sheet
@@ -236,6 +241,7 @@ class GoogleSheetsManager:
             sheet_doc_id: Document ID of the sheet
             new_mapping: New column mapping dictionary
             new_start_row: New starting row for data
+            new_sheet_name: New sheet name (optional)
             
         Returns:
             True if successful, False otherwise
@@ -254,11 +260,19 @@ class GoogleSheetsManager:
                 print(f"❌ Sheet {sheet_doc_id} not found for user {user_id}")
                 return False
             
-            # Update the sheet
-            sheet_ref.update({
+            # Prepare update data
+            update_data = {
                 "column_mapping": new_mapping,
                 "data_start_row": new_start_row
-            })
+            }
+            
+            # Add sheet name if provided
+            if new_sheet_name:
+                update_data["sheet_name"] = new_sheet_name
+                print(f"DEBUG: Updating sheet_name in Firestore to: {new_sheet_name}")
+            
+            # Update the sheet
+            sheet_ref.update(update_data)
             
             print(f"✅ Updated mapping for sheet {sheet_doc_id} (user {user_id})")
             return True

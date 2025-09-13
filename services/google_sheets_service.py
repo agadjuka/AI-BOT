@@ -58,7 +58,7 @@ class GoogleSheetsService:
                            matching_result: IngredientMatchingResult,
                            worksheet_name: str = "Receipts",
                            column_mapping: Dict[str, str] = None,
-                           data_start_row: int = 2) -> tuple[bool, str]:
+                           data_start_row: int = 1) -> tuple[bool, str]:
         """
         Upload receipt data to Google Sheets with dynamic column mapping from Firestore
         
@@ -67,7 +67,7 @@ class GoogleSheetsService:
             matching_result: Ingredient matching results
             worksheet_name: Name of the worksheet to upload to
             column_mapping: Dictionary mapping field names to column letters from Firestore config
-            data_start_row: Starting row for data (default: 2)
+            data_start_row: Starting row for data (default: 1)
             
         Returns:
             (success, message)
@@ -249,7 +249,7 @@ class GoogleSheetsService:
         
         return row_array
     
-    def _upload_to_sheets(self, data_rows: List[List[Any]], worksheet_name: str, data_start_row: int = 2, column_mapping: Dict[str, str] = None):
+    def _upload_to_sheets(self, data_rows: List[List[Any]], worksheet_name: str, data_start_row: int = 1, column_mapping: Dict[str, str] = None):
         """Upload data to Google Sheets by appending to the next empty row with formatting"""
         import time
         
@@ -363,7 +363,7 @@ class GoogleSheetsService:
                 print(f"❌ Upload error: {e}")
                 raise e
 
-    def _upload_to_sheets_fallback(self, data_rows: List[List[Any]], worksheet_name: str, data_start_row: int = 2, column_mapping: Dict[str, str] = None):
+    def _upload_to_sheets_fallback(self, data_rows: List[List[Any]], worksheet_name: str, data_start_row: int = 1, column_mapping: Dict[str, str] = None):
         """Fallback upload method when append fails"""
         import time
         
@@ -436,7 +436,7 @@ class GoogleSheetsService:
         
         return {"updatedCells": 0}
     
-    def _find_next_empty_row(self, worksheet_name: str, data_start_row: int = 2, column_mapping: Dict[str, str] = None) -> int:
+    def _find_next_empty_row(self, worksheet_name: str, data_start_row: int = 1, column_mapping: Dict[str, str] = None) -> int:
         """Find the next empty row in the specified columns with retry logic"""
         import time
         max_retries = 3
@@ -455,14 +455,14 @@ class GoogleSheetsService:
                         start_col_letter = chr(ord('A') + min_col)
                         end_col_letter = chr(ord('A') + max_col)
                         
-                        # Check the range of columns used in mapping
-                        range_name = f"{worksheet_name}!{start_col_letter}{data_start_row}:{end_col_letter}"
+                        # Always search from row 1 to find empty rows, regardless of data_start_row
+                        range_name = f"{worksheet_name}!{start_col_letter}1:{end_col_letter}"
                     else:
-                        # Fallback to column A if no mapping
-                        range_name = f"{worksheet_name}!A{data_start_row}:A"
+                        # Fallback to column A if no mapping - search from row 1
+                        range_name = f"{worksheet_name}!A1:A"
                 else:
-                    # Fallback to column A if no mapping provided
-                    range_name = f"{worksheet_name}!A{data_start_row}:A"
+                    # Fallback to column A if no mapping provided - search from row 1
+                    range_name = f"{worksheet_name}!A1:A"
                 
                 print(f"📊 Checking for empty rows in range: {range_name}")
                 
@@ -491,11 +491,18 @@ class GoogleSheetsService:
                             is_empty = False
                     
                     if is_empty:
-                        print(f"📊 Found empty row at position {i + data_start_row}")
-                        return i + data_start_row
+                        # Convert 0-based index to 1-based row number
+                        row_number = i + 1
+                        # Ensure we don't return a row before data_start_row
+                        if row_number >= data_start_row:
+                            print(f"📊 Found empty row at position {row_number}")
+                            return row_number
                 
                 # If no empty rows found, return the next row after the last data
-                next_row = len(values) + data_start_row
+                next_row = len(values) + 1
+                # Ensure we don't return a row before data_start_row
+                if next_row < data_start_row:
+                    next_row = data_start_row
                 print(f"📊 No empty rows found, using row {next_row}")
                 return next_row
                 
@@ -509,12 +516,12 @@ class GoogleSheetsService:
                         continue
                     else:
                         print(f"⚠️ API quota exceeded after {max_retries} attempts, using fallback row")
-                        return data_start_row + 2
+                        return max(data_start_row, 1)
                 else:
-                    print(f"Warning: Could not find next empty row, using row {data_start_row + 2}: {e}")
-                    return data_start_row + 2
+                    print(f"Warning: Could not find next empty row, using row {max(data_start_row, 1)}: {e}")
+                    return max(data_start_row, 1)
         
-        return data_start_row + 2  # Fallback
+        return max(data_start_row, 1)  # Fallback
     
     def _apply_cell_formatting_with_retry(self, worksheet_name: str, start_row: int, end_row: int, start_col: int, end_col: int):
         """Apply formatting to cells with retry logic"""
@@ -625,14 +632,14 @@ class GoogleSheetsService:
         
         return summary
     
-    def delete_last_uploaded_rows(self, worksheet_name: str, row_count: int, data_start_row: int = 2) -> tuple[bool, str]:
+    def delete_last_uploaded_rows(self, worksheet_name: str, row_count: int, data_start_row: int = 1) -> tuple[bool, str]:
         """
         Delete the last uploaded rows from Google Sheets
         
         Args:
             worksheet_name: Name of the worksheet
             row_count: Number of rows to delete from the end
-            data_start_row: Starting row where data was uploaded (default: 2)
+            data_start_row: Starting row where data was uploaded (default: 1)
             
         Returns:
             (success, message)

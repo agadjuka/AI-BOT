@@ -135,7 +135,12 @@ class GoogleSheetsCallbackHandler(BaseCallbackHandler):
         )
         
         preview_title = self.locale_manager.get_text("sheets.callback.upload_preview_title", context)
-        text = f"{preview_title}\n\n```\n{table_preview}\n```"
+        
+        # Get sheet name for display
+        sheet_name = selected_sheet.get('sheet_name', 'Sheet1')
+        sheet_name_label = self.locale_manager.get_text("sheets.callback.sheet_name_label", context).format(sheet_name=sheet_name)
+        
+        text = f"{preview_title}\n\n```\n{table_preview}\n```\n\n{sheet_name_label}"
         
         keyboard = self._create_preview_keyboard(context, user_sheets, selected_sheet)
         reply_markup = InlineKeyboardMarkup(keyboard)
@@ -188,7 +193,7 @@ class GoogleSheetsCallbackHandler(BaseCallbackHandler):
             # Upload with user's configuration
             worksheet_name = "Receipts"  # Default worksheet name
             column_mapping = default_sheet.get('column_mapping', {})
-            data_start_row = default_sheet.get('data_start_row', 2)
+            data_start_row = default_sheet.get('data_start_row', 1)
             
             success, message = user_sheets_service.upload_receipt_data(
                 receipt_data, 
@@ -427,7 +432,7 @@ class GoogleSheetsCallbackHandler(BaseCallbackHandler):
             worksheet_name = last_upload.get('worksheet_name', 'Receipts')
             row_count = last_upload.get('row_count', 0)
             sheet_id = last_upload.get('sheet_id')
-            data_start_row = last_upload.get('data_start_row', 2)
+            data_start_row = last_upload.get('data_start_row', 1)
             
             if row_count <= 0:
                 error_text = self.locale_manager.get_text("sheets.callback.no_data_to_undo", context)

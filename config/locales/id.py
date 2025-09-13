@@ -301,6 +301,7 @@ ID_TRANSLATIONS = {
         "step2_instruction": "✅ Bagus, akses diberikan! Sekarang pilih nama sederhana untuk tabel agar tidak bingung. Contoh: <i>Pengeluaran Rumah</i>.",
         "step3_title": "📊 Konfigurasi Tabel (Langkah 3 dari 3)",
         "step3_instruction": "Sempurna! Tabel terhubung. Secara default, data akan ditulis sebagai berikut:",
+        "step3_sheet_info": "Data akan ditulis ke sheet: <code>Sheet1</code>",
         "step3_question": "Gunakan pengaturan ini atau konfigurasi sendiri?",
         "table_headers": {
             "date": "Tanggal",
@@ -316,8 +317,9 @@ ID_TRANSLATIONS = {
             "configure_manual": "✏️ Konfigurasi manual"
         },
         "mapping_editor": {
-            "title": "⚙️ **Editor Pengaturan Tabel**",
+            "title": "⚙️ Editor Pengaturan Tabel",
             "description": "Konfigurasi pemetaan antara field struk dan kolom tabel:",
+            "sheet_info": "Sheet: <code>{sheet_name}</code>",
             "current_settings": "**Pengaturan saat ini:**",
             "field_mapping": "{field_name} ➡️ Kolom {column}",
             "field_buttons": {
@@ -330,6 +332,7 @@ ID_TRANSLATIONS = {
             "action_buttons": {
                 "save_and_exit": "✅ Simpan dan Keluar",
                 "cancel": "⬅️ Batal",
+                "sheet": "📄 Sheet",
             },
             "column_input": "Tentukan kolom baru untuk field '{field_name}' (contoh: `C`) atau tulis `-` untuk tidak menggunakan field ini.",
             "field_names": {
@@ -338,7 +341,8 @@ ID_TRANSLATIONS = {
                 "quantity": "Jumlah", 
                 "price_per_item": "Harga per Item",
                 "total_price": "Total Harga"
-            }
+            },
+            "sheet_name_input": "Tentukan **nama sheet baru** (contoh: `Sales Data`). Nama harus persis sama dengan nama sheet di Google Spreadsheet Anda."
         },
         "errors": {
             "invalid_url": "🤔 Tidak dapat mengakses tabel. Silakan periksa kembali bahwa Anda memberikan izin <b>Editor</b> khusus untuk email ini. Coba kirim link lagi.",
@@ -443,7 +447,8 @@ ID_TRANSLATIONS = {
             "back_to_receipt_button": "📋 Kembali ke struk",
             "preview_google_sheets": "👁️ Preview Google Sheets",
             "no_default_sheet_found": "❌ Sheet default pengguna tidak ditemukan",
-            "no_column_mapping_found": "❌ Mapping kolom tidak ditemukan untuk sheet default"
+            "no_column_mapping_found": "❌ Mapping kolom tidak ditemukan untuk sheet default",
+            "sheet_name_label": "**Lembar:** `{sheet_name}`"
         }
     },
     

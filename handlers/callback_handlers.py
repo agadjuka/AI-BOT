@@ -79,8 +79,8 @@ class CallbackHandlers(BaseCallbackHandler):
                      "back_to_receipt", "back_to_main_menu"] or action.startswith("field_") or action.startswith("apply_") or action.startswith("edit_item_") or action.startswith("delete_item_"):
             return await self.receipt_edit_dispatcher._handle_receipt_edit_actions(update, context, action)
         
-        elif action.startswith("edit_") and not action.startswith("edit_mapping_field_"):
-            # Handle other edit actions (but not mapping field edits)
+        elif action.startswith("edit_") and not action.startswith("edit_mapping_field_") and action != "edit_sheet_name":
+            # Handle other edit actions (but not mapping field edits or sheet name edit)
             return await self.receipt_edit_dispatcher._handle_receipt_edit_actions(update, context, action)
         
         elif action in ["ingredient_matching", "manual_matching", "position_selection", "match_item_", 
@@ -137,7 +137,7 @@ class CallbackHandlers(BaseCallbackHandler):
             field_key = action.replace("edit_mapping_field_", "")
             return await self._handle_mapping_field_edit(update, context, field_key)
         
-        elif action in ["save_mapping_and_exit", "cancel_mapping_edit"]:
+        elif action in ["save_mapping_and_exit", "cancel_mapping_edit", "edit_sheet_name"]:
             # Handle mapping editor actions
             return await self._handle_mapping_editor_actions(update, context, action)
         
@@ -648,9 +648,10 @@ class CallbackHandlers(BaseCallbackHandler):
         # Create message text
         title = self.get_text("add_sheet.step3_title", context, update=update, sheet_name=sheet_name)
         instruction = self.get_text("add_sheet.step3_instruction", context, update=update)
+        sheet_info = self.get_text("add_sheet.step3_sheet_info", context, update=update)
         question = self.get_text("add_sheet.step3_question", context, update=update)
         
-        message_text = f"{title}\n\n{instruction}\n\n{table_preview}\n\n{question}"
+        message_text = f"{title}\n\n{instruction}\n\n{table_preview}\n\n<b>{sheet_info}</b>\n\n{question}"
         
         # Create keyboard
         keyboard = [
@@ -1059,18 +1060,19 @@ class CallbackHandlers(BaseCallbackHandler):
         # Get current settings from FSM state
         column_mapping = context.user_data.get('column_mapping', {})
         
-        # Create message text - remove markdown stars from title
+        # Create message text
         title = self.get_text("add_sheet.mapping_editor.title", context, update=update)
-        # Remove markdown stars if present
-        if title.startswith("**") and title.endswith("**"):
-            title = title[2:-2]
         
         description = self.get_text("add_sheet.mapping_editor.description", context, update=update)
         
         # Create table preview data
         table_preview = self._create_mapping_editor_table_preview(column_mapping, context)
         
-        message_text = f"{title}\n\n{description}\n\n{table_preview}"
+        # Get current sheet name
+        current_sheet_name = context.user_data.get('sheet_name', 'Sheet1')
+        sheet_info = self.get_text("add_sheet.mapping_editor.sheet_info", context, update=update, sheet_name=current_sheet_name)
+        
+        message_text = f"{title}\n\n{description}\n\n{table_preview}\n\n{sheet_info}"
         
         # Create keyboard with field buttons in two columns
         keyboard = []
@@ -1086,12 +1088,21 @@ class CallbackHandlers(BaseCallbackHandler):
                 callback_data=f"edit_mapping_field_{field_key}"
             ))
         
-        # Arrange buttons in two columns
+        # Arrange buttons in two columns, but put Sheet button with Total Price
         for i in range(0, len(field_buttons), 2):
             row = [field_buttons[i]]
             if i + 1 < len(field_buttons):
                 row.append(field_buttons[i + 1])
             keyboard.append(row)
+        
+        # Add Sheet button in the same row as Total Price (last field button)
+        # Total Price is at index 4 (field_buttons[4])
+        if len(field_buttons) >= 5:  # Make sure we have total_price button
+            # Add Sheet button to the last row (with Total Price)
+            keyboard[-1].append(InlineKeyboardButton(
+                self.get_text("add_sheet.mapping_editor.action_buttons.sheet", context, update=update),
+                callback_data="edit_sheet_name"
+            ))
         
         # Add action buttons
         keyboard.extend([
@@ -1171,10 +1182,33 @@ class CallbackHandlers(BaseCallbackHandler):
             # Cancel editing - return to sheet management
             return await self._handle_cancel_mapping_edit(update, context)
         
+        elif action == "edit_sheet_name":
+            # Edit sheet name
+            return await self._handle_edit_sheet_name(update, context)
+        
         else:
             # Fallback
             return await self._handle_dashboard_google_sheets_management(update, context)
     
+    
+    async def _handle_edit_sheet_name(self, update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
+        """Handle edit sheet name button"""
+        query = update.callback_query
+        await query.answer()
+        
+        # Create message text
+        message_text = self.get_text("add_sheet.mapping_editor.sheet_name_input", context, update=update)
+        
+        # Send new temporary message under the main one (don't edit the main message)
+        sent_message = await update.effective_message.reply_text(
+            message_text,
+            parse_mode='HTML'
+        )
+        
+        # Store the message ID for later deletion
+        context.user_data['sheet_name_request_message_id'] = sent_message.message_id
+        
+        return self.config.AWAITING_SHEET_NAME_INPUT
     
     async def _handle_save_mapping_and_exit(self, update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
         """Handle save mapping and exit button"""
@@ -1182,6 +1216,7 @@ class CallbackHandlers(BaseCallbackHandler):
         
         # Get final mapping data from FSM state
         column_mapping = context.user_data.get('column_mapping', {})
+        sheet_name = context.user_data.get('sheet_name', 'Sheet1')  # Get sheet name
         sheet_doc_id = context.user_data.get('sheet_doc_id')  # For editing existing sheet
         editing_sheet_id = context.user_data.get('editing_sheet_id')  # For new sheet
         
@@ -1195,7 +1230,8 @@ class CallbackHandlers(BaseCallbackHandler):
                     user_id=update.effective_user.id,
                     sheet_doc_id=sheet_doc_id,
                     new_mapping=column_mapping,
-                    new_start_row=2  # Default start row
+                    new_start_row=2,  # Default start row
+                    new_sheet_name=sheet_name
                 )
                 
                 if success:
@@ -1262,7 +1298,8 @@ class CallbackHandlers(BaseCallbackHandler):
                     sheet_id=editing_sheet_id,
                     friendly_name=sheet_name,
                     column_mapping=column_mapping,
-                    start_row=2  # Default start row
+                    start_row=2,  # Default start row
+                    sheet_name=context.user_data.get('sheet_name', 'Sheet1')
                 )
                 
                 if result:
