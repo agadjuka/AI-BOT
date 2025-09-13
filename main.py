@@ -5,7 +5,6 @@ Using FastAPI for better performance and modern async support
 import os
 import asyncio
 from typing import Optional
-from contextlib import asynccontextmanager
 from fastapi import FastAPI, Request, HTTPException
 from fastapi.responses import JSONResponse
 import httpx
@@ -85,51 +84,13 @@ except ImportError as e:
 TOKEN = None
 TELEGRAM_API = None
 
-# Global variables for keep-alive task
-keep_alive_task_obj: Optional[asyncio.Task] = None
-
-def get_service_url():
-    """Получает URL сервиса из переменных окружения Cloud Run"""
-    # Сначала проверяем SERVICE_URL (если установлен вручную)
-    service_url = os.getenv("SERVICE_URL")
-    if service_url:
-        return service_url
-    
-    # Если SERVICE_URL не установлен, используем известный URL Cloud Run
-    return "https://ai-bot-apmtihe4ga-as.a.run.app"
-
-@asynccontextmanager
-async def lifespan(app: FastAPI):
-    """Lifespan manager для FastAPI приложения"""
-    # Код, который выполняется при старте
-    print("🚀 Запуск приложения...")
-    
-    # Получаем URL сервиса
-    service_url = get_service_url()
-    if service_url:
-        # Проверяем, взят ли URL по умолчанию
-        if os.getenv("SERVICE_URL"):
-            print(f"💓 Starting keep-alive ping to {service_url} (из переменной SERVICE_URL)")
-        else:
-            print(f"💓 Starting keep-alive ping to {service_url} (URL по умолчанию)")
-        global keep_alive_task_obj
-        keep_alive_task_obj = asyncio.create_task(keep_alive_ping(service_url))
-    else:
-        print("⚠️ Не удалось определить URL сервиса - keep-alive отключен")
-    
-    yield
-    
-    # Код, который выполняется при выключении
-    if keep_alive_task_obj and not keep_alive_task_obj.done():
-        keep_alive_task_obj.cancel()
-        print("💓 Keep-alive task cancelled.")
-
 # FastAPI app
-app = FastAPI(title="AI Bot", description="Telegram Bot for receipt processing", lifespan=lifespan)
+app = FastAPI(title="AI Bot", description="Telegram Bot for receipt processing")
 
 # Global variables
 application: Optional[Application] = None
 ingredient_storage: Optional[IngredientStorage] = None
+keep_alive_task_obj: Optional[asyncio.Task] = None
 locale_manager_cache: Optional[object] = None
 
 async def cleanup_old_files_periodically(ingredient_storage: IngredientStorage) -> None:
@@ -147,43 +108,83 @@ async def cleanup_old_files_periodically(ingredient_storage: IngredientStorage) 
             # Продолжаем работу даже при ошибке
             await asyncio.sleep(60)  # Ждем минуту перед следующей попыткой
 
-async def keep_alive_ping(service_url: str) -> None:
-    """Асинхронная функция для отправки keep-alive пингов на собственный URL"""
-    print(f"💓 Keep-alive ping запущен для {service_url}")
+async def send_keep_alive_request(service_url: str) -> None:
+    """Отправляет простой HTTP запрос на собственный URL для keep-alive"""
+    try:
+        # Убираем trailing slash если есть
+        base_url = service_url.rstrip('/')
+        
+        # Пробуем разные endpoints для keep-alive
+        endpoints_to_try = [
+            f"{base_url}/keepalive",  # Специальный keep-alive endpoint
+            f"{base_url}/",           # Health check endpoint
+            f"{base_url}/health"      # Альтернативный health endpoint
+        ]
+        
+        async with httpx.AsyncClient(timeout=10.0) as client:
+            for endpoint in endpoints_to_try:
+                try:
+                    response = await client.get(endpoint)
+                    if response.status_code == 200:
+                        print(f"✅ Keep-alive HTTP запрос успешен: {endpoint}")
+                        return
+                    else:
+                        print(f"⚠️ Keep-alive HTTP запрос неуспешен: {endpoint} (HTTP {response.status_code})")
+                except Exception as e:
+                    print(f"⚠️ Ошибка keep-alive HTTP запроса {endpoint}: {e}")
+                    continue
+            
+            # Если все endpoints не сработали, выводим предупреждение
+            print("⚠️ Все keep-alive endpoints недоступны, но это не критично")
+            
+    except Exception as e:
+        print(f"❌ Критическая ошибка в send_keep_alive_request: {e}")
+        # Не поднимаем исключение, чтобы не прерывать работу keep-alive
+
+async def keep_alive_task() -> None:
+    """Keep-alive задача для предотвращения засыпания Cloud Run - с HTTP запросами"""
+    print("💓 Keep-alive задача запущена")
+    
+    # Получаем URL сервиса из переменных окружения
+    service_url = os.getenv("WEBHOOK_URL") or os.getenv("SERVICE_URL")
+    if not service_url:
+        print("⚠️ WEBHOOK_URL или SERVICE_URL не установлен, keep-alive будет работать только с логированием")
+        service_url = None
     
     while True:
         try:
-            await asyncio.sleep(300)  # 5 минут = 300 секунд
+            await asyncio.sleep(600)  # 10 minutes = 600 seconds
             
-            # Отправляем HTTP-запрос на собственный URL
-            async with httpx.AsyncClient(timeout=30.0) as client:
-                response = await client.get(f"{service_url}/health")
-                if response.status_code == 200:
-                    print("💓 Keep-alive ping sent successfully.")
-                else:
-                    print(f"⚠️ Keep-alive ping получил статус {response.status_code}")
-                    
+            import datetime
+            current_time = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+            print(f"💓 Keep-alive ping: {current_time}")
+            
+            # Отправляем HTTP запрос на себя, если URL доступен
+            if service_url:
+                try:
+                    await send_keep_alive_request(service_url)
+                    print(f"✅ Keep-alive HTTP запрос отправлен на {service_url}")
+                except Exception as e:
+                    print(f"❌ Ошибка отправки keep-alive HTTP запроса: {e}")
+                    # Продолжаем работу даже при ошибке HTTP запроса
+            else:
+                print("💡 Keep-alive работает только с логированием (URL не настроен)")
+                
         except asyncio.CancelledError:
-            print("💓 Keep-alive ping задача отменена")
+            print("💓 Keep-alive задача отменена")
             break
         except Exception as e:
-            print(f"❌ Keep-alive ping failed: {e}")
+            print(f"❌ Ошибка в keep-alive задаче: {e}")
             # Продолжаем работу даже при ошибке
             await asyncio.sleep(60)  # Ждем минуту перед следующей попыткой
 
 async def start_keep_alive_task():
-    """Запускает keep-alive задачу, если URL сервиса доступен"""
+    """Запускает keep-alive задачу, если она еще не запущена - OPTIMIZED"""
     global keep_alive_task_obj
     
-    # Получаем URL сервиса
-    service_url = get_service_url()
-    if not service_url:
-        print("⚠️ Не удалось определить URL сервиса - keep-alive отключен")
-        return
-    
     if keep_alive_task_obj is None or keep_alive_task_obj.done():
-        keep_alive_task_obj = asyncio.create_task(keep_alive_ping(service_url))
-        print(f"✅ Keep-alive задача запущена для {service_url}")
+        keep_alive_task_obj = asyncio.create_task(keep_alive_task())
+        print("✅ Keep-alive задача запущена")
 
 def get_cached_locale_manager():
     """Получает кэшированный LocaleManager для оптимизации"""
@@ -205,10 +206,6 @@ def create_application() -> Application:
     if not all([BotConfig, PromptManager, AIService, ReceiptAnalysisServiceCompat, 
                 MessageHandlers, CallbackHandlers, IngredientStorage]):
         raise ImportError("Required modules are not available")
-    
-    # Check if TOKEN is available
-    if not TOKEN:
-        raise ValueError("BOT_TOKEN is not set")
     
     # Initialize configuration
     config = BotConfig()
@@ -500,6 +497,9 @@ async def initialize_bot():
     cleanup_task = asyncio.create_task(cleanup_old_files_periodically(ingredient_storage))
     print("✅ Фоновая задача очистки запущена")
     
+    # Start keep-alive task
+    await start_keep_alive_task()
+    
     # Initialize the application
     print("🔧 Инициализируем Telegram application...")
     await application.initialize()
@@ -522,6 +522,10 @@ async def initialize_bot():
 @app.on_event("startup")
 async def startup_event():
     """Initialize bot on startup"""
+    # СРАЗУ запускаем keep-alive задачу, чтобы предотвратить засыпание
+    print("🚀 Запуск приложения - запускаем keep-alive задачу...")
+    await start_keep_alive_task()
+    
     try:
         await initialize_bot()
     except Exception as e:
@@ -540,11 +544,6 @@ async def health_check():
         "firestore_connected": db is not None,
         "keep_alive_running": keep_alive_task_obj is not None and not keep_alive_task_obj.done()
     }
-
-@app.get("/health")
-async def health_ping():
-    """Health ping endpoint для keep-alive запросов"""
-    return {"status": "ok"}
 
 @app.post("/set_webhook")
 async def set_webhook(request: Request):
@@ -576,24 +575,15 @@ async def get_webhook():
     """Get current webhook info"""
     try:
         if not application:
-            return {
-                "error": "Bot not initialized",
-                "application_initialized": False,
-                "webhook_info": None
-            }
+            raise HTTPException(status_code=500, detail="Bot not initialized")
         
         webhook_info = await application.bot.get_webhook_info()
         
         return {
-            "webhook_info": webhook_info.to_dict(),
-            "application_initialized": True
+            "webhook_info": webhook_info.to_dict()
         }
     except Exception as e:
-        return {
-            "error": str(e),
-            "application_initialized": application is not None,
-            "webhook_info": None
-        }
+        raise HTTPException(status_code=500, detail=str(e))
 
 @app.get("/debug")
 async def debug_info():
@@ -650,6 +640,10 @@ async def keepalive_check():
 async def webhook(request: Request):
     """Webhook endpoint for Telegram updates - OPTIMIZED VERSION"""
     try:
+        # Убеждаемся, что keep-alive задача запущена (только если нужно)
+        if keep_alive_task_obj is None or keep_alive_task_obj.done():
+            await start_keep_alive_task()
+        
         # Get the update from Telegram
         update_data = await request.json()
         
