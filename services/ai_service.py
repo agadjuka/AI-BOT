@@ -167,7 +167,7 @@ class AIService:
                 image_data = f.read()
             image_part = Part.from_data(data=image_data, mime_type="image/jpeg")
             
-            print("Отправка запроса в Gemini (Фаза 1: Анализ) - из пула экземпляров...")
+            # print("Отправка запроса в Gemini (Фаза 1: Анализ) - из пула экземпляров...")  # Отключено для чистоты консоли
             
             # Create a new model instance in the isolated service
             model = isolated_ai_service._create_model_instance()
@@ -184,7 +184,7 @@ class AIService:
             print(f"⏱️ Время выполнения запроса Gemini: {end_time - start_time:.2f} секунд")
             
             clean_response = response.text.strip().replace("```json", "").replace("```", "")
-            print("Ответ от Gemini (Фаза 1):", clean_response)
+            # print("Ответ от Gemini (Фаза 1):", clean_response)  # Отключено для чистоты консоли
             
             return clean_response
             
@@ -208,11 +208,11 @@ class AIService:
             image_data = f.read()
         image_part = Part.from_data(data=image_data, mime_type="image/jpeg")
         
-        print("Отправка запроса в Gemini (Фаза 1: Анализ)...")
+        # print("Отправка запроса в Gemini (Фаза 1: Анализ)...")  # Отключено для чистоты консоли
         response = model.generate_content([image_part, self.prompt_manager.get_analyze_prompt()])
         
         clean_response = response.text.strip().replace("```json", "").replace("```", "")
-        print("Ответ от Gemini (Фаза 1):", clean_response)
+        # print("Ответ от Gemini (Фаза 1):", clean_response)  # Отключено для чистоты консоли
         return clean_response
     
     async def analyze_receipt_phase2(self, final_data: str) -> str:
@@ -225,7 +225,7 @@ class AIService:
             # Get an AI service instance from the pool
             isolated_ai_service = self._get_ai_service_from_pool()
             
-            print("Отправка запроса в Gemini (Фаза 2: Форматирование) - из пула экземпляров...")
+            # print("Отправка запроса в Gemini (Фаза 2: Форматирование) - из пула экземпляров...")  # Отключено для чистоты консоли
             
             # Create a new model instance in the isolated service
             model = isolated_ai_service._create_model_instance()
@@ -240,7 +240,7 @@ class AIService:
             end_time = time.time()
             print(f"⏱️ Время выполнения запроса Gemini (Фаза 2): {end_time - start_time:.2f} секунд")
             
-            print("Ответ от Gemini (Фаза 2):", response.text)
+            # print("Ответ от Gemini (Фаза 2):", response.text)  # Отключено для чистоты консоли
             
             return response.text
             
@@ -260,9 +260,9 @@ class AIService:
         # Create a new model instance for this request to avoid blocking
         model = self._create_model_instance()
         
-        print("Отправка запроса в Gemini (Фаза 2: Форматирование)...")
+        # print("Отправка запроса в Gemini (Фаза 2: Форматирование)...")  # Отключено для чистоты консоли
         response = model.generate_content(self.prompt_manager.get_format_prompt() + final_data)
-        print("Ответ от Gemini (Фаза 2):", response.text)
+        # print("Ответ от Gemini (Фаза 2):", response.text)  # Отключено для чистоты консоли
         return response.text
     
     def parse_receipt_data(self, json_str: str) -> Dict[str, Any]:

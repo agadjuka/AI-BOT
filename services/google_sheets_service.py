@@ -150,9 +150,10 @@ class GoogleSheetsService:
         try:
             # Always use dynamic column mapping
             if column_mapping:
-                print(f"📊 Using dynamic column mapping: {column_mapping}")
+                # print(f"📊 Using dynamic column mapping: {column_mapping}")  # Отключено для чистоты консоли
+                pass
             else:
-                print("📊 Using default column mapping (no custom mapping provided)")
+                # print("📊 Using default column mapping (no custom mapping provided)")  # Отключено для чистоты консоли
                 # Use default mapping if none provided
                 column_mapping = {
                     'check_date': 'A',
@@ -187,7 +188,7 @@ class GoogleSheetsService:
                 'product_name': 'E'
             }
         
-        print(f"📊 Creating data with column mapping: {column_mapping}")
+        # print(f"📊 Creating data with column mapping: {column_mapping}")  # Отключено для чистоты консоли
         
         # Add data rows (no header, just data)
         for i, item in enumerate(receipt_data.items):
@@ -322,10 +323,10 @@ class GoogleSheetsService:
             if 0 <= array_index < len(row_array):
                 row_array[array_index] = value
         
-        print(f"📊 Converted row data: {row_data}")
-        print(f"📊 Column mapping: {column_mapping}")
-        print(f"📊 Result array: {row_array}")
-        print(f"📊 Array spans columns {chr(ord('A') + min_col)} to {chr(ord('A') + max_col)}")
+        # print(f"📊 Converted row data: {row_data}")  # Отключено для чистоты консоли
+        # print(f"📊 Column mapping: {column_mapping}")  # Отключено для чистоты консоли
+        # print(f"📊 Result array: {row_array}")  # Отключено для чистоты консоли
+        # print(f"📊 Array spans columns {chr(ord('A') + min_col)} to {chr(ord('A') + max_col)}")  # Отключено для чистоты консоли
         
         return row_array
     
@@ -400,7 +401,7 @@ class GoogleSheetsService:
                 # Fallback to A column if no data or no mapping
                 range_name = f"{worksheet_name}!A{next_row}:A{next_row + len(data_rows) - 1}" if data_rows else f"{worksheet_name}!A{next_row}:A{next_row}"
             
-            print(f"📊 Uploading to range: {range_name}")
+            # print(f"📊 Uploading to range: {range_name}")  # Отключено для чистоты консоли
             
             # Use update method instead of append to have precise control over positioning
             body = {
@@ -430,7 +431,7 @@ class GoogleSheetsService:
                     # Apply formatting to the uploaded cells (with retry)
                     self._apply_cell_formatting_with_retry(worksheet_name, start_row, end_row, start_col, end_col)
             
-            print(f"Appended {len(data_rows)} rows to Google Sheets")
+            # print(f"Appended {len(data_rows)} rows to Google Sheets")  # Отключено для чистоты консоли
             return result
             
         except Exception as e:
@@ -544,7 +545,7 @@ class GoogleSheetsService:
                     # Fallback to column A if no mapping provided - search from row 1
                     range_name = f"{worksheet_name}!A1:A"
                 
-                print(f"📊 Checking for empty rows in range: {range_name}")
+                # print(f"📊 Checking for empty rows in range: {range_name}")  # Отключено для чистоты консоли
                 
                 result = self.service.spreadsheets().values().get(
                     spreadsheetId=self.spreadsheet_id,
@@ -575,7 +576,7 @@ class GoogleSheetsService:
                         row_number = i + 1
                         # Ensure we don't return a row before data_start_row
                         if row_number >= data_start_row:
-                            print(f"📊 Found empty row at position {row_number}")
+                            # print(f"📊 Found empty row at position {row_number}")  # Отключено для чистоты консоли
                             return row_number
                 
                 # If no empty rows found, return the next row after the last data
@@ -583,7 +584,7 @@ class GoogleSheetsService:
                 # Ensure we don't return a row before data_start_row
                 if next_row < data_start_row:
                     next_row = data_start_row
-                print(f"📊 No empty rows found, using row {next_row}")
+                # print(f"📊 No empty rows found, using row {next_row}")  # Отключено для чистоты консоли
                 return next_row
                 
             except Exception as e:

@@ -114,7 +114,7 @@ class GoogleSheetsCallbackHandler(BaseCallbackHandler):
             await query.edit_message_text(error_text)
             return
         
-        print(f"📊 Using column mapping from sheet '{selected_sheet.get('friendly_name', 'Unknown')}': {column_mapping}")
+        # print(f"📊 Using column mapping from sheet '{selected_sheet.get('friendly_name', 'Unknown')}': {column_mapping}")  # Отключено для чистоты консоли
         
         # Store selected sheet ID in context for upload
         context.user_data['selected_sheet_id'] = selected_sheet.get('doc_id')
@@ -573,7 +573,7 @@ class GoogleSheetsCallbackHandler(BaseCallbackHandler):
         
         # Получаем все используемые колонки и сортируем их по алфавиту
         used_columns = sorted(column_mapping.values())
-        print(f"📊 Creating dynamic columns for: {used_columns}")
+        # print(f"📊 Creating dynamic columns for: {used_columns}")  # Отключено для чистоты консоли
         
         # Определяем ширину колонок согласно требованиям:
         # дата 10 (было 9, увеличили на 1), название 20 (было 21, уменьшили на 1), 
