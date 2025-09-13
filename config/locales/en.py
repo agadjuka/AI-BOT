@@ -10,6 +10,7 @@ EN_TRANSLATIONS = {
         "analyze_receipt": "📸 Receipt Analysis\n\nSend a photo of the receipt for analysis:",
         "main_menu": "🏠 Main Menu\n\nUse /start to begin new work.",
         "choose_language": "🌍 Choose language / Choose language:",
+        "new_receipt_ready": "🎉 **Ready to process new receipt!**\n\n📸 Send receipt image to chat, and I'll analyze it for you.\n\n✨ Bot is ready to work!",
         "dashboard": {
             "welcome_message": "👤 Personal Dashboard\n\nWelcome, {user}!\n\nChoose a setting:",
             "buttons": {

@@ -10,6 +10,7 @@ ID_TRANSLATIONS = {
         "analyze_receipt": "📸 Analisis struk\n\nKirim foto struk untuk dianalisis:",
         "main_menu": "🏠 Menu utama\n\nGunakan /start untuk memulai pekerjaan baru.",
         "choose_language": "🌍 Pilih bahasa / Choose language:",
+        "new_receipt_ready": "🎉 **Siap memproses struk baru!**\n\n📸 Kirim gambar struk ke chat, dan saya akan menganalisisnya untuk Anda.\n\n✨ Bot siap bekerja!",
         "dashboard": {
             "welcome_message": "👤 Dashboard Pribadi\n\nSelamat datang, {user}!\n\nPilih pengaturan:",
             "buttons": {

@@ -310,8 +310,23 @@ class GoogleSheetsDispatcher(BaseCallbackHandler):
             await query.answer(self.locale_manager.get_text("sheets.callback.undo_upload", context))
             await self.google_sheets_handler._handle_undo_google_sheets_upload(update, context)
         elif action == "start_new_receipt":
-            # Handle start new receipt
-            await update.callback_query.edit_message_text(self.locale_manager.get_text("welcome.analyze_receipt", context))
+            # Handle start new receipt - show beautiful message with emojis
+            print(f"DEBUG: start_new_receipt handler called for user {update.effective_user.id}")
+            await query.answer()
+            
+            # Clear all previous messages except anchor
+            await self.ui_manager.cleanup_all_except_anchor(update, context)
+            
+            # Send beautiful new receipt ready message
+            new_receipt_text = self.locale_manager.get_text("welcome.new_receipt_ready", context)
+            print(f"DEBUG: Sending new receipt ready message: {new_receipt_text}")
+            await self.ui_manager.send_menu(update, context, new_receipt_text, None, 'Markdown')
+            
+            # Clear user data to prepare for new receipt
+            context.user_data.clear()
+            print(f"DEBUG: Cleared user data for new receipt")
+            
+            return self.config.AWAITING_CORRECTION
         elif action == "generate_excel_file":
             # Generate Excel file
             matching_result = context.user_data.get('ingredient_matching_result')
