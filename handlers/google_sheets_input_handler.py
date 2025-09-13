@@ -30,7 +30,7 @@ class GoogleSheetsInputHandler(BaseMessageHandler):
         
         if not user_ingredients:
             await self.ui_manager.send_temp(
-                update, context, self.locale_manager.get_text("sheets.no_personal_ingredients", context), duration=5
+                update, context, "❌ Нет персональных ингредиентов для поиска. Добавьте ингредиенты в настройках для использования поиска.", duration=5
             )
             return self.config.AWAITING_CORRECTION
         
@@ -77,7 +77,7 @@ class GoogleSheetsInputHandler(BaseMessageHandler):
         
         if not user_ingredients:
             await self.ui_manager.send_temp(
-                update, context, self.locale_manager.get_text("sheets.no_personal_ingredients", context), duration=5
+                update, context, "❌ Нет персональных ингредиентов для поиска. Добавьте ингредиенты в настройках для использования поиска.", duration=5
             )
             return self.config.AWAITING_CORRECTION
         

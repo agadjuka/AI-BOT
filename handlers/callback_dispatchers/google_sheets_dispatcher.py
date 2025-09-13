@@ -94,28 +94,14 @@ class GoogleSheetsDispatcher(BaseCallbackHandler):
             ingredients_manager = get_ingredients_manager()
             user_ingredients = await ingredients_manager.get_user_ingredients(update.effective_user.id)
             
-            if not user_ingredients:
-                await query.edit_message_text(
-                    self.locale_manager.get_text("sheets.callback.upload_error", context, 
-                        message=self.locale_manager.get_text("sheets.callback.no_personal_ingredients", context)),
-                    reply_markup=InlineKeyboardMarkup([
-                        [InlineKeyboardButton(
-                            self.locale_manager.get_text("buttons.upload_to_google_sheets", context), 
-                            callback_data="upload_to_google_sheets"
-                        )],
-                        [InlineKeyboardButton(
-                            self.locale_manager.get_text("buttons.back_to_receipt", context), 
-                            callback_data="back_to_receipt"
-                        )]
-                    ]),
-                    parse_mode='Markdown'
-                )
-                return self.config.AWAITING_CORRECTION
-            
             # Convert user ingredients to the format expected by matching service
+            # If no personal ingredients, create empty dict - menu will still open
             user_ingredients_for_matching = {}
-            for i, ingredient_name in enumerate(user_ingredients):
-                user_ingredients_for_matching[ingredient_name] = f"user_ingredient_{i}"
+            if user_ingredients:
+                for i, ingredient_name in enumerate(user_ingredients):
+                    user_ingredients_for_matching[ingredient_name] = f"user_ingredient_{i}"
+            else:
+                print("DEBUG: No personal ingredients found, opening matching menu with empty ingredient list")
             
             print(f"DEBUG: Using {len(user_ingredients_for_matching)} personal ingredients for Google Sheets matching")
             
