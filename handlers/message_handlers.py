@@ -37,7 +37,7 @@ class MessageHandlers(BaseMessageHandler):
         self.ingredients_text_handler = IngredientsTextHandler(config, analysis_service)
         self.common_handlers = CommonHandlers(config, analysis_service)
     
-    async def start(self, update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    async def start(self, update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
         """Handle /start command"""
         print(f"DEBUG: Start command received from user {update.effective_user.id}")
         
@@ -83,7 +83,7 @@ class MessageHandlers(BaseMessageHandler):
         
         return self.config.AWAITING_CORRECTION
     
-    async def reset_language(self, update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    async def reset_language(self, update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
         """Handle /reset_language command - reset language and show selection"""
         # Clear language from user_data
         context.user_data.pop('language', None)
@@ -96,7 +96,7 @@ class MessageHandlers(BaseMessageHandler):
         )
         return self.config.AWAITING_CORRECTION
     
-    async def check_language(self, update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    async def check_language(self, update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
         """Handle /check_language command - show current language settings"""
         user_id = update.effective_user.id
         current_language = context.user_data.get('language', 'not set')

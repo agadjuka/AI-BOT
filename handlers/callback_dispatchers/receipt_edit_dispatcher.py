@@ -136,8 +136,24 @@ class ReceiptEditDispatcher(BaseCallbackHandler):
             photo_handler = PhotoHandler(self.config, self.analysis_service)
             await photo_handler.show_final_report_with_edit_button(update, context)
         elif action == "back_to_main_menu":
+            # Show main menu with instruction and buttons
+            keyboard = [
+                [InlineKeyboardButton(
+                    self.locale_manager.get_text("buttons.personal_dashboard", context), 
+                    callback_data="dashboard_main"
+                )],
+                [InlineKeyboardButton(
+                    self.locale_manager.get_text("buttons.scan_receipt", context), 
+                    callback_data="start_new_receipt"
+                )]
+            ]
+            
+            reply_markup = InlineKeyboardMarkup(keyboard)
+            
             await update.callback_query.edit_message_text(
-                self.locale_manager.get_text("welcome.main_menu", context)
+                self.locale_manager.get_text("welcome.start_instruction", context),
+                reply_markup=reply_markup,
+                parse_mode='Markdown'
             )
             return self.config.AWAITING_CORRECTION
         elif action.startswith("field_"):
