@@ -164,6 +164,9 @@ class ReceiptEditDispatcher(BaseCallbackHandler):
                 if 'messages_to_cleanup' not in context.user_data:
                     context.user_data['messages_to_cleanup'] = []
                 context.user_data['messages_to_cleanup'].append(temp_message.message_id)
+                # Also save this as the input request message for immediate cleanup
+                context.user_data['input_request_message_id'] = temp_message.message_id
+                print(f"DEBUG: Added message {temp_message.message_id} to cleanup list for field {field_name}")
                 return self.config.AWAITING_FIELD_EDIT
         elif action.startswith("apply_"):
             line_number = int(action.split("_")[-1])

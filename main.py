@@ -96,7 +96,7 @@ def get_service_url():
         return service_url
     
     # Если SERVICE_URL не установлен, используем известный URL Cloud Run
-    return "https://ai-bot-366461711404.asia-southeast1.run.app"
+    return "https://ai-bot-apmtihe4ga-as.a.run.app"
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -205,6 +205,10 @@ def create_application() -> Application:
     if not all([BotConfig, PromptManager, AIService, ReceiptAnalysisServiceCompat, 
                 MessageHandlers, CallbackHandlers, IngredientStorage]):
         raise ImportError("Required modules are not available")
+    
+    # Check if TOKEN is available
+    if not TOKEN:
+        raise ValueError("BOT_TOKEN is not set")
     
     # Initialize configuration
     config = BotConfig()
@@ -513,15 +517,24 @@ async def get_webhook():
     """Get current webhook info"""
     try:
         if not application:
-            raise HTTPException(status_code=500, detail="Bot not initialized")
+            return {
+                "error": "Bot not initialized",
+                "application_initialized": False,
+                "webhook_info": None
+            }
         
         webhook_info = await application.bot.get_webhook_info()
         
         return {
-            "webhook_info": webhook_info.to_dict()
+            "webhook_info": webhook_info.to_dict(),
+            "application_initialized": True
         }
     except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        return {
+            "error": str(e),
+            "application_initialized": application is not None,
+            "webhook_info": None
+        }
 
 @app.get("/debug")
 async def debug_info():

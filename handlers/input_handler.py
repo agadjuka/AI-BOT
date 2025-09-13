@@ -69,7 +69,6 @@ class InputHandler(BaseMessageHandler):
         try:
             # Clean up the input request message
             try:
-                # Find and delete the message that asked for input
                 if hasattr(update, 'message') and update.message:
                     # Delete the user's input message
                     await context.bot.delete_message(
@@ -77,30 +76,36 @@ class InputHandler(BaseMessageHandler):
                         message_id=update.message.message_id
                     )
                 
-                # Delete all messages from messages_to_cleanup (including "Editing amount for line" messages)
+                # Delete all messages from messages_to_cleanup (including "Editing quantity for line" messages)
                 messages_to_cleanup = context.user_data.get('messages_to_cleanup', [])
+                print(f"DEBUG: Cleaning up {len(messages_to_cleanup)} messages: {messages_to_cleanup}")
                 for message_id in messages_to_cleanup:
                     try:
                         await context.bot.delete_message(
                             chat_id=update.message.chat_id,
                             message_id=message_id
                         )
-                    except:
-                        pass  # Message might already be deleted
+                        print(f"DEBUG: Successfully deleted message {message_id}")
+                    except Exception as e:
+                        print(f"DEBUG: Failed to delete message {message_id}: {e}")
                 
                 # Clear the cleanup list after deletion
                 context.user_data['messages_to_cleanup'] = []
                 
-                # Try to delete the input request message (the one with "Enter new value:")
-                # This is usually the last message from the bot
-                if context.user_data.get('last_bot_message_id'):
+                # Also try to delete the input request message
+                input_request_message_id = context.user_data.get('input_request_message_id')
+                if input_request_message_id:
                     try:
                         await context.bot.delete_message(
                             chat_id=update.message.chat_id,
-                            message_id=context.user_data['last_bot_message_id']
+                            message_id=input_request_message_id
                         )
-                    except:
-                        pass  # Message might already be deleted
+                        print(f"DEBUG: Successfully deleted input request message {input_request_message_id}")
+                        # Clear the stored message ID
+                        context.user_data['input_request_message_id'] = None
+                    except Exception as e:
+                        print(f"DEBUG: Failed to delete input request message {input_request_message_id}: {e}")
+                
             except Exception as e:
                 print(f"DEBUG: Error cleaning up messages: {e}")
             
@@ -117,10 +122,26 @@ class InputHandler(BaseMessageHandler):
                 field_name = self.locale_manager.get_text("analysis.field_display_names.name", context)
                 is_valid, message = self.validator.validate_text_input(user_input, field_name)
                 if not is_valid:
+                    # Delete the input request message first
+                    input_request_message_id = context.user_data.get('input_request_message_id')
+                    if input_request_message_id:
+                        try:
+                            await context.bot.delete_message(
+                                chat_id=update.message.chat_id,
+                                message_id=input_request_message_id
+                            )
+                            context.user_data['input_request_message_id'] = None
+                        except:
+                            pass
+                    
                     error_message = self.locale_manager.get_text("errors.field_edit_error", context, error=message)
                     await self.ui_manager.send_temp(
                         update, context, error_message, duration=5
                     )
+                    # Show edit menu again after error
+                    edit_menu_message_id = context.user_data.get('edit_menu_message_id')
+                    if edit_menu_message_id:
+                        await self._send_edit_menu(update, context, edit_menu_message_id)
                     return self.config.AWAITING_FIELD_EDIT
                 item_to_edit.name = user_input
                 
@@ -128,10 +149,26 @@ class InputHandler(BaseMessageHandler):
                 # Parse number, considering possible separators (including decimal fractions)
                 numeric_value = self.text_parser.parse_user_input_number(user_input)
                 if numeric_value < 0:
+                    # Delete the input request message first
+                    input_request_message_id = context.user_data.get('input_request_message_id')
+                    if input_request_message_id:
+                        try:
+                            await context.bot.delete_message(
+                                chat_id=update.message.chat_id,
+                                message_id=input_request_message_id
+                            )
+                            context.user_data['input_request_message_id'] = None
+                        except:
+                            pass
+                    
                     error_message = self.locale_manager.get_text("validation.negative_value", context)
                     await self.ui_manager.send_temp(
                         update, context, error_message, duration=5
                     )
+                    # Show edit menu again after error
+                    edit_menu_message_id = context.user_data.get('edit_menu_message_id')
+                    if edit_menu_message_id:
+                        await self._send_edit_menu(update, context, edit_menu_message_id)
                     return self.config.AWAITING_FIELD_EDIT
                 
                 setattr(item_to_edit, field_to_edit, numeric_value)
