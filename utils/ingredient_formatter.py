@@ -73,10 +73,13 @@ class IngredientFormatter:
         """Create a table row for a match"""
         # Wrap names instead of truncating
         receipt_name_lines = self._wrap_text(match.receipt_item_name, self.max_name_length)
-        ingredient_name_lines = self._wrap_text(
-            match.matched_ingredient_name or "—", 
-            self.max_name_length
-        )
+        # Для красных маркеров (NO_MATCH) используем название из чека (Gemini recognition)
+        # Для зеленых и желтых маркеров используем сопоставленное название
+        if match.match_status.value == 'no_match':
+            ingredient_name = match.receipt_item_name
+        else:
+            ingredient_name = match.matched_ingredient_name or "—"
+        ingredient_name_lines = self._wrap_text(ingredient_name, self.max_name_length)
         
         # Get status emoji - if changed, show pencil instead of regular status
         if is_changed:

@@ -69,14 +69,15 @@ class FileGeneratorService:
             if i < len(matching_result.matches):
                 match = matching_result.matches[i]
             
-            # Use matched ingredient name if available (any status except NO_MATCH), 
-            # otherwise use receipt item name as fallback
+            # Use matched ingredient name for EXACT_MATCH and PARTIAL_MATCH,
+            # use receipt item name (Gemini recognition) for NO_MATCH (red marker)
             if match and match.match_status.value != 'no_match' and match.matched_ingredient_name:
                 name = match.matched_ingredient_name
                 print(f"DEBUG: Item {i+1}: Using matched name '{name}' (status: {match.match_status.value})")
             else:
+                # For NO_MATCH (red marker), use receipt item name (Gemini recognition)
                 name = item.name
-                print(f"DEBUG: Item {i+1}: Using receipt name '{name}' (no match or no matched name)")
+                print(f"DEBUG: Item {i+1}: Using receipt name '{name}' (status: {match.match_status.value if match else 'no_match'})")
             
             supply_item = {
                 'Name': name,
@@ -278,8 +279,8 @@ class FileGeneratorService:
             if i < len(matching_result.matches):
                 match = matching_result.matches[i]
             
-            # Skip items without matched ingredients
-            if not match or not match.matched_ingredient_name:
+            # Skip items without any data
+            if not match:
                 continue
             
             # Format date as DD.MM.YYYY
@@ -302,8 +303,13 @@ class FileGeneratorService:
                     price_formatted = f"{item.price:,.3f}".replace(",", " ").rstrip('0').rstrip('.')
                 price_str = f"{price_formatted}Rp"
             
-            # Use matched ingredient name
-            product_name = match.matched_ingredient_name
+            # Use matched ingredient name for EXACT_MATCH and PARTIAL_MATCH,
+            # use receipt item name (Gemini recognition) for NO_MATCH (red marker)
+            if match.match_status.value != 'no_match' and match.matched_ingredient_name:
+                product_name = match.matched_ingredient_name
+            else:
+                # For NO_MATCH (red marker), use receipt item name (Gemini recognition)
+                product_name = item.name
             
             data_rows.append([current_date, quantity_str, price_str, product_name])
         

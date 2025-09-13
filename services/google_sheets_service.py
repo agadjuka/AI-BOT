@@ -196,8 +196,8 @@ class GoogleSheetsService:
             if i < len(matching_result.matches):
                 match = matching_result.matches[i]
             
-            # Skip items without matched ingredients
-            if not match or not match.matched_ingredient_name:
+            # Skip items without any data
+            if not match:
                 continue
             
             # Create row data dictionary based on column mapping
@@ -220,7 +220,15 @@ class GoogleSheetsService:
             return datetime.now().strftime('%d.%m.%Y')
         
         elif field_name == 'product_name':
-            return match.matched_ingredient_name if match else ""
+            if not match:
+                return ""
+            # Use matched ingredient name for EXACT_MATCH and PARTIAL_MATCH,
+            # use receipt item name (Gemini recognition) for NO_MATCH (red marker)
+            if match.match_status.value != 'no_match' and match.matched_ingredient_name:
+                return match.matched_ingredient_name
+            else:
+                # For NO_MATCH (red marker), use receipt item name (Gemini recognition)
+                return item.name
         
         elif field_name == 'quantity':
             quantity = item.quantity if item.quantity is not None else 0

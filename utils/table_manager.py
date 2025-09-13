@@ -293,7 +293,12 @@ class TableManager:
         """Создает строку таблицы сопоставления ингредиентов"""
         # Получаем данные для колонок
         receipt_name = match.receipt_item_name
-        ingredient_name = match.matched_ingredient_name or "—"
+        # Для красных маркеров (NO_MATCH) используем название из чека (Gemini recognition)
+        # Для зеленых и желтых маркеров используем сопоставленное название
+        if match.match_status.value == 'no_match':
+            ingredient_name = match.receipt_item_name
+        else:
+            ingredient_name = match.matched_ingredient_name or "—"
         
         # Статус
         if is_changed:
@@ -323,7 +328,12 @@ class TableManager:
         """Создает строку таблицы сопоставления с Google Sheets"""
         # Получаем данные для колонок
         receipt_name = match.receipt_item_name
-        ingredient_name = match.matched_ingredient_name or "—"
+        # Для красных маркеров (NO_MATCH) используем название из чека (Gemini recognition)
+        # Для зеленых и желтых маркеров используем сопоставленное название
+        if match.match_status.value == 'no_match':
+            ingredient_name = match.receipt_item_name
+        else:
+            ingredient_name = match.matched_ingredient_name or "—"
         status_emoji = self._get_status_emoji(match.match_status)
         
         # Подготавливаем данные для строки

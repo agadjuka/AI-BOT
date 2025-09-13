@@ -168,10 +168,15 @@ class FileGenerationDispatcher(BaseCallbackHandler):
         # Add table rows
         for i, match in enumerate(matching_result.matches):
             status_emoji = self._get_status_emoji(match.match_status)
-            ingredient_name = self.common_handlers.truncate_name(
-                match.matched_ingredient_name or self.locale_manager.get_text("file_generation.not_matched", context), 
-                20
-            )
+            # Для красных маркеров (NO_MATCH) используем название из чека (Gemini recognition)
+            # Для зеленых и желтых маркеров используем сопоставленное название
+            if match.match_status.value == 'no_match':
+                ingredient_name = self.common_handlers.truncate_name(match.receipt_item_name, 20)
+            else:
+                ingredient_name = self.common_handlers.truncate_name(
+                    match.matched_ingredient_name or self.locale_manager.get_text("file_generation.not_matched", context), 
+                    20
+                )
             item_name = self.common_handlers.truncate_name(match.receipt_item_name, 25)
             
             table_text += f"| {i+1} | {item_name} | {ingredient_name} | {status_emoji} | {match.similarity_score:.2f} |\n"

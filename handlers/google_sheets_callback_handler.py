@@ -681,7 +681,13 @@ class GoogleSheetsCallbackHandler(BaseCallbackHandler):
                 if field_name == 'check_date':
                     row_data[column_letter.lower()] = datetime.now().strftime('%d.%m.%Y')
                 elif field_name == 'product_name':
-                    row_data[column_letter.lower()] = match.matched_ingredient_name if match and match.matched_ingredient_name else ""
+                    # Для красных маркеров (NO_MATCH) используем название из чека (Gemini recognition)
+                    # Для зеленых и желтых маркеров используем сопоставленное название
+                    if match and match.match_status.value != 'no_match' and match.matched_ingredient_name:
+                        row_data[column_letter.lower()] = match.matched_ingredient_name
+                    else:
+                        # Для NO_MATCH (red marker), используем название из чека (Gemini recognition)
+                        row_data[column_letter.lower()] = item.name if item.name else ""
                 elif field_name == 'quantity':
                     quantity = item.quantity if item.quantity is not None else 0
                     # Извлекаем объем из названия товара
