@@ -108,11 +108,14 @@ async def cleanup_old_files_periodically(ingredient_storage: IngredientStorage) 
             # Продолжаем работу даже при ошибке
             await asyncio.sleep(60)  # Ждем минуту перед следующей попыткой
 
-async def send_keep_alive_request(service_url: str) -> None:
-    """Отправляет простой HTTP запрос на собственный URL для keep-alive"""
+async def send_keep_alive_request() -> None:
+    """Отправляет простой HTTP запрос на собственный URL для keep-alive - НЕЗАВИСИМАЯ ВЕРСИЯ"""
+    # Хардкодим URL сервиса - никаких зависимостей от переменных окружения
+    SERVICE_URL = "https://ai-bot-apmtihe4ga-as.a.run.app"
+    
     try:
         # Убираем trailing slash если есть
-        base_url = service_url.rstrip('/')
+        base_url = SERVICE_URL.rstrip('/')
         
         # Пробуем разные endpoints для keep-alive
         endpoints_to_try = [
@@ -121,7 +124,7 @@ async def send_keep_alive_request(service_url: str) -> None:
             f"{base_url}/health"      # Альтернативный health endpoint
         ]
         
-        async with httpx.AsyncClient(timeout=10.0) as client:
+        async with httpx.AsyncClient(timeout=5.0) as client:  # Уменьшили timeout
             for endpoint in endpoints_to_try:
                 try:
                     response = await client.get(endpoint)
@@ -138,18 +141,12 @@ async def send_keep_alive_request(service_url: str) -> None:
             print("⚠️ Все keep-alive endpoints недоступны, но это не критично")
             
     except Exception as e:
-        print(f"❌ Критическая ошибка в send_keep_alive_request: {e}")
-        # Не поднимаем исключение, чтобы не прерывать работу keep-alive
+        print(f"❌ Ошибка в send_keep_alive_request: {e}")
+        # НЕ поднимаем исключение - keep-alive не должен влиять на работу бота
 
 async def keep_alive_task() -> None:
-    """Keep-alive задача для предотвращения засыпания Cloud Run - с HTTP запросами"""
-    print("💓 Keep-alive задача запущена")
-    
-    # Получаем URL сервиса из переменных окружения
-    service_url = os.getenv("WEBHOOK_URL") or os.getenv("SERVICE_URL")
-    if not service_url:
-        print("⚠️ WEBHOOK_URL или SERVICE_URL не установлен, keep-alive будет работать только с логированием")
-        service_url = None
+    """Keep-alive задача для предотвращения засыпания Cloud Run - НЕЗАВИСИМАЯ ВЕРСИЯ"""
+    print("💓 Keep-alive задача запущена (независимая версия)")
     
     while True:
         try:
@@ -159,32 +156,33 @@ async def keep_alive_task() -> None:
             current_time = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
             print(f"💓 Keep-alive ping: {current_time}")
             
-            # Отправляем HTTP запрос на себя, если URL доступен
-            if service_url:
-                try:
-                    await send_keep_alive_request(service_url)
-                    print(f"✅ Keep-alive HTTP запрос отправлен на {service_url}")
-                except Exception as e:
-                    print(f"❌ Ошибка отправки keep-alive HTTP запроса: {e}")
-                    # Продолжаем работу даже при ошибке HTTP запроса
-            else:
-                print("💡 Keep-alive работает только с логированием (URL не настроен)")
+            # Всегда пытаемся отправить HTTP запрос - никаких проверок переменных окружения
+            try:
+                await send_keep_alive_request()
+                print("✅ Keep-alive HTTP запрос отправлен")
+            except Exception as e:
+                print(f"❌ Ошибка отправки keep-alive HTTP запроса: {e}")
+                # Продолжаем работу даже при ошибке HTTP запроса
                 
         except asyncio.CancelledError:
             print("💓 Keep-alive задача отменена")
             break
         except Exception as e:
             print(f"❌ Ошибка в keep-alive задаче: {e}")
-            # Продолжаем работу даже при ошибке
+            # Продолжаем работу даже при ошибке - keep-alive НЕ должен влиять на бота
             await asyncio.sleep(60)  # Ждем минуту перед следующей попыткой
 
 async def start_keep_alive_task():
-    """Запускает keep-alive задачу, если она еще не запущена - OPTIMIZED"""
+    """Запускает keep-alive задачу, если она еще не запущена - НЕЗАВИСИМАЯ ВЕРСИЯ"""
     global keep_alive_task_obj
     
-    if keep_alive_task_obj is None or keep_alive_task_obj.done():
-        keep_alive_task_obj = asyncio.create_task(keep_alive_task())
-        print("✅ Keep-alive задача запущена")
+    try:
+        if keep_alive_task_obj is None or keep_alive_task_obj.done():
+            keep_alive_task_obj = asyncio.create_task(keep_alive_task())
+            print("✅ Keep-alive задача запущена (независимая версия)")
+    except Exception as e:
+        print(f"❌ Ошибка запуска keep-alive задачи: {e}")
+        # НЕ поднимаем исключение - keep-alive не должен блокировать запуск бота
 
 def get_cached_locale_manager():
     """Получает кэшированный LocaleManager для оптимизации"""
@@ -497,8 +495,12 @@ async def initialize_bot():
     cleanup_task = asyncio.create_task(cleanup_old_files_periodically(ingredient_storage))
     print("✅ Фоновая задача очистки запущена")
     
-    # Start keep-alive task
-    await start_keep_alive_task()
+    # Start keep-alive task - НЕ блокируем инициализацию бота
+    try:
+        await start_keep_alive_task()
+    except Exception as e:
+        print(f"⚠️ Keep-alive задача не запустилась при инициализации бота: {e}")
+        # НЕ прерываем инициализацию - keep-alive не критичен
     
     # Initialize the application
     print("🔧 Инициализируем Telegram application...")
@@ -522,9 +524,14 @@ async def initialize_bot():
 @app.on_event("startup")
 async def startup_event():
     """Initialize bot on startup"""
-    # СРАЗУ запускаем keep-alive задачу, чтобы предотвратить засыпание
-    print("🚀 Запуск приложения - запускаем keep-alive задачу...")
-    await start_keep_alive_task()
+    print("🚀 Запуск приложения...")
+    
+    # Запускаем keep-alive задачу в фоне - НЕ блокируем запуск бота
+    try:
+        await start_keep_alive_task()
+    except Exception as e:
+        print(f"⚠️ Keep-alive задача не запустилась: {e}")
+        # НЕ прерываем запуск - keep-alive не критичен
     
     try:
         await initialize_bot()
@@ -640,9 +647,8 @@ async def keepalive_check():
 async def webhook(request: Request):
     """Webhook endpoint for Telegram updates - OPTIMIZED VERSION"""
     try:
-        # Убеждаемся, что keep-alive задача запущена (только если нужно)
-        if keep_alive_task_obj is None or keep_alive_task_obj.done():
-            await start_keep_alive_task()
+        # НЕ проверяем keep-alive в webhook - это не критично для работы бота
+        # Keep-alive работает независимо в фоне
         
         # Get the update from Telegram
         update_data = await request.json()
