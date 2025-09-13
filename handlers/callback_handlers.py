@@ -117,6 +117,9 @@ class CallbackHandlers(BaseCallbackHandler):
         elif action == "dashboard_google_sheets_management":
             return await self._handle_dashboard_google_sheets_management(update, context)
         
+        elif action == "dashboard_instruction":
+            return await self._handle_dashboard_instruction(update, context)
+        
         elif action == "ingredients_management":
             return await self._handle_ingredients_management(update, context)
         
@@ -266,6 +269,10 @@ class CallbackHandlers(BaseCallbackHandler):
                 callback_data="ingredients_management"
             )],
             [InlineKeyboardButton(
+                self.get_text("welcome.dashboard.buttons.instruction", context, update=update), 
+                callback_data="dashboard_instruction"
+            )],
+            [InlineKeyboardButton(
                 self.get_text("buttons.back_to_main_menu", context, update=update), 
                 callback_data="back_to_main_menu"
             )]
@@ -278,6 +285,30 @@ class CallbackHandlers(BaseCallbackHandler):
                          user=update.effective_user.mention_html()),
             reply_markup=reply_markup,
             parse_mode='HTML'
+        )
+        
+        return self.config.AWAITING_CORRECTION
+    
+    async def _handle_dashboard_instruction(self, update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
+        """Handle instruction button from dashboard"""
+        query = update.callback_query
+        await query.answer()
+        
+        # Create back button
+        keyboard = [
+            [InlineKeyboardButton(
+                self.get_text("buttons.back", context, update=update), 
+                callback_data="dashboard_main"
+            )]
+        ]
+        
+        reply_markup = InlineKeyboardMarkup(keyboard)
+        
+        # Show instruction text
+        await query.edit_message_text(
+            self.get_text("welcome.instruction", context, update=update),
+            reply_markup=reply_markup,
+            parse_mode='Markdown'
         )
         
         return self.config.AWAITING_CORRECTION

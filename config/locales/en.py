@@ -7,6 +7,7 @@ EN_TRANSLATIONS = {
     # Welcome messages
     "welcome": {
         "start_message": "Hello, {user}! 👋\n\nChoose an action:",
+        "instruction": "📖 **Bot Usage Instructions**\n\n**Main Features:**\n\n🔹 **Receipt Scanning** - send a receipt photo and the bot will automatically extract all items and prices\n\n🔹 **Ingredient Matching** - the bot will find items from the receipt in your ingredients list for consistent naming\n\n🔹 **Google Sheets Upload** - all data is automatically saved to your spreadsheet\n\n**How to Get Started:**\n\n1️⃣ **Set up Google Sheets** in the personal dashboard\n2️⃣ **Upload ingredients list** for proper item matching\n3️⃣ **Send receipt photo** for analysis\n\n**Additional Features:**\n\n✏️ **Editing** - you can correct any data before uploading\n🔄 **Re-analysis** - if something goes wrong\n📊 **Preview** - view data before saving\n\n**Commands:**\n• `/start` - main menu\n• `/dashboard` - personal dashboard\n• `/reset_language` - reset language",
         "analyze_receipt": "📸 Receipt Analysis\n\nSend a photo of the receipt for analysis:",
         "main_menu": "🏠 Main Menu\n\nUse /start to begin new work.",
         "choose_language": "🌍 Choose language / Choose language:",
@@ -16,7 +17,8 @@ EN_TRANSLATIONS = {
             "buttons": {
                 "language_settings": "🌍 Language Settings",
                 "google_sheets_management": "⚙️ Google Sheets",
-                "ingredients_management": "🥕 Ingredients List"
+                "ingredients_management": "🥕 Ingredients List",
+                "instruction": "📖 Instruction"
             }
         }
     },

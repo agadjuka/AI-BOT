@@ -7,6 +7,7 @@ ID_TRANSLATIONS = {
     # Pesan selamat datang
     "welcome": {
         "start_message": "Halo, {user}! 👋\n\nPilih aksi:",
+        "instruction": "📖 **Instruksi Penggunaan Bot**\n\n**Fitur Utama:**\n\n🔹 **Pemindaian Struk** - kirim foto struk dan bot akan otomatis mengekstrak semua item dan harga\n\n🔹 **Pencocokan Bahan** - bot akan menemukan item dari struk dalam daftar bahan Anda untuk penamaan yang konsisten\n\n🔹 **Upload ke Google Sheets** - semua data otomatis disimpan ke spreadsheet Anda\n\n**Cara Memulai:**\n\n1️⃣ **Siapkan Google Sheets** di dashboard pribadi\n2️⃣ **Upload daftar bahan** untuk pencocokan item yang tepat\n3️⃣ **Kirim foto struk** untuk analisis\n\n**Fitur Tambahan:**\n\n✏️ **Edit** - Anda dapat memperbaiki data apa pun sebelum upload\n🔄 **Analisis Ulang** - jika ada yang salah\n📊 **Pratinjau** - lihat data sebelum menyimpan\n\n**Perintah:**\n• `/start` - menu utama\n• `/dashboard` - dashboard pribadi\n• `/reset_language` - reset bahasa",
         "analyze_receipt": "📸 Analisis struk\n\nKirim foto struk untuk dianalisis:",
         "main_menu": "🏠 Menu utama\n\nGunakan /start untuk memulai pekerjaan baru.",
         "choose_language": "🌍 Pilih bahasa / Choose language:",
@@ -16,7 +17,8 @@ ID_TRANSLATIONS = {
             "buttons": {
                 "language_settings": "🌍 Pengaturan Bahasa",
                 "google_sheets_management": "⚙️ Google Sheets",
-                "ingredients_management": "🥕 Daftar Bahan"
+                "ingredients_management": "🥕 Daftar Bahan",
+                "instruction": "📖 Instruksi"
             }
         }
     },

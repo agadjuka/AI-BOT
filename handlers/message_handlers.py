@@ -132,6 +132,10 @@ class MessageHandlers(BaseMessageHandler):
                 callback_data="ingredients_management"
             )],
             [InlineKeyboardButton(
+                self.get_text("welcome.dashboard.buttons.instruction", context, update=update), 
+                callback_data="dashboard_instruction"
+            )],
+            [InlineKeyboardButton(
                 self.get_text("buttons.back_to_main_menu", context, update=update), 
                 callback_data="back_to_main_menu"
             )]
