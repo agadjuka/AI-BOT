@@ -65,13 +65,13 @@ class GoogleSheetsManager:
             existing_sheets = sheets_ref.get()
             is_default = len(existing_sheets) == 0
             
-            # Create default column mapping
+            # Create default column mapping to match the actual sheet headers
+            # Headers are in row 2: B=Date, C=Volume, D=Harga, E=Product
             default_mapping = {
-                "check_date": "A",
-                "product_name": "B", 
-                "quantity": "C",
-                "price_per_item": "D",
-                "total_price": "E"
+                "check_date": "B",      # Date column
+                "quantity": "C",        # Volume column  
+                "price_per_item": "D",  # Harga (Price) column
+                "product_name": "E"     # Product column
             }
             
             # Prepare sheet data

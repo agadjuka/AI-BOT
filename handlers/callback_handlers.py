@@ -524,41 +524,20 @@ class CallbackHandlers(BaseCallbackHandler):
                 )
             return self.config.AWAITING_SHEET_URL
         
-        # Check access to the sheet (with fallback for JWT issues)
+        # Check access to the sheet
         has_access = await self._check_sheet_access(sheet_id)
         if not has_access:
-            # Check if it's a JWT error (system time issue) or real permission error
-            try:
-                from services.google_sheets_service import GoogleSheetsService
-                temp_service = GoogleSheetsService(
-                    credentials_path=self.config.GOOGLE_SHEETS_CREDENTIALS,
-                    spreadsheet_id=sheet_id
+            # If access check failed, show error message
+            main_message_id = context.user_data.get('main_sheet_message_id')
+            if main_message_id:
+                error_text = self.get_text("add_sheet.errors.invalid_url", context, update=update)
+                await context.bot.edit_message_text(
+                    chat_id=update.effective_chat.id,
+                    message_id=main_message_id,
+                    text=error_text,
+                    parse_mode='HTML'
                 )
-                # Try to access the sheet by getting its properties
-                if temp_service.service:
-                    result = temp_service.service.spreadsheets().get(spreadsheetId=sheet_id).execute()
-                    # If we get here, we have access
-                    print("✅ Access granted after retry")
-                    has_access = True
-                else:
-                    print("❌ Google Sheets service not initialized")
-            except Exception as e:
-                if "PERMISSION_DENIED" in str(e) or "permission" in str(e).lower():
-                    # Real permission error - edit main message to show error
-                    main_message_id = context.user_data.get('main_sheet_message_id')
-                    if main_message_id:
-                        error_text = self.get_text("add_sheet.errors.invalid_url", context, update=update)
-                        await context.bot.edit_message_text(
-                            chat_id=update.effective_chat.id,
-                            message_id=main_message_id,
-                            text=error_text,
-                            parse_mode='HTML'
-                        )
-                    return self.config.AWAITING_SHEET_URL
-                else:
-                    # JWT error - assume access is granted
-                    print("⚠️ JWT error, assuming access is granted (user added service account)")
-                    has_access = True
+            return self.config.AWAITING_SHEET_URL
         
         # Store sheet data in context
         context.user_data['new_sheet_url'] = user_message

@@ -159,22 +159,70 @@ class GoogleSheetsCallbackHandler(BaseCallbackHandler):
             await query.edit_message_text(uploading_text)
             
             receipt_data = context.user_data.get('receipt_data')
-            if receipt_data:
-                success, message = self.google_sheets_service.upload_receipt_data(receipt_data, matching_result)
-            else:
-                success, message = False, self.locale_manager.get_text("sheets.callback.receipt_data_not_found", context)
+            if not receipt_data:
+                error_text = self.locale_manager.get_text("sheets.callback.receipt_data_not_found", context)
+                await query.edit_message_text(error_text)
+                return
+            
+            # Get user's default sheet configuration from Firestore
+            user_id = update.effective_user.id
+            default_sheet = await self._get_user_default_sheet(user_id)
+            
+            if not default_sheet:
+                error_text = self.locale_manager.get_text("sheets.callback.no_sheet_configured", context)
+                await query.edit_message_text(error_text)
+                return
+            
+            # Create new GoogleSheetsService with user's sheet configuration
+            from services.google_sheets_service import GoogleSheetsService
+            user_sheets_service = GoogleSheetsService(
+                credentials_path=self.config.GOOGLE_SHEETS_CREDENTIALS,
+                spreadsheet_id=default_sheet.get('sheet_id')
+            )
+            
+            if not user_sheets_service.is_available():
+                error_text = self.locale_manager.get_text("sheets.callback.service_not_available", context)
+                await query.edit_message_text(error_text)
+                return
+            
+            # Upload with user's configuration
+            worksheet_name = "Receipts"  # Default worksheet name
+            column_mapping = default_sheet.get('column_mapping', {})
+            data_start_row = default_sheet.get('data_start_row', 2)
+            
+            success, message = user_sheets_service.upload_receipt_data(
+                receipt_data, 
+                matching_result,
+                worksheet_name=worksheet_name,
+                column_mapping=column_mapping,
+                data_start_row=data_start_row
+            )
             
             if success:
                 success_text = self.locale_manager.get_text("sheets.callback.upload_successful", context)
                 await self._show_upload_success_page(update, context, success_text, message)
             else:
-                error_text = self.locale_manager.get_text("sheets.callback.upload_error", context).format(message=message)
+                # Check for specific error types and provide better messages
+                if "quota" in message.lower() or "429" in message:
+                    error_text = self.locale_manager.get_text("sheets.callback.quota_exceeded", context)
+                elif "permission" in message.lower():
+                    error_text = self.locale_manager.get_text("sheets.callback.permission_denied", context)
+                elif "not found" in message.lower():
+                    error_text = self.locale_manager.get_text("sheets.callback.sheet_not_found", context)
+                else:
+                    error_text = self.locale_manager.get_text("sheets.callback.upload_error", context).format(message=message)
+                
                 await query.edit_message_text(error_text)
                 
         except Exception as e:
             print(f"DEBUG: Error uploading to Google Sheets: {e}")
-            error_text = self.locale_manager.get_text("sheets.callback.upload_error", context).format(message=str(e))
-            await query.edit_message_text(error_text)
+            # Escape special characters to prevent Markdown parsing errors
+            error_message = str(e).replace('`', '').replace('*', '').replace('_', '').replace('[', '').replace(']', '').replace('(', '').replace(')', '')
+            # Additional escaping for common problematic characters
+            error_message = error_message.replace('!', '').replace('@', '').replace('#', '').replace('$', '').replace('%', '').replace('^', '').replace('&', '').replace('+', '').replace('=', '').replace('{', '').replace('}', '').replace('|', '').replace('\\', '').replace(':', '').replace(';', '').replace('"', '').replace("'", '').replace('<', '').replace('>', '').replace(',', '').replace('.', '').replace('?', '').replace('/', '')
+            
+            error_text = self.locale_manager.get_text("sheets.callback.upload_error", context).format(message=error_message)
+            await query.edit_message_text(error_text, parse_mode='HTML')
     
     # ==================== NAVIGATION METHODS ====================
     

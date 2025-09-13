@@ -22,67 +22,24 @@ class GoogleSheetsService:
         self._initialize_service()
     
     def _initialize_service(self):
-        """Initialize Google Sheets API service"""
+        """Initialize Google Sheets API service - simplified version"""
         if not self.spreadsheet_id:
             print("⚠️ Google Sheets spreadsheet ID not configured. Service will be disabled.")
+            return
+        
+        if not self.credentials_path or not os.path.exists(self.credentials_path):
+            print("⚠️ Google Sheets credentials file not found. Service will be disabled.")
             return
         
         try:
             from google.oauth2.service_account import Credentials
             from googleapiclient.discovery import build
-            import json
             
-            # Try to use the same credentials system as AI Service
-            credentials = None
-            
-            # Debug: Print environment variables
-            print("🔍 Debug: Checking Google Sheets credentials...")
-            print(f"🔍 GOOGLE_APPLICATION_CREDENTIALS_JSON exists: {bool(os.getenv('GOOGLE_APPLICATION_CREDENTIALS_JSON'))}")
-            print(f"🔍 credentials_path: {self.credentials_path}")
-            print(f"🔍 credentials_path exists: {os.path.exists(self.credentials_path) if self.credentials_path else False}")
-            
-            # First, try to use GOOGLE_APPLICATION_CREDENTIALS_JSON environment variable
-            if os.getenv("GOOGLE_APPLICATION_CREDENTIALS_JSON"):
-                try:
-                    credentials_json = os.getenv("GOOGLE_APPLICATION_CREDENTIALS_JSON")
-                    print(f"🔍 GOOGLE_APPLICATION_CREDENTIALS_JSON length: {len(credentials_json)}")
-                    
-                    credentials_info = json.loads(credentials_json)
-                    print(f"🔍 Parsed credentials info keys: {list(credentials_info.keys())}")
-                    
-                    credentials = Credentials.from_service_account_info(
-                        credentials_info,
-                        scopes=['https://www.googleapis.com/auth/spreadsheets']
-                    )
-                    print("✅ Google Sheets service initialized with GOOGLE_APPLICATION_CREDENTIALS_JSON")
-                except Exception as e:
-                    print(f"❌ Error parsing GOOGLE_APPLICATION_CREDENTIALS_JSON: {e}")
-                    print(f"🔍 First 100 chars of credentials: {credentials_json[:100] if credentials_json else 'None'}")
-            
-            # If that fails, try the credentials file path
-            if not credentials and self.credentials_path and os.path.exists(self.credentials_path):
-                try:
-                    credentials = Credentials.from_service_account_file(
-                        self.credentials_path,
-                        scopes=['https://www.googleapis.com/auth/spreadsheets']
-                    )
-                    print("✅ Google Sheets service initialized with credentials file")
-                except Exception as e:
-                    print(f"❌ Error loading credentials file: {e}")
-            
-            # If still no credentials, try default authentication
-            if not credentials:
-                try:
-                    from google.auth import default
-                    credentials, project = default()
-                    print(f"✅ Google Sheets service initialized with default credentials for project: {project}")
-                except Exception as e:
-                    print(f"❌ Error with default authentication: {e}")
-            
-            if not credentials:
-                print("⚠️ No valid credentials found for Google Sheets. Service will be disabled.")
-                print("💡 Make sure to set GOOGLE_APPLICATION_CREDENTIALS_JSON environment variable")
-                return
+            # Simple credentials loading from file
+            credentials = Credentials.from_service_account_file(
+                self.credentials_path,
+                scopes=['https://www.googleapis.com/auth/spreadsheets']
+            )
             
             self.service = build('sheets', 'v4', credentials=credentials)
             print("✅ Google Sheets service initialized successfully")
@@ -90,8 +47,6 @@ class GoogleSheetsService:
             
         except Exception as e:
             print(f"❌ Error initializing Google Sheets service: {e}")
-            import traceback
-            traceback.print_exc()
             self.service = None
     
     def is_available(self) -> bool:
@@ -101,14 +56,18 @@ class GoogleSheetsService:
     def upload_receipt_data(self, 
                            receipt_data: ReceiptData, 
                            matching_result: IngredientMatchingResult,
-                           worksheet_name: str = "Receipts") -> tuple[bool, str]:
+                           worksheet_name: str = "Receipts",
+                           column_mapping: Dict[str, str] = None,
+                           data_start_row: int = 2) -> tuple[bool, str]:
         """
-        Upload receipt data to Google Sheets
+        Upload receipt data to Google Sheets with dynamic column mapping from Firestore
         
         Args:
             receipt_data: Processed receipt data
             matching_result: Ingredient matching results
             worksheet_name: Name of the worksheet to upload to
+            column_mapping: Dictionary mapping field names to column letters from Firestore config
+            data_start_row: Starting row for data (default: 2)
             
         Returns:
             (success, message)
@@ -117,20 +76,46 @@ class GoogleSheetsService:
             return False, "Google Sheets service is not available. Please check configuration."
         
         try:
-            # Create data rows for Google Sheets
-            data_rows = self._create_sheets_data(receipt_data, matching_result)
+            # Always use dynamic column mapping
+            if column_mapping:
+                print(f"📊 Using dynamic column mapping: {column_mapping}")
+            else:
+                print("📊 Using default column mapping (no custom mapping provided)")
+                # Use default mapping if none provided
+                column_mapping = {
+                    'check_date': 'A',
+                    'product_name': 'B',
+                    'quantity': 'C',
+                    'price_per_item': 'D',
+                    'total_price': 'E'
+                }
             
-            # Upload data to Google Sheets
-            result = self._upload_to_sheets(data_rows, worksheet_name)
+            # Create data rows using dynamic column mapping
+            data_rows = self._create_sheets_data(receipt_data, matching_result, column_mapping)
+            # Upload with proper column positioning
+            result = self._upload_to_sheets(data_rows, worksheet_name, data_start_row)
             
-            return True, f"Successfully uploaded {len(data_rows)} items to Google Sheets (updated {result.get('updatedCells', 0)} cells)"
+            return True, f"Successfully uploaded {len(data_rows)} items to Google Sheets"
             
         except Exception as e:
             return False, f"Error uploading to Google Sheets: {str(e)}"
     
-    def _create_sheets_data(self, receipt_data: ReceiptData, matching_result: IngredientMatchingResult) -> List[List[Any]]:
-        """Create data rows for Google Sheets in the target format (Date, Volume, Harga, Product)"""
+    
+    
+    def _create_sheets_data(self, receipt_data: ReceiptData, matching_result: IngredientMatchingResult, column_mapping: Dict[str, str] = None) -> List[List[Any]]:
+        """Create data rows for Google Sheets using dynamic column mapping"""
         data_rows = []
+        
+        # Use default mapping if none provided (backward compatibility)
+        if not column_mapping:
+            column_mapping = {
+                'check_date': 'B',
+                'quantity': 'C', 
+                'price_per_item': 'D',
+                'product_name': 'E'
+            }
+        
+        print(f"📊 Creating data with column mapping: {column_mapping}")
         
         # Add data rows (no header, just data)
         for i, item in enumerate(receipt_data.items):
@@ -143,10 +128,29 @@ class GoogleSheetsService:
             if not match or not match.matched_ingredient_name:
                 continue
             
-            # Format date as DD.MM.YYYY
-            current_date = datetime.now().strftime('%d.%m.%Y')
+            # Create row data dictionary based on column mapping
+            row_data = {}
             
-            # Calculate volume using the same logic as in preview
+            # Process each field in the column mapping
+            for field_name, column_letter in column_mapping.items():
+                value = self._get_field_value(field_name, item, match, receipt_data)
+                row_data[column_letter] = value
+            
+            # Convert row_data dictionary to array with proper column order
+            row_array = self._convert_row_data_to_array(row_data, column_mapping)
+            data_rows.append(row_array)
+        
+        return data_rows
+    
+    def _get_field_value(self, field_name: str, item: ReceiptItem, match: IngredientMatch, receipt_data: ReceiptData) -> str:
+        """Get formatted value for a specific field based on field name"""
+        if field_name == 'check_date':
+            return datetime.now().strftime('%d.%m.%Y')
+        
+        elif field_name == 'product_name':
+            return match.matched_ingredient_name if match else ""
+        
+        elif field_name == 'quantity':
             quantity = item.quantity if item.quantity is not None else 0
             
             # Extract volume from product name and multiply by quantity
@@ -155,22 +159,21 @@ class GoogleSheetsService:
                 # Multiply extracted volume by quantity
                 total_volume = volume_from_name * quantity
                 if total_volume == int(total_volume):
-                    quantity_str = f"{int(total_volume)} kg"
+                    return f"{int(total_volume)} kg"
                 else:
                     # Round to 2 decimal places
-                    quantity_str = f"{total_volume:.2f} kg"
+                    return f"{total_volume:.2f} kg"
             elif quantity > 0:
                 # Fallback to original behavior if no volume found in name
                 if quantity == int(quantity):
-                    quantity_str = f"{int(quantity)} kg"
+                    return f"{int(quantity)} kg"
                 else:
                     # Round to 2 decimal places
-                    quantity_str = f"{quantity:.2f} kg"
+                    return f"{quantity:.2f} kg"
             else:
-                quantity_str = ""
-            
-            # Format price with "Rp" suffix
-            price_str = ""
+                return ""
+        
+        elif field_name in ['price_per_item', 'unit_price']:
             if item.price is not None and item.price > 0:
                 # Format price with spaces for thousands separator, preserving decimal places
                 if item.price == int(item.price):
@@ -179,77 +182,290 @@ class GoogleSheetsService:
                 else:
                     # If it has decimal places, show them
                     price_formatted = f"{item.price:,.3f}".replace(",", " ").rstrip('0').rstrip('.')
-                price_str = f"{price_formatted}Rp"
-            
-            # Use matched ingredient name as product name
-            product_name = match.matched_ingredient_name
-            
-            # Prepare row data in target format: Date, Volume, Harga, Product
-            row = [
-                current_date,      # Date (B column)
-                quantity_str,      # Volume (C column) 
-                price_str,         # Harga (D column)
-                product_name       # Product (E column)
-            ]
-            
-            data_rows.append(row)
+                return f"{price_formatted}Rp"
+            return ""
         
-        return data_rows
+        elif field_name == 'total_price':
+            if item.total is not None and item.total > 0:
+                # Format total price with spaces for thousands separator
+                if item.total == int(item.total):
+                    price_formatted = f"{int(item.total):,}".replace(",", " ")
+                else:
+                    price_formatted = f"{item.total:,.3f}".replace(",", " ").rstrip('0').rstrip('.')
+                return f"{price_formatted}Rp"
+            return ""
+        
+        elif field_name == 'store_name':
+            # ReceiptData doesn't have store_name field, return empty
+            return ""
+        
+        elif field_name == 'receipt_number':
+            # ReceiptData doesn't have receipt_number field, return empty
+            return ""
+        
+        elif field_name == 'ingredient_name':
+            # Return the matched ingredient name
+            return match.matched_ingredient_name if match else ""
+        
+        elif field_name == 'original_name':
+            # Return the original product name from receipt
+            return item.name if item.name else ""
+        
+        elif field_name == 'match_status':
+            # Return the match status
+            return match.match_status.value if match else "no_match"
+        
+        else:
+            # Unknown field, return empty string
+            print(f"⚠️ Unknown field in column mapping: {field_name}")
+            return ""
     
-    def _upload_to_sheets(self, data_rows: List[List[Any]], worksheet_name: str):
+    def _convert_row_data_to_array(self, row_data: Dict[str, str], column_mapping: Dict[str, str]) -> List[str]:
+        """Convert row_data dictionary to array with proper column order"""
+        # Find the range of columns used
+        column_letters = list(column_mapping.values())
+        if not column_letters:
+            return []
+        
+        # Convert column letters to indices (A=0, B=1, etc.)
+        min_col = min(ord(col) - ord('A') for col in column_letters)
+        max_col = max(ord(col) - ord('A') for col in column_letters)
+        
+        # Create array with proper length
+        row_array = [''] * (max_col - min_col + 1)
+        
+        # Fill in the values at correct positions
+        for column_letter, value in row_data.items():
+            col_index = ord(column_letter) - ord('A')
+            array_index = col_index - min_col
+            if 0 <= array_index < len(row_array):
+                row_array[array_index] = value
+        
+        return row_array
+    
+    def _upload_to_sheets(self, data_rows: List[List[Any]], worksheet_name: str, data_start_row: int = 2):
         """Upload data to Google Sheets by appending to the next empty row with formatting"""
+        import time
+        
+        if not data_rows:
+            print("⚠️ No data rows to upload")
+            return {"updatedCells": 0}
+        
+        # Validate data rows structure
+        if not all(isinstance(row, list) for row in data_rows):
+            print("❌ Invalid data structure: all rows must be lists")
+            raise ValueError("Invalid data structure: all rows must be lists")
+        
+        # Check if all rows have the same length
+        if len(data_rows) > 1:
+            first_row_length = len(data_rows[0])
+            for i, row in enumerate(data_rows[1:], 1):
+                if len(row) != first_row_length:
+                    print(f"⚠️ Row {i} has different length ({len(row)}) than first row ({first_row_length})")
+                    # Pad shorter rows with empty strings
+                    while len(row) < first_row_length:
+                        row.append('')
+                    # Truncate longer rows
+                    if len(row) > first_row_length:
+                        data_rows[i] = row[:first_row_length]
+        
+        # Use append method instead of finding empty row to avoid quota issues
+        # This is more efficient and avoids the need to check existing data
+        try:
+            # Use append method which automatically finds the next empty row
+            body = {
+                'values': data_rows
+            }
+            
+            # For append operations, use the full range format
+            # Google Sheets API append method needs a proper range specification
+            # First check if the worksheet exists, if not use the first sheet
+            try:
+                # Try to get the sheet to verify it exists
+                spreadsheet = self.service.spreadsheets().get(spreadsheetId=self.spreadsheet_id).execute()
+                sheets = spreadsheet.get('sheets', [])
+                
+                # Check if the worksheet exists
+                sheet_exists = any(sheet.get('properties', {}).get('title') == worksheet_name for sheet in sheets)
+                
+                if not sheet_exists and sheets:
+                    # Use the first available sheet if the specified one doesn't exist
+                    actual_worksheet_name = sheets[0].get('properties', {}).get('title', 'Sheet1')
+                    print(f"⚠️ Worksheet '{worksheet_name}' not found, using '{actual_worksheet_name}' instead")
+                    worksheet_name = actual_worksheet_name
+                
+            except Exception as e:
+                print(f"⚠️ Could not verify worksheet existence: {e}")
+            
+            range_name = f"{worksheet_name}!A:Z"  # Use full range to avoid parsing errors
+            
+            result = self.service.spreadsheets().values().append(
+                spreadsheetId=self.spreadsheet_id,
+                range=range_name,
+                valueInputOption='RAW',
+                insertDataOption='INSERT_ROWS',
+                body=body
+            ).execute()
+            
+            # Get the range that was updated
+            updated_range = result.get('updates', {}).get('updatedRange', '')
+            if updated_range:
+                # Extract row numbers from the updated range
+                # Format: "SheetName!A2:A5" -> extract 2 and 5
+                import re
+                match = re.search(r'A(\d+):A(\d+)', updated_range)
+                if match:
+                    start_row = int(match.group(1))
+                    end_row = int(match.group(2))
+                    start_col = 1
+                    end_col = len(data_rows[0]) if data_rows else 1
+                    
+                    # Apply formatting to the uploaded cells (with retry)
+                    self._apply_cell_formatting_with_retry(worksheet_name, start_row, end_row, start_col, end_col)
+            
+            print(f"Appended {len(data_rows)} rows to Google Sheets")
+            return result
+            
+        except Exception as e:
+            error_msg = str(e)
+            if "429" in error_msg or "quota" in error_msg.lower():
+                print(f"⚠️ API quota exceeded, trying fallback method...")
+                # Fallback: try to find empty row with retry
+                return self._upload_to_sheets_fallback(data_rows, worksheet_name, data_start_row)
+            else:
+                print(f"❌ Upload error: {e}")
+                raise e
+
+    def _upload_to_sheets_fallback(self, data_rows: List[List[Any]], worksheet_name: str, data_start_row: int = 2):
+        """Fallback upload method when append fails"""
+        import time
+        
         if not data_rows:
             return {"updatedCells": 0}
         
         # Find the next empty row
-        next_row = self._find_next_empty_row(worksheet_name)
+        next_row = self._find_next_empty_row(worksheet_name, data_start_row)
         
-        # Calculate the range for appending data
-        start_col = 2  # Column B (Date)
-        end_col = start_col + len(data_rows[0]) - 1  # Column E (Product)
-        range_name = f"{worksheet_name}!B{next_row}:{chr(ord('A') + end_col - 1)}{next_row + len(data_rows) - 1}"
+        # Calculate the range for appending data dynamically
+        if data_rows and len(data_rows[0]) > 0:
+            start_col = 1  # Start from column A (1-based)
+            end_col = len(data_rows[0])  # End column based on data length
+            # Use simple range format: just specify the start and end cells
+            start_col_letter = chr(ord('A') + start_col - 1)
+            end_col_letter = chr(ord('A') + end_col - 1)
+            range_name = f"{worksheet_name}!{start_col_letter}{next_row}:{end_col_letter}{next_row + len(data_rows) - 1}"
+        else:
+            return {"updatedCells": 0}
         
-        # First, upload the data
-        body = {
-            'values': data_rows
-        }
+        # Upload data with retry logic
+        max_retries = 3
+        retry_delay = 2  # seconds
         
-        result = self.service.spreadsheets().values().update(
-            spreadsheetId=self.spreadsheet_id,
-            range=range_name,
-            valueInputOption='RAW',
-            body=body
-        ).execute()
+        for attempt in range(max_retries):
+            try:
+                body = {
+                    'values': data_rows
+                }
+                
+                result = self.service.spreadsheets().values().update(
+                    spreadsheetId=self.spreadsheet_id,
+                    range=range_name,
+                    valueInputOption='RAW',
+                    body=body
+                ).execute()
+                
+                # Apply formatting to the uploaded cells (with retry)
+                self._apply_cell_formatting_with_retry(worksheet_name, next_row, next_row + len(data_rows) - 1, start_col, end_col)
+                
+                print(f"Updated {result.get('updatedCells')} cells in Google Sheets at row {next_row} with formatting")
+                return result
+                
+            except Exception as e:
+                error_msg = str(e)
+                if "429" in error_msg or "quota" in error_msg.lower():
+                    if attempt < max_retries - 1:
+                        print(f"⚠️ API quota exceeded during fallback upload (attempt {attempt + 1}/{max_retries}), retrying in {retry_delay} seconds...")
+                        time.sleep(retry_delay)
+                        retry_delay *= 2  # Exponential backoff
+                        continue
+                    else:
+                        print(f"❌ API quota exceeded after {max_retries} attempts, upload failed")
+                        raise e
+                else:
+                    print(f"❌ Upload error: {e}")
+                    raise e
         
-        # Then, apply formatting to the uploaded cells
-        self._apply_cell_formatting(worksheet_name, next_row, next_row + len(data_rows) - 1, start_col, end_col)
-        
-        print(f"Updated {result.get('updatedCells')} cells in Google Sheets at row {next_row} with formatting")
-        return result
+        return {"updatedCells": 0}
     
-    def _find_next_empty_row(self, worksheet_name: str) -> int:
-        """Find the next empty row in the worksheet"""
-        try:
-            # Get all data in the worksheet starting from row 2 (skip header row)
-            result = self.service.spreadsheets().values().get(
-                spreadsheetId=self.spreadsheet_id,
-                range=f"{worksheet_name}!B2:B"  # Check column B starting from row 2
-            ).execute()
-            
-            values = result.get('values', [])
-            
-            # Find the first empty row
-            for i in range(len(values)):
-                if not values[i] or not values[i][0].strip():
-                    return i + 2  # +2 because we started from row 2 and Google Sheets is 1-indexed
-            
-            # If no empty rows found, return the next row after the last data
-            return len(values) + 2
-            
-        except Exception as e:
-            print(f"Warning: Could not find next empty row, using row 4: {e}")
-            return 4  # Default to row 4 if there's an error (after header row)
+    def _find_next_empty_row(self, worksheet_name: str, data_start_row: int = 2) -> int:
+        """Find the next empty row in the worksheet with retry logic"""
+        import time
+        max_retries = 3
+        retry_delay = 2  # seconds
+        
+        for attempt in range(max_retries):
+            try:
+                # Get all data in the worksheet starting from data_start_row
+                # Use simple range format
+                result = self.service.spreadsheets().values().get(
+                    spreadsheetId=self.spreadsheet_id,
+                    range=f"{worksheet_name}!A{data_start_row}:A"  # Check column A starting from data_start_row
+                ).execute()
+                
+                values = result.get('values', [])
+                
+                # Find the first empty row
+                for i in range(len(values)):
+                    if not values[i] or not values[i][0].strip():
+                        return i + data_start_row  # +data_start_row because we started from data_start_row and Google Sheets is 1-indexed
+                
+                # If no empty rows found, return the next row after the last data
+                return len(values) + data_start_row
+                
+            except Exception as e:
+                error_msg = str(e)
+                if "429" in error_msg or "quota" in error_msg.lower():
+                    if attempt < max_retries - 1:
+                        print(f"⚠️ API quota exceeded (attempt {attempt + 1}/{max_retries}), retrying in {retry_delay} seconds...")
+                        time.sleep(retry_delay)
+                        retry_delay *= 2  # Exponential backoff
+                        continue
+                    else:
+                        print(f"⚠️ API quota exceeded after {max_retries} attempts, using fallback row")
+                        return data_start_row + 2
+                else:
+                    print(f"Warning: Could not find next empty row, using row {data_start_row + 2}: {e}")
+                    return data_start_row + 2
+        
+        return data_start_row + 2  # Fallback
     
+    def _apply_cell_formatting_with_retry(self, worksheet_name: str, start_row: int, end_row: int, start_col: int, end_col: int):
+        """Apply formatting to cells with retry logic"""
+        import time
+        
+        max_retries = 3
+        retry_delay = 2  # seconds
+        
+        for attempt in range(max_retries):
+            try:
+                self._apply_cell_formatting(worksheet_name, start_row, end_row, start_col, end_col)
+                return  # Success
+                
+            except Exception as e:
+                error_msg = str(e)
+                if "429" in error_msg or "quota" in error_msg.lower():
+                    if attempt < max_retries - 1:
+                        print(f"⚠️ API quota exceeded during formatting (attempt {attempt + 1}/{max_retries}), retrying in {retry_delay} seconds...")
+                        time.sleep(retry_delay)
+                        retry_delay *= 2  # Exponential backoff
+                        continue
+                    else:
+                        print(f"⚠️ API quota exceeded after {max_retries} attempts, skipping formatting")
+                        return  # Skip formatting if quota exceeded
+                else:
+                    print(f"Warning: Could not apply formatting: {e}")
+                    return  # Skip formatting on other errors
+
     def _apply_cell_formatting(self, worksheet_name: str, start_row: int, end_row: int, start_col: int, end_col: int):
         """Apply formatting to cells (center alignment and borders)"""
         try:

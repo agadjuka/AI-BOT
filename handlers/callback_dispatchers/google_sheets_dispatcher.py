@@ -215,43 +215,33 @@ class GoogleSheetsDispatcher(BaseCallbackHandler):
             # Show Google Sheets preview with selected sheet
             await self.google_sheets_handler._show_google_sheets_preview(update, context, receipt_data, matching_result, sheet_id)
         elif action == "confirm_google_sheets_upload":
-            # User confirmed Google Sheets upload
+            # User confirmed Google Sheets upload - simplified version
             await query.answer(self.locale_manager.get_text("sheets.callback.uploading_data", context))
-            
-            # Clean up all messages except anchor before showing new menu
-            await self.ui_manager.cleanup_all_except_anchor(update, context)
             
             # Get saved data
             pending_data = context.user_data.get('pending_google_sheets_upload')
             if not pending_data:
-                await self.ui_manager.send_menu(
-                    update, context,
-                    self.locale_manager.get_text("sheets.callback.upload_error", context, 
-                        message=self.locale_manager.get_text("sheets.callback.receipt_data_not_found", context)),
-                    InlineKeyboardMarkup([
-                        [InlineKeyboardButton(
-                            self.locale_manager.get_text("buttons.upload_to_google_sheets", context), 
-                            callback_data="upload_to_google_sheets"
-                        )],
-                        [InlineKeyboardButton(
-                            self.locale_manager.get_text("buttons.back_to_receipt", context), 
-                            callback_data="back_to_receipt"
-                        )]
-                    ]),
-                    'Markdown'
-                )
+                await query.edit_message_text("❌ Данные для загрузки не найдены. Попробуйте снова.")
                 return self.config.AWAITING_CORRECTION
             
             receipt_data = pending_data['receipt_data']
             matching_result = pending_data['matching_result']
             
-            # Execute actual upload
+            # Execute upload with column mapping from Firestore
             await self._execute_google_sheets_upload(update, context, receipt_data, matching_result)
             
             # Clear pending data
             context.user_data.pop('pending_google_sheets_upload', None)
             return self.config.AWAITING_CORRECTION
-        elif action == "select_google_sheets_position":
+        
+        # Handle remaining actions
+        return await self._handle_google_sheets_actions_continued(update, context, action)
+    
+    async def _handle_google_sheets_actions_continued(self, update: Update, context: ContextTypes.DEFAULT_TYPE, action: str) -> int:
+        """Handle remaining Google Sheets related actions"""
+        query = update.callback_query
+        
+        if action == "select_google_sheets_position":
             await self.google_sheets_handler._show_google_sheets_position_selection(update, context)
         elif action == "back_to_google_sheets_matching":
             # Return to Google Sheets matching table
@@ -420,6 +410,7 @@ class GoogleSheetsDispatcher(BaseCallbackHandler):
                 return
             
             # Create GoogleSheetsService instance for the selected sheet
+            # Use the same approach as in _check_sheet_access for consistency
             from services.google_sheets_service import GoogleSheetsService
             sheet_service = GoogleSheetsService(
                 credentials_path=self.config.GOOGLE_SHEETS_CREDENTIALS,
@@ -429,12 +420,17 @@ class GoogleSheetsDispatcher(BaseCallbackHandler):
             # Show upload summary
             summary = sheet_service.get_upload_summary(receipt_data, matching_result)
             
-            # Upload data using the selected sheet's configuration
+            # Upload data using the selected sheet's configuration with column mapping
             success, message = sheet_service.upload_receipt_data(
                 receipt_data, 
                 matching_result,
-                sheet_data.get('worksheet_name', 'Receipts')
+                sheet_data.get('worksheet_name', 'Receipts'),
+                column_mapping=sheet_data.get('column_mapping', {}),
+                data_start_row=sheet_data.get('data_start_row', 2)
             )
+            
+            # If upload failed, show the error message directly
+            # No need for complex JWT error handling since we're using the same credentials as in _check_sheet_access
             
             if success:
                 # Save upload data for potential undo
@@ -460,29 +456,34 @@ class GoogleSheetsDispatcher(BaseCallbackHandler):
                             callback_data="upload_to_google_sheets"
                         )],
                         [InlineKeyboardButton(
-                            self.locale_manager.get_text("buttons.generate_supply_file", context), 
-                            callback_data="generate_file_from_table"
+                            self.locale_manager.get_text("sheets.callback.generate_file", context), 
+                            callback_data="generate_excel_file"
                         )],
                         [InlineKeyboardButton(
                             self.locale_manager.get_text("buttons.back_to_receipt", context), 
                             callback_data="back_to_receipt"
                         )]
                     ]),
-                    'Markdown'
+                    'HTML'
                 )
                 
         except Exception as e:
             print(f"DEBUG: Error uploading to Google Sheets: {e}")
+            # Escape special characters to prevent Markdown parsing errors
+            error_message = str(e).replace('`', '').replace('*', '').replace('_', '').replace('[', '').replace(']', '').replace('(', '').replace(')', '')
+            # Additional escaping for common problematic characters
+            error_message = error_message.replace('!', '').replace('@', '').replace('#', '').replace('$', '').replace('%', '').replace('^', '').replace('&', '').replace('+', '').replace('=', '').replace('{', '').replace('}', '').replace('|', '').replace('\\', '').replace(':', '').replace(';', '').replace('"', '').replace("'", '').replace('<', '').replace('>', '').replace(',', '').replace('.', '').replace('?', '').replace('/', '')
+            
             await self.ui_manager.send_menu(
                 update, context,
-                self.locale_manager.get_text("sheets.callback.unexpected_error", context, error=str(e)),
+                self.locale_manager.get_text("sheets.callback.unexpected_error", context, error=error_message),
                 InlineKeyboardMarkup([
                     [InlineKeyboardButton(
                         self.locale_manager.get_text("buttons.back_to_receipt", context), 
                         callback_data="back_to_receipt"
                     )]
                 ]),
-                'Markdown'
+                'HTML'  # Use HTML instead of Markdown to avoid parsing issues
             )
     
     async def _show_upload_success_page(self, update: Update, context: ContextTypes.DEFAULT_TYPE, 
@@ -520,7 +521,7 @@ class GoogleSheetsDispatcher(BaseCallbackHandler):
             update, context,
             success_text,
             reply_markup,
-            'Markdown'
+            'HTML'
         )
     
     def _truncate_name(self, name: str, max_length: int) -> str:
