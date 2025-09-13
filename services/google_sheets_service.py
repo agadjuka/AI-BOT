@@ -83,7 +83,7 @@ class GoogleSheetsService:
                 else:
                     print("🔍 GOOGLE_APPLICATION_CREDENTIALS_JSON also not found in environment")
             
-            # If environment variable failed, try file path
+            # If environment variable failed, try file path (only for local development)
             if not credentials and self.credentials_path and os.path.exists(self.credentials_path):
                 try:
                     credentials = Credentials.from_service_account_file(
@@ -95,9 +95,20 @@ class GoogleSheetsService:
                     print(f"⚠️ Error loading credentials from file: {e}")
                     credentials = None
             
+            # Try Application Default Credentials (ADC) as last resort
             if not credentials:
-                print("⚠️ Google Sheets credentials not found. Service will be disabled.")
-                print("💡 Check GOOGLE_APPLICATION_CREDENTIALS_JSON environment variable or credentials file")
+                try:
+                    from google.auth import default
+                    credentials, project = default(scopes=['https://www.googleapis.com/auth/spreadsheets'])
+                    print(f"✅ Google Sheets credentials loaded from Application Default Credentials (project: {project})")
+                except Exception as e:
+                    print(f"⚠️ Error loading credentials from ADC: {e}")
+                    credentials = None
+            
+            if not credentials:
+                print("❌ Google Sheets credentials not found. Service will be disabled.")
+                print("💡 Check GOOGLE_SHEETS_CREDENTIALS_JSON environment variable or credentials file")
+                print("💡 In Cloud Run, make sure the service account has proper permissions")
                 return
             
             self.service = build('sheets', 'v4', credentials=credentials)
@@ -106,6 +117,8 @@ class GoogleSheetsService:
             
         except Exception as e:
             print(f"❌ Error initializing Google Sheets service: {e}")
+            import traceback
+            traceback.print_exc()
             self.service = None
     
     def is_available(self) -> bool:

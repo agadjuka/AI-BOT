@@ -196,7 +196,7 @@ def create_application() -> Application:
     # Preload GoogleSheetsService to initialize Google Sheets API
     from services.google_sheets_service import GoogleSheetsService
     google_sheets_service = GoogleSheetsService(
-        credentials_path=config.GOOGLE_SHEETS_CREDENTIALS,
+        credentials_path=config.GOOGLE_SHEETS_CREDENTIALS if os.path.exists(config.GOOGLE_SHEETS_CREDENTIALS) else None,
         spreadsheet_id=config.GOOGLE_SHEETS_SPREADSHEET_ID
     )
     print("✅ GoogleSheetsService предзагружен")
@@ -208,6 +208,21 @@ def create_application() -> Application:
     print(f"  - Service available: {google_sheets_service.is_available()}")
     print(f"  - GOOGLE_APPLICATION_CREDENTIALS_JSON set: {bool(os.getenv('GOOGLE_APPLICATION_CREDENTIALS_JSON'))}")
     print(f"  - GOOGLE_SHEETS_CREDENTIALS_JSON set: {bool(os.getenv('GOOGLE_SHEETS_CREDENTIALS_JSON'))}")
+    
+    # Test Google Sheets access
+    if google_sheets_service.is_available():
+        try:
+            # Try to access the spreadsheet to verify credentials
+            spreadsheet = google_sheets_service.service.spreadsheets().get(spreadsheetId=config.GOOGLE_SHEETS_SPREADSHEET_ID).execute()
+            print(f"✅ Google Sheets access verified - spreadsheet title: {spreadsheet.get('properties', {}).get('title', 'Unknown')}")
+        except Exception as e:
+            print(f"❌ Google Sheets access failed: {e}")
+            print(f"💡 This might be due to:")
+            print(f"   - Invalid credentials")
+            print(f"   - Insufficient permissions")
+            print(f"   - Spreadsheet not accessible")
+    else:
+        print("❌ Google Sheets service not available")
     
     # Подробная отладка credentials
     google_sheets_credentials_json = os.getenv('GOOGLE_SHEETS_CREDENTIALS_JSON')
