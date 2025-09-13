@@ -46,7 +46,7 @@ jobs:
           --max-instances 10 \
           --min-instances 0 \
           --timeout 300 \
-          --set-env-vars BOT_TOKEN=${{ secrets.BOT_TOKEN }},POSTER_TOKEN=${{ secrets.POSTER_TOKEN }},PROJECT_ID=${{ env.PROJECT_ID }},GOOGLE_APPLICATION_CREDENTIALS_JSON=${{ secrets.GOOGLE_APPLICATION_CREDENTIALS_JSON }}
+          --set-env-vars BOT_TOKEN=${{ secrets.BOT_TOKEN }},POSTER_TOKEN=${{ secrets.POSTER_TOKEN }},PROJECT_ID=${{ env.PROJECT_ID }},GOOGLE_APPLICATION_CREDENTIALS_JSON=${{ secrets.GOOGLE_APPLICATION_CREDENTIALS_JSON }},GOOGLE_SHEETS_CREDENTIALS_JSON=${{ secrets.GOOGLE_SHEETS_CREDENTIALS_JSON }}
     
     - name: Show service URL
       run: |

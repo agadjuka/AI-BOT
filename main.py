@@ -207,20 +207,35 @@ def create_application() -> Application:
     print(f"  - Spreadsheet ID: {config.GOOGLE_SHEETS_SPREADSHEET_ID}")
     print(f"  - Service available: {google_sheets_service.is_available()}")
     print(f"  - GOOGLE_APPLICATION_CREDENTIALS_JSON set: {bool(os.getenv('GOOGLE_APPLICATION_CREDENTIALS_JSON'))}")
+    print(f"  - GOOGLE_SHEETS_CREDENTIALS_JSON set: {bool(os.getenv('GOOGLE_SHEETS_CREDENTIALS_JSON'))}")
     
     # Подробная отладка credentials
-    google_credentials_json = os.getenv('GOOGLE_APPLICATION_CREDENTIALS_JSON')
-    if google_credentials_json:
+    google_sheets_credentials_json = os.getenv('GOOGLE_SHEETS_CREDENTIALS_JSON')
+    if google_sheets_credentials_json:
         try:
             import json
-            credentials_info = json.loads(google_credentials_json)
-            print(f"  - Credentials project_id: {credentials_info.get('project_id', 'Не найден')}")
-            print(f"  - Credentials client_email: {credentials_info.get('client_email', 'Не найден')}")
-            print(f"  - Credentials type: {credentials_info.get('type', 'Не найден')}")
+            credentials_info = json.loads(google_sheets_credentials_json)
+            print(f"  - NEW Credentials project_id: {credentials_info.get('project_id', 'Не найден')}")
+            print(f"  - NEW Credentials client_email: {credentials_info.get('client_email', 'Не найден')}")
+            print(f"  - NEW Credentials type: {credentials_info.get('type', 'Не найден')}")
         except Exception as e:
-            print(f"  - Ошибка парсинга credentials JSON: {e}")
+            print(f"  - Ошибка парсинга NEW credentials JSON: {e}")
     else:
-        print("  - GOOGLE_APPLICATION_CREDENTIALS_JSON не установлена")
+        print("  - GOOGLE_SHEETS_CREDENTIALS_JSON не установлена")
+        
+        # Fallback to old credentials
+        google_credentials_json = os.getenv('GOOGLE_APPLICATION_CREDENTIALS_JSON')
+        if google_credentials_json:
+            try:
+                import json
+                credentials_info = json.loads(google_credentials_json)
+                print(f"  - OLD Credentials project_id: {credentials_info.get('project_id', 'Не найден')}")
+                print(f"  - OLD Credentials client_email: {credentials_info.get('client_email', 'Не найден')}")
+                print(f"  - OLD Credentials type: {credentials_info.get('type', 'Не найден')}")
+            except Exception as e:
+                print(f"  - Ошибка парсинга OLD credentials JSON: {e}")
+        else:
+            print("  - GOOGLE_APPLICATION_CREDENTIALS_JSON также не установлена")
     
     # Проверяем файл credentials
     if os.path.exists(config.GOOGLE_SHEETS_CREDENTIALS):

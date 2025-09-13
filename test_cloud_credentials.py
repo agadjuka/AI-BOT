@@ -14,20 +14,34 @@ def test_cloud_credentials():
     
     # Проверяем переменные окружения
     print("🔍 Проверка переменных окружения:")
+    print(f"  - GOOGLE_SHEETS_CREDENTIALS_JSON: {'✅ Установлена' if os.getenv('GOOGLE_SHEETS_CREDENTIALS_JSON') else '❌ Не установлена'}")
     print(f"  - GOOGLE_APPLICATION_CREDENTIALS_JSON: {'✅ Установлена' if os.getenv('GOOGLE_APPLICATION_CREDENTIALS_JSON') else '❌ Не установлена'}")
     print(f"  - BOT_TOKEN: {'✅ Установлен' if os.getenv('BOT_TOKEN') else '❌ Не установлен'}")
     print(f"  - PROJECT_ID: {'✅ Установлен' if os.getenv('PROJECT_ID') else '❌ Не установлен'}")
     
+    # Проверяем новый секрет
+    if os.getenv('GOOGLE_SHEETS_CREDENTIALS_JSON'):
+        try:
+            credentials_json = os.getenv('GOOGLE_SHEETS_CREDENTIALS_JSON')
+            credentials_info = json.loads(credentials_json)
+            print(f"  - NEW JSON валиден: ✅")
+            print(f"  - NEW Project ID: {credentials_info.get('project_id', 'Не найден')}")
+            print(f"  - NEW Client Email: {credentials_info.get('client_email', 'Не найден')}")
+            print(f"  - NEW Type: {credentials_info.get('type', 'Не найден')}")
+        except Exception as e:
+            print(f"  - NEW JSON невалиден: ❌ {e}")
+    
+    # Проверяем старый секрет
     if os.getenv('GOOGLE_APPLICATION_CREDENTIALS_JSON'):
         try:
             credentials_json = os.getenv('GOOGLE_APPLICATION_CREDENTIALS_JSON')
             credentials_info = json.loads(credentials_json)
-            print(f"  - JSON валиден: ✅")
-            print(f"  - Project ID: {credentials_info.get('project_id', 'Не найден')}")
-            print(f"  - Client Email: {credentials_info.get('client_email', 'Не найден')}")
-            print(f"  - Type: {credentials_info.get('type', 'Не найден')}")
+            print(f"  - OLD JSON валиден: ✅")
+            print(f"  - OLD Project ID: {credentials_info.get('project_id', 'Не найден')}")
+            print(f"  - OLD Client Email: {credentials_info.get('client_email', 'Не найден')}")
+            print(f"  - OLD Type: {credentials_info.get('type', 'Не найден')}")
         except Exception as e:
-            print(f"  - JSON невалиден: ❌ {e}")
+            print(f"  - OLD JSON невалиден: ❌ {e}")
     
     print()
     

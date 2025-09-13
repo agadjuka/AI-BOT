@@ -116,12 +116,12 @@ class TableConfigManager:
             device_type=DeviceType.MOBILE,
             columns=[
                 ColumnConfig("number", "№", 2, "right"),
-                ColumnConfig("receipt_item", "Наименование", 19, "left"),
-                ColumnConfig("google_sheets", "Ингредиент", 15, "left"),
+                ColumnConfig("receipt_item", "Наименование", 25, "left"),
+                ColumnConfig("google_sheets", "Ингредиент", 20, "left"),
                 ColumnConfig("status", "Статус", 4, "center")
             ],
             style=TableStyle(
-                max_name_length=15,
+                max_name_length=30,
                 compact_mode=True
             ),
             title="Сопоставление с Google Таблицами",
@@ -134,12 +134,12 @@ class TableConfigManager:
             device_type=DeviceType.DESKTOP,
             columns=[
                 ColumnConfig("number", "№", 2, "right"),
-                ColumnConfig("receipt_item", "Наименование", 29, "left"),
-                ColumnConfig("google_sheets", "Ингредиент", 25, "left"),
+                ColumnConfig("receipt_item", "Наименование", 35, "left"),
+                ColumnConfig("google_sheets", "Ингредиент", 30, "left"),
                 ColumnConfig("status", "Статус", 6, "center")
             ],
             style=TableStyle(
-                max_name_length=25,
+                max_name_length=40,
                 compact_mode=False
             ),
             title="Сопоставление с Google Таблицами",

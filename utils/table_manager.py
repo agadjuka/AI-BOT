@@ -301,147 +301,121 @@ class TableManager:
         else:
             status_emoji = self._get_status_emoji(match.match_status)
         
-        # Создаем строку
-        row_parts = []
+        # Подготавливаем данные для строки
+        row_data = []
         for column in config.columns:
             if column.key == "number":
-                value = str(row_number)
+                row_data.append(str(row_number))
             elif column.key == "receipt_item":
-                value = self._wrap_text(receipt_name, column.width, config.style.max_name_length)
+                row_data.append(self._wrap_text(receipt_name, column.width, config.style.max_name_length))
             elif column.key == "ingredient":
-                value = self._wrap_text(ingredient_name, column.width, config.style.max_name_length)
+                row_data.append(self._wrap_text(ingredient_name, column.width, config.style.max_name_length))
             elif column.key == "status":
-                value = status_emoji
+                row_data.append(status_emoji)
             else:
-                value = ""
-            
-            # Выравнивание
-            if column.align == "right":
-                row_parts.append(f"{value:>{column.width}}")
-            elif column.align == "center":
-                row_parts.append(f"{value:^{column.width}}")
-            else:  # left
-                row_parts.append(f"{value:<{column.width}}")
+                row_data.append("")
         
-        return " | ".join(row_parts)
+        # Создаем многострочную строку таблицы
+        table_lines = self._create_multiline_table_row(row_data, config)
+        return "\n".join(table_lines)
     
     def _create_google_sheets_matching_row(self, row_number: int, match: IngredientMatch, config: TableConfig) -> str:
         """Создает строку таблицы сопоставления с Google Sheets"""
-        # Аналогично ingredient_matching_row, но с другими колонками
+        # Получаем данные для колонок
         receipt_name = match.receipt_item_name
         ingredient_name = match.matched_ingredient_name or "—"
         status_emoji = self._get_status_emoji(match.match_status)
         
-        row_parts = []
+        # Подготавливаем данные для строки
+        row_data = []
         for column in config.columns:
             if column.key == "number":
-                value = str(row_number)
+                row_data.append(str(row_number))
             elif column.key == "receipt_item":
-                value = self._wrap_text(receipt_name, column.width, config.style.max_name_length)
+                row_data.append(self._wrap_text(receipt_name, column.width, config.style.max_name_length))
             elif column.key == "google_sheets":
-                value = self._wrap_text(ingredient_name, column.width, config.style.max_name_length)
+                row_data.append(self._wrap_text(ingredient_name, column.width, config.style.max_name_length))
             elif column.key == "status":
-                value = status_emoji
+                row_data.append(status_emoji)
             else:
-                value = ""
-            
-            # Выравнивание
-            if column.align == "right":
-                row_parts.append(f"{value:>{column.width}}")
-            elif column.align == "center":
-                row_parts.append(f"{value:^{column.width}}")
-            else:  # left
-                row_parts.append(f"{value:<{column.width}}")
+                row_data.append("")
         
-        return " | ".join(row_parts)
+        # Создаем многострочную строку таблицы
+        table_lines = self._create_multiline_table_row(row_data, config)
+        return "\n".join(table_lines)
     
     def _create_receipt_preview_row(self, row_number: int, item: Dict[str, Any], config: TableConfig) -> str:
         """Создает строку таблицы предпросмотра чека"""
-        row_parts = []
+        # Подготавливаем данные для строки
+        row_data = []
         for column in config.columns:
             if column.key == "number":
-                value = str(row_number)
+                row_data.append(str(row_number))
             elif column.key == "item":
-                value = self._wrap_text(str(item.get('name', '')), column.width, config.style.max_name_length)
+                row_data.append(self._wrap_text(str(item.get('name', '')), column.width, config.style.max_name_length))
             elif column.key == "quantity":
-                value = str(item.get('quantity', ''))
+                row_data.append(str(item.get('quantity', '')))
             elif column.key == "price":
-                value = str(item.get('price', ''))
+                row_data.append(str(item.get('price', '')))
             elif column.key == "total":
-                value = str(item.get('total', ''))
+                row_data.append(str(item.get('total', '')))
             else:
-                value = ""
-            
-            # Выравнивание
-            if column.align == "right":
-                row_parts.append(f"{value:>{column.width}}")
-            elif column.align == "center":
-                row_parts.append(f"{value:^{column.width}}")
-            else:  # left
-                row_parts.append(f"{value:<{column.width}}")
+                row_data.append("")
         
-        return " | ".join(row_parts)
+        # Создаем многострочную строку таблицы
+        table_lines = self._create_multiline_table_row(row_data, config)
+        return "\n".join(table_lines)
     
     def _create_google_sheets_preview_row(self, item: Dict[str, Any], config: TableConfig) -> str:
         """Создает строку таблицы предпросмотра Google Sheets"""
-        row_parts = []
+        # Подготавливаем данные для строки
+        row_data = []
         for column in config.columns:
             if column.key == "row_number":
-                value = str(item.get('row_number', ''))
+                row_data.append(str(item.get('row_number', '')))
             elif column.key == "date":
-                value = self._wrap_text(str(item.get('date', '')), column.width, config.style.max_name_length)
+                row_data.append(self._wrap_text(str(item.get('date', '')), column.width, config.style.max_name_length))
             elif column.key == "item":
-                value = self._wrap_text(str(item.get('item', '')), column.width, config.style.max_name_length)
+                row_data.append(self._wrap_text(str(item.get('item', '')), column.width, config.style.max_name_length))
             elif column.key == "quantity":
-                value = str(item.get('quantity', ''))
+                row_data.append(str(item.get('quantity', '')))
             elif column.key == "price":
-                value = str(item.get('price', ''))
+                row_data.append(str(item.get('price', '')))
             elif column.key == "total":
-                value = str(item.get('total', ''))
+                row_data.append(str(item.get('total', '')))
             else:
-                value = ""
-            
-            # Выравнивание
-            if column.align == "right":
-                row_parts.append(f"{value:>{column.width}}")
-            elif column.align == "center":
-                row_parts.append(f"{value:^{column.width}}")
-            else:  # left
-                row_parts.append(f"{value:<{column.width}}")
+                row_data.append("")
         
-        return " | ".join(row_parts)
+        # Создаем многострочную строку таблицы
+        table_lines = self._create_multiline_table_row(row_data, config)
+        return "\n".join(table_lines)
     
     def _create_next_items_row(self, row_number: int, item: Dict[str, Any], config: TableConfig) -> str:
         """Создает строку таблицы следующих товаров"""
-        row_parts = []
+        # Подготавливаем данные для строки
+        row_data = []
         for column in config.columns:
             if column.key == "number":
-                value = str(row_number)
+                row_data.append(str(row_number))
             elif column.key == "item":
-                value = self._wrap_text(str(item.get('name', '')), column.width, config.style.max_name_length)
+                row_data.append(self._wrap_text(str(item.get('name', '')), column.width, config.style.max_name_length))
             elif column.key == "status":
-                value = str(item.get('status', ''))
+                row_data.append(str(item.get('status', '')))
             elif column.key == "priority":
-                value = str(item.get('priority', ''))
+                row_data.append(str(item.get('priority', '')))
             else:
-                value = ""
-            
-            # Выравнивание
-            if column.align == "right":
-                row_parts.append(f"{value:>{column.width}}")
-            elif column.align == "center":
-                row_parts.append(f"{value:^{column.width}}")
-            else:  # left
-                row_parts.append(f"{value:<{column.width}}")
+                row_data.append("")
         
-        return " | ".join(row_parts)
+        # Создаем многострочную строку таблицы
+        table_lines = self._create_multiline_table_row(row_data, config)
+        return "\n".join(table_lines)
     
     def _wrap_text(self, text: str, max_width: int, max_name_length: int) -> str:
         """Переносит текст в соответствии с ограничениями"""
         if not text:
             return ""
         
-        # Ограничиваем длину
+        # Ограничиваем общую длину текста
         if len(text) > max_name_length:
             text = text[:max_name_length-3] + "..."
         
@@ -449,8 +423,98 @@ class TableManager:
         if len(text) <= max_width:
             return text
         
-        # Иначе обрезаем
-        return text[:max_width-3] + "..."
+        # Переносим текст по словам
+        return self._wrap_text_by_words(text, max_width)
+    
+    def _wrap_text_by_words(self, text: str, max_width: int) -> str:
+        """Переносит текст по словам, не разрывая слова"""
+        if not text or len(text) <= max_width:
+            return text
+        
+        words = text.split()
+        if not words:
+            return text
+        
+        lines = []
+        current_line = ""
+        
+        for word in words:
+            # Если слово само по себе длиннее max_width, обрезаем его
+            if len(word) > max_width:
+                if current_line:
+                    lines.append(current_line.strip())
+                    current_line = ""
+                # Обрезаем длинное слово
+                lines.append(word[:max_width-3] + "...")
+                continue
+            
+            # Проверяем, поместится ли слово в текущую строку
+            test_line = current_line + (" " if current_line else "") + word
+            if len(test_line) <= max_width:
+                current_line = test_line
+            else:
+                # Сохраняем текущую строку и начинаем новую
+                if current_line:
+                    lines.append(current_line.strip())
+                current_line = word
+        
+        # Добавляем последнюю строку
+        if current_line:
+            lines.append(current_line.strip())
+        
+        # Возвращаем результат (максимум 3 строки для читаемости)
+        if len(lines) > 3:
+            return "\n".join(lines[:2]) + "\n..."
+        
+        return "\n".join(lines)
+    
+    def _format_multiline_cell(self, text: str, column_width: int, align: str = "left") -> List[str]:
+        """Форматирует многострочную ячейку для таблицы"""
+        if not text:
+            return [""]
+        
+        lines = text.split('\n')
+        formatted_lines = []
+        
+        for line in lines:
+            if align == "right":
+                formatted_lines.append(f"{line:>{column_width}}")
+            elif align == "center":
+                formatted_lines.append(f"{line:^{column_width}}")
+            else:  # left
+                formatted_lines.append(f"{line:<{column_width}}")
+        
+        return formatted_lines
+    
+    def _create_multiline_table_row(self, row_data: List[str], config: TableConfig) -> List[str]:
+        """Создает многострочную строку таблицы"""
+        # Разбиваем каждую ячейку на строки
+        cell_lines = []
+        for i, (text, column) in enumerate(zip(row_data, config.columns)):
+            cell_lines.append(self._format_multiline_cell(text, column.width, column.align))
+        
+        # Находим максимальное количество строк
+        max_lines = max(len(lines) for lines in cell_lines) if cell_lines else 1
+        
+        # Создаем строки таблицы
+        table_lines = []
+        for line_idx in range(max_lines):
+            row_parts = []
+            for i, column in enumerate(config.columns):
+                if i < len(cell_lines) and line_idx < len(cell_lines[i]):
+                    row_parts.append(cell_lines[i][line_idx])
+                else:
+                    # Заполняем пустыми строками если ячейка короче
+                    if column.align == "right":
+                        row_parts.append(f"{'':>{column.width}}")
+                    elif column.align == "center":
+                        row_parts.append(f"{'':^{column.width}}")
+                    else:  # left
+                        row_parts.append(f"{'':<{column.width}}")
+            
+            table_lines.append(" | ".join(row_parts))
+        
+        return table_lines
     
     def _get_status_emoji(self, status: MatchStatus) -> str:
         """Получает эмодзи для статуса сопоставления"""
