@@ -22,24 +22,48 @@ class GoogleSheetsService:
         self._initialize_service()
     
     def _initialize_service(self):
-        """Initialize Google Sheets API service - simplified version"""
+        """Initialize Google Sheets API service - supports both file and environment variable"""
         if not self.spreadsheet_id:
             print("⚠️ Google Sheets spreadsheet ID not configured. Service will be disabled.")
-            return
-        
-        if not self.credentials_path or not os.path.exists(self.credentials_path):
-            print("⚠️ Google Sheets credentials file not found. Service will be disabled.")
             return
         
         try:
             from google.oauth2.service_account import Credentials
             from googleapiclient.discovery import build
             
-            # Simple credentials loading from file
-            credentials = Credentials.from_service_account_file(
-                self.credentials_path,
-                scopes=['https://www.googleapis.com/auth/spreadsheets']
-            )
+            credentials = None
+            
+            # First try to load from environment variable (for cloud deployment)
+            google_credentials_json = os.getenv('GOOGLE_APPLICATION_CREDENTIALS_JSON')
+            if google_credentials_json:
+                try:
+                    import json
+                    credentials_info = json.loads(google_credentials_json)
+                    credentials = Credentials.from_service_account_info(
+                        credentials_info,
+                        scopes=['https://www.googleapis.com/auth/spreadsheets']
+                    )
+                    print("✅ Google Sheets credentials loaded from GOOGLE_APPLICATION_CREDENTIALS_JSON")
+                except Exception as e:
+                    print(f"⚠️ Error loading credentials from environment variable: {e}")
+                    credentials = None
+            
+            # If environment variable failed, try file path
+            if not credentials and self.credentials_path and os.path.exists(self.credentials_path):
+                try:
+                    credentials = Credentials.from_service_account_file(
+                        self.credentials_path,
+                        scopes=['https://www.googleapis.com/auth/spreadsheets']
+                    )
+                    print("✅ Google Sheets credentials loaded from file")
+                except Exception as e:
+                    print(f"⚠️ Error loading credentials from file: {e}")
+                    credentials = None
+            
+            if not credentials:
+                print("⚠️ Google Sheets credentials not found. Service will be disabled.")
+                print("💡 Check GOOGLE_APPLICATION_CREDENTIALS_JSON environment variable or credentials file")
+                return
             
             self.service = build('sheets', 'v4', credentials=credentials)
             print("✅ Google Sheets service initialized successfully")
