@@ -48,32 +48,28 @@ class MessageHandlers(BaseMessageHandler):
         current_language = self.locale_manager.get_language_from_context(context, update)
         print(f"DEBUG: Current language: '{current_language}' for user {update.effective_user.id}")
         
-        if current_language and current_language != self.locale_manager.DEFAULT_LANGUAGE:
-            # User has a saved language, show main menu
+        if current_language:
+            # User has a saved language, show welcome instruction with buttons
             print(f"DEBUG: Using saved language '{current_language}' for user {update.effective_user.id}")
             
-            # Create main menu with localized buttons
+            # Create welcome instruction with localized buttons
             keyboard = [
                 [InlineKeyboardButton(
-                    self.get_text("buttons.analyze_receipt", context, update=update), 
-                    callback_data="analyze_receipt"
-                )],
-                [InlineKeyboardButton(
-                    self.get_text("buttons.generate_supply_file", context, update=update), 
-                    callback_data="generate_supply_file"
-                )],
-                [InlineKeyboardButton(
-                    self.get_text("buttons.dashboard", context, update=update), 
+                    self.get_text("buttons.personal_dashboard", context, update=update), 
                     callback_data="dashboard_main"
+                )],
+                [InlineKeyboardButton(
+                    self.get_text("buttons.scan_receipt", context, update=update), 
+                    callback_data="start_new_receipt"
                 )]
             ]
             
             reply_markup = InlineKeyboardMarkup(keyboard)
             
-            await update.message.reply_html(
-                self.get_text("welcome.start_message", context, update=update, 
-                             user=update.effective_user.mention_html()),
-                reply_markup=reply_markup
+            await update.message.reply_text(
+                self.get_text("welcome.start_instruction", context, update=update),
+                reply_markup=reply_markup,
+                parse_mode='Markdown'
             )
         else:
             # No saved language, show language selection

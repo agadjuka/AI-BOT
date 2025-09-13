@@ -59,8 +59,8 @@ class GoogleSheetsDispatcher(BaseCallbackHandler):
                     self.locale_manager.get_text("sheets.no_data_for_upload", context),
                     reply_markup=InlineKeyboardMarkup([
                         [InlineKeyboardButton(
-                            self.locale_manager.get_text("buttons.analyze_receipt", context), 
-                            callback_data="analyze_receipt"
+                            self.locale_manager.get_text("buttons.scan_receipt", context), 
+                            callback_data="start_new_receipt"
                         )],
                         [InlineKeyboardButton(
                             self.locale_manager.get_text("buttons.back_to_main_menu", context), 

@@ -184,12 +184,12 @@ class CallbackHandlers(BaseCallbackHandler):
             # Create main menu with localized buttons
             keyboard = [
                 [InlineKeyboardButton(
-                    self.get_text("buttons.analyze_receipt", context, update=update), 
-                    callback_data="analyze_receipt"
+                    self.get_text("buttons.personal_dashboard", context, update=update), 
+                    callback_data="dashboard_main"
                 )],
                 [InlineKeyboardButton(
-                    self.get_text("buttons.dashboard", context, update=update), 
-                    callback_data="dashboard_main"
+                    self.get_text("buttons.scan_receipt", context, update=update), 
+                    callback_data="start_new_receipt"
                 )]
             ]
             
@@ -203,9 +203,9 @@ class CallbackHandlers(BaseCallbackHandler):
             reply_markup = InlineKeyboardMarkup(keyboard)
             
             await query.edit_message_text(
-                self.get_text("welcome.start_message", context, update=update, user=update.effective_user.mention_html()),
+                self.get_text("welcome.start_instruction", context, update=update),
                 reply_markup=reply_markup,
-                parse_mode='HTML'
+                parse_mode='Markdown'
             )
             
             return self.config.AWAITING_CORRECTION
@@ -290,12 +290,12 @@ class CallbackHandlers(BaseCallbackHandler):
         # Show main menu
         keyboard = [
             [InlineKeyboardButton(
-                self.get_text("buttons.analyze_receipt", context, update=update), 
-                callback_data="analyze_receipt"
+                self.get_text("buttons.personal_dashboard", context, update=update), 
+                callback_data="dashboard_main"
             )],
             [InlineKeyboardButton(
-                self.get_text("buttons.dashboard", context, update=update), 
-                callback_data="dashboard_main"
+                self.get_text("buttons.scan_receipt", context, update=update), 
+                callback_data="start_new_receipt"
             )]
         ]
         
@@ -308,10 +308,9 @@ class CallbackHandlers(BaseCallbackHandler):
         reply_markup = InlineKeyboardMarkup(keyboard)
         
         await query.edit_message_text(
-            self.get_text("welcome.start_message", context, update=update, 
-                         user=update.effective_user.mention_html()),
+            self.get_text("welcome.start_instruction", context, update=update),
             reply_markup=reply_markup,
-            parse_mode='HTML'
+            parse_mode='Markdown'
         )
         
         return self.config.AWAITING_CORRECTION
