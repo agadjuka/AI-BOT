@@ -134,9 +134,28 @@ class GoogleSheetsInputHandler(BaseMessageHandler):
         
         reply_markup = InlineKeyboardMarkup(keyboard)
         
-        await self.ui_manager.send_menu(
-            update, context, text, reply_markup, 'Markdown'
-        )
+        # Try to edit existing message instead of sending new one
+        try:
+            # Get the working menu message ID
+            working_message_id = context.user_data.get('working_menu_message_id')
+            if working_message_id:
+                await context.bot.edit_message_text(
+                    chat_id=update.message.chat_id,
+                    message_id=working_message_id,
+                    text=text,
+                    reply_markup=reply_markup,
+                    parse_mode='Markdown'
+                )
+            else:
+                # Fallback to sending new message
+                await self.ui_manager.send_menu(
+                    update, context, text, reply_markup, 'Markdown'
+                )
+        except Exception as e:
+            print(f"DEBUG: Error editing message, falling back to new message: {e}")
+            await self.ui_manager.send_menu(
+                update, context, text, reply_markup, 'Markdown'
+            )
     
     async def _show_google_sheets_item_search_results(self, update: Update, context: ContextTypes.DEFAULT_TYPE, 
                                                     query: str, results: list, item_index: int):
@@ -166,9 +185,28 @@ class GoogleSheetsInputHandler(BaseMessageHandler):
         
         reply_markup = InlineKeyboardMarkup(keyboard)
         
-        await self.ui_manager.send_menu(
-            update, context, text, reply_markup, 'Markdown'
-        )
+        # Try to edit existing message instead of sending new one
+        try:
+            # Get the working menu message ID
+            working_message_id = context.user_data.get('working_menu_message_id')
+            if working_message_id:
+                await context.bot.edit_message_text(
+                    chat_id=update.message.chat_id,
+                    message_id=working_message_id,
+                    text=text,
+                    reply_markup=reply_markup,
+                    parse_mode='Markdown'
+                )
+            else:
+                # Fallback to sending new message
+                await self.ui_manager.send_menu(
+                    update, context, text, reply_markup, 'Markdown'
+                )
+        except Exception as e:
+            print(f"DEBUG: Error editing message, falling back to new message: {e}")
+            await self.ui_manager.send_menu(
+                update, context, text, reply_markup, 'Markdown'
+            )
     
     def _truncate_name(self, name: str, max_length: int) -> str:
         """Truncate name if too long"""

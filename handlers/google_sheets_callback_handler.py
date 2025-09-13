@@ -291,7 +291,8 @@ class GoogleSheetsCallbackHandler(BaseCallbackHandler):
         keyboard = self._create_matching_table_keyboard(matching_result, context)
         reply_markup = InlineKeyboardMarkup(keyboard)
         
-        await self._send_long_message_with_keyboard_callback(query.message, table_text, reply_markup)
+        # Edit existing message instead of sending new one
+        await query.edit_message_text(table_text, reply_markup=reply_markup, parse_mode='Markdown')
     
     async def _show_google_sheets_position_selection(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         """Show position selection for Google Sheets matching"""
@@ -317,7 +318,8 @@ class GoogleSheetsCallbackHandler(BaseCallbackHandler):
         keyboard = self._create_position_selection_keyboard(matching_result, context)
         reply_markup = InlineKeyboardMarkup(keyboard)
         
-        await self._send_long_message_with_keyboard_callback(query.message, full_text, reply_markup)
+        # Edit existing message instead of sending new one
+        await query.edit_message_text(full_text, reply_markup=reply_markup, parse_mode='Markdown')
     
     async def _show_google_sheets_manual_matching_for_item(self, update: Update, context: ContextTypes.DEFAULT_TYPE, item_index: int):
         """Show manual matching interface for specific Google Sheets item"""
@@ -340,7 +342,8 @@ class GoogleSheetsCallbackHandler(BaseCallbackHandler):
         keyboard = self._create_manual_matching_keyboard(current_match, item_index, context)
         reply_markup = InlineKeyboardMarkup(keyboard)
         
-        await self.ui_manager.send_menu(update, context, progress_text, reply_markup, 'Markdown')
+        # Edit existing message instead of sending new one
+        await query.edit_message_text(progress_text, reply_markup=reply_markup, parse_mode='Markdown')
     
     # ==================== SUGGESTION HANDLING METHODS ====================
     
@@ -364,12 +367,8 @@ class GoogleSheetsCallbackHandler(BaseCallbackHandler):
         # Update the match
         self._update_match_with_suggestion(current_match, selected_suggestion)
         
-        # Delete the current message and show success
+        # Show success and return to matching table
         await self._cleanup_and_show_success(update, context, current_match, selected_suggestion)
-        
-        # Return to Google Sheets matching table
-        await self._show_google_sheets_matching_table(update, context, 
-            context.user_data['pending_google_sheets_upload']['receipt_data'], matching_result)
     
     async def _handle_google_sheets_search_selection(self, update: Update, context: ContextTypes.DEFAULT_TYPE, 
                                                    item_index: int, result_index: int):
@@ -394,12 +393,8 @@ class GoogleSheetsCallbackHandler(BaseCallbackHandler):
         # Clear search data
         self._clear_search_data(context)
         
-        # Delete the current message and show success
+        # Show success and return to matching table
         await self._cleanup_and_show_success(update, context, current_match, selected_result)
-        
-        # Return to Google Sheets matching table
-        await self._show_google_sheets_matching_table(update, context, 
-            context.user_data['pending_google_sheets_upload']['receipt_data'], matching_result)
     
     # ==================== SUCCESS AND UNDO METHODS ====================
     
@@ -833,12 +828,8 @@ class GoogleSheetsCallbackHandler(BaseCallbackHandler):
     
     async def _cleanup_and_show_success(self, update: Update, context: ContextTypes.DEFAULT_TYPE, 
                                       current_match: IngredientMatch, selected_item: Dict[str, Any]):
-        """Clean up current message and show success"""
-        try:
-            await update.callback_query.delete_message()
-        except Exception as e:
-            print(f"DEBUG: Error deleting message: {e}")
-        
+        """Show success and return to matching table"""
+        # Show temporary success message
         success_text = self.locale_manager.get_text("sheets.callback.matched_successfully", context).format(
             receipt_item=current_match.receipt_item_name,
             ingredient_name=selected_item['name']
@@ -848,6 +839,12 @@ class GoogleSheetsCallbackHandler(BaseCallbackHandler):
             success_text,
             duration=2
         )
+        
+        # Return to Google Sheets matching table
+        pending_data = context.user_data.get('pending_google_sheets_upload')
+        if pending_data:
+            await self._show_google_sheets_matching_table(update, context, 
+                pending_data['receipt_data'], pending_data['matching_result'])
     
     # ==================== KEYBOARD CREATION METHODS ====================
     
@@ -911,7 +908,10 @@ class GoogleSheetsCallbackHandler(BaseCallbackHandler):
         
         for i, (index, match) in enumerate(items_needing_matching):
             status_emoji = self._get_google_sheets_status_emoji(match.match_status)
-            button_text = f"{status_emoji} {self._truncate_name(match.receipt_item_name, 15)}"
+            if status_emoji:
+                button_text = f"{status_emoji} {self._truncate_name(match.receipt_item_name, 15)}"
+            else:
+                button_text = self._truncate_name(match.receipt_item_name, 15)
             
             if i % 2 == 0:
                 keyboard.append([InlineKeyboardButton(button_text, callback_data=f"edit_google_sheets_item_{index}")])
@@ -932,7 +932,10 @@ class GoogleSheetsCallbackHandler(BaseCallbackHandler):
         keyboard = []
         for i, match in enumerate(matching_result.matches, 1):
             status_emoji = self._get_google_sheets_status_emoji(match.match_status)
-            button_text = f"{i}. {status_emoji} {self._truncate_name(match.receipt_item_name, 20)}"
+            if status_emoji:
+                button_text = f"{i}. {status_emoji} {self._truncate_name(match.receipt_item_name, 20)}"
+            else:
+                button_text = f"{i}. {self._truncate_name(match.receipt_item_name, 20)}"
             keyboard.append([InlineKeyboardButton(button_text, callback_data=f"select_google_sheets_line_{i}")])
         
         keyboard.append([InlineKeyboardButton(self.locale_manager.get_text("sheets.callback.back", context), callback_data="back_to_google_sheets_matching")])
@@ -1262,7 +1265,7 @@ class GoogleSheetsCallbackHandler(BaseCallbackHandler):
         elif status == MatchStatus.PARTIAL_MATCH:
             return "OK"
         else:
-            return "NO"
+            return ""
     
     def _calculate_similarity(self, text1: str, text2: str) -> float:
         """Calculate text similarity (simple implementation)"""

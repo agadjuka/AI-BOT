@@ -264,12 +264,6 @@ class GoogleSheetsDispatcher(BaseCallbackHandler):
             # Return to Google Sheets matching table
             await query.answer(self.locale_manager.get_text("sheets.callback.back", context))
             
-            # Delete the current message (position selection interface) to make it disappear
-            try:
-                await query.delete_message()
-            except Exception as e:
-                print(f"DEBUG: Error deleting message: {e}")
-            
             pending_data = context.user_data.get('pending_google_sheets_upload')
             if pending_data:
                 await self.google_sheets_handler._show_google_sheets_matching_table(update, context, 
@@ -335,12 +329,6 @@ class GoogleSheetsDispatcher(BaseCallbackHandler):
             line_number = int(action.split("_")[4])
             item_index = line_number - 1  # Convert to 0-based index
             await query.answer(self.locale_manager.get_text("matching.callback.line_selected", context, line_number=line_number))
-            
-            # Delete the current message (position selection interface) to make it disappear
-            try:
-                await query.delete_message()
-            except Exception as e:
-                print(f"DEBUG: Error deleting message: {e}")
             
             await self.google_sheets_handler._show_google_sheets_manual_matching_for_item(update, context, item_index)
         elif action.startswith("select_google_sheets_suggestion_"):
