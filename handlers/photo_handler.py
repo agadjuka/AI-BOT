@@ -52,6 +52,15 @@ class PhotoHandler(BaseMessageHandler):
         photo_file = await update.message.photo[-1].get_file()
         await photo_file.download_to_drive(self.config.PHOTO_FILE_NAME)
 
+        # КРИТИЧЕСКОЕ ИЗМЕНЕНИЕ: Запускаем AI обработку асинхронно в фоне
+        # Это позволяет webhook сразу вернуть ответ, а AI работает параллельно
+        asyncio.create_task(self._process_photo_async(update, context))
+        
+        # Сразу возвращаем управление - webhook не блокируется!
+        return self.config.AWAITING_CORRECTION  # Stay in active state for button processing
+    
+    async def _process_photo_async(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
+        """Асинхронная обработка фото в фоне - НЕ блокирует webhook"""
         try:
             print(f"🔍 {self.locale_manager.get_text('status.starting_analysis', context)}")
             analysis_data = await self.analysis_service.analyze_receipt_async(self.config.PHOTO_FILE_NAME)
@@ -77,12 +86,14 @@ class PhotoHandler(BaseMessageHandler):
             # Delete processing message after successful analysis
             await self._delete_processing_message(update, context)
             
+            # Always show final report with edit button
+            await self.show_final_report_with_edit_button(update, context)
+            
         except (json.JSONDecodeError, KeyError, IndexError, ValueError) as e:
             print(f"{self.locale_manager.get_text('errors.json_parsing_error', context)}: {e}")
             # Delete processing message on error
             await self._delete_processing_message(update, context)
             await update.message.reply_text(self.locale_manager.get_text("errors.parsing_error", context))
-            return self.config.AWAITING_CORRECTION
         
         except Exception as e:
             print(f"{self.locale_manager.get_text('errors.critical_photo_error', context)}: {e}")
@@ -91,11 +102,6 @@ class PhotoHandler(BaseMessageHandler):
             # Delete processing message on error
             await self._delete_processing_message(update, context)
             await update.message.reply_text(self.locale_manager.get_text("errors.critical_photo_error", context))
-            return self.config.AWAITING_CORRECTION
-
-        # Always show final report with edit button
-        await self.show_final_report_with_edit_button(update, context)
-        return self.config.AWAITING_CORRECTION  # Stay in active state for button processing
     
     async def handle_multiple_photos(self, update: Update, context: ContextTypes.DEFAULT_TYPE, photo_messages: List[Message]) -> int:
         """Handle multiple photos with parallel processing"""
