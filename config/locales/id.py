@@ -302,7 +302,7 @@ ID_TRANSLATIONS = {
     # Pesan tambah sheet baru
     "add_sheet": {
         "step1_title": "📄 Menambah Tabel (Langkah 1 dari 2)",
-        "step1_instruction": "Untuk menghubungkan tabel, ikuti langkah-langkah berikut:\n\n📝 1. Buat Google Sheet baru, atau gunakan yang sudah ada (pastikan tidak ada informasi rahasia).\n\n🔗 2. Klik tombol 'Bagikan' di pojok kanan atas.\n\n📧 3. Di field 'Tambahkan orang dan grup', tempel email ini:\n\n<code>{service_email}</code>\n\n✅ 4. Pastikan Anda memberikan izin <b>Editor</b>.\n\n📋 5. Salin link sheet dari browser dan kirim ke saya dalam pesan berikutnya.",
+        "step1_instruction": "Untuk menghubungkan tabel, ikuti langkah-langkah berikut:\n\n📝 1. Buat Google Sheet baru, atau gunakan yang sudah ada (pastikan tidak ada informasi rahasia).\n\n🔗 2. Klik tombol 'Bagikan' di pojok kanan atas di Google Sheets.\n\n📧 3. Di field 'Tambahkan orang dan grup', tempel email ini:\n\n<code>{service_email}</code>\n\n✅ 4. Pastikan Anda memberikan izin <b>Editor</b>.\n\n📋 5. Salin link sheet dari browser dan kirim ke saya dalam pesan berikutnya.",
         "step2_title": "📝 Pilih Nama (Langkah 2 dari 3)",
         "step2_instruction": "✅ Bagus, akses diberikan! Sekarang pilih nama sederhana untuk tabel agar tidak bingung. Contoh: <i>Pengeluaran Rumah</i>.",
         "step3_title": "📊 Konfigurasi Tabel (Langkah 3 dari 3)",
@@ -314,7 +314,9 @@ ID_TRANSLATIONS = {
             "product": "Barang", 
             "quantity": "Jml",
             "price": "Harga",
-            "sum": "Jumlah"
+            "sum": "Jumlah",
+            "name": "Nama",
+            "ingredient": "Bahan"
         },
         "step3_success": "🎉 Tabel '{sheet_name}' berhasil ditambahkan!",
         "buttons": {
@@ -406,9 +408,9 @@ ID_TRANSLATIONS = {
             "no_matching_data_for_file": "❌ Tidak ada data pencocokan Google Sheets untuk pembuatan file.",
             "excel_generation_error": "❌ Error membuat file Excel.",
             "excel_generation_error_detailed": "❌ Error membuat file Excel: {error}",
-            "matching_table_title": "**Pencocokan dengan bahan Google Sheets:**",
+            "matching_table_title": "**Pencocokan dengan Google Sheets:**",
             "no_ingredients_for_matching": "Tidak ada bahan untuk dicocokkan.",
-            "table_header": "№ | Nama                 | Google Sheets        | Status",
+            "table_header": "№ | Nama                         | Bahan                        | Status",
             "manual_matching_editor_title": "**Editor pencocokan Google Sheets**",
             "current_item": "**Barang:** {item_name}",
             "choose_suitable_ingredient": "**Pilih bahan yang sesuai:**",
@@ -444,6 +446,8 @@ ID_TRANSLATIONS = {
             "preview": "👁️ Preview",
             "back_to_receipt": "◀️ Kembali ke struk",
             "upload_to_google_sheets": "✅ Upload ke Google Sheets",
+            "upload_to_sheet": "📊 Upload ke '{sheet_name}'",
+            "upload_to_main_sheet": "✅ Upload ke '{sheet_name}'",
             "back": "◀️ Kembali",
             "select_position_for_matching": "🔍 Pilih posisi untuk pencocokan",
             "search": "🔍 Cari",
@@ -524,7 +528,9 @@ ID_TRANSLATIONS = {
             "product": "Barang",
             "quantity": "Jml",
             "price": "Harga",
-            "amount": "Jumlah"
+            "amount": "Jumlah",
+            "name": "Nama",
+            "ingredient": "Bahan"
         },
         "total_label": "Total:"
     }

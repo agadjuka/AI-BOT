@@ -80,7 +80,7 @@ class TableConfigManager:
                 ColumnConfig("number", "№", 2, "right"),
                 ColumnConfig("receipt_item", "Товар", 12, "left", emoji="📦"),
                 ColumnConfig("ingredient", "Google Sheets", 12, "left", emoji="🏷️"),
-                ColumnConfig("status", "Статус", 4, "center", emoji="📊")
+                 ColumnConfig("status", "", 4, "center", emoji="📊")
             ],
             style=TableStyle(
                 max_name_length=12,
@@ -99,7 +99,7 @@ class TableConfigManager:
                 ColumnConfig("number", "№", 2, "right"),
                 ColumnConfig("receipt_item", "Товар", 20, "left", emoji="📦"),
                 ColumnConfig("ingredient", "Google Sheets", 20, "left", emoji="🏷️"),
-                ColumnConfig("status", "Статус", 6, "center", emoji="📊")
+                 ColumnConfig("status", "", 6, "center", emoji="📊")
             ],
             style=TableStyle(
                 max_name_length=20,
@@ -116,15 +116,16 @@ class TableConfigManager:
             device_type=DeviceType.MOBILE,
             columns=[
                 ColumnConfig("number", "№", 2, "right"),
-                ColumnConfig("receipt_item", "Наименование", 25, "left"),
-                ColumnConfig("google_sheets", "Ингредиент", 20, "left"),
-                ColumnConfig("status", "Статус", 4, "center")
+                ColumnConfig("receipt_item", "Nama", 25, "left"),
+                ColumnConfig("google_sheets", "Bahan", 20, "left"),
+                ColumnConfig("status", "", 4, "center")
             ],
             style=TableStyle(
                 max_name_length=30,
-                compact_mode=True
+                compact_mode=True,
+                show_separators=True
             ),
-            title="Сопоставление с Google Таблицами",
+            title="Pencocokan dengan Google Sheets",
             max_items_per_page=8
         )
         
@@ -134,15 +135,16 @@ class TableConfigManager:
             device_type=DeviceType.DESKTOP,
             columns=[
                 ColumnConfig("number", "№", 2, "right"),
-                ColumnConfig("receipt_item", "Наименование", 35, "left"),
-                ColumnConfig("google_sheets", "Ингредиент", 30, "left"),
-                ColumnConfig("status", "Статус", 6, "center")
+                ColumnConfig("receipt_item", "Nama", 35, "left"),
+                ColumnConfig("google_sheets", "Bahan", 30, "left"),
+                ColumnConfig("status", "", 6, "center")
             ],
             style=TableStyle(
                 max_name_length=40,
-                compact_mode=False
+                compact_mode=False,
+                show_separators=True
             ),
-            title="Сопоставление с Google Таблицами",
+            title="Pencocokan dengan Google Sheets",
             max_items_per_page=15
         )
         
@@ -218,7 +220,7 @@ class TableConfigManager:
             columns=[
                 ColumnConfig("number", "№", 2, "right"),
                 ColumnConfig("item", "Следующий товар", 20, "left", emoji="⏭️"),
-                ColumnConfig("status", "Статус", 6, "center", emoji="📋")
+                ColumnConfig("status", "", 6, "center", emoji="📋")
             ],
             style=TableStyle(
                 max_name_length=20,
@@ -235,7 +237,7 @@ class TableConfigManager:
             columns=[
                 ColumnConfig("number", "№", 2, "right"),
                 ColumnConfig("item", "Следующий товар", 35, "left", emoji="⏭️"),
-                ColumnConfig("status", "Статус", 10, "center", emoji="📋"),
+                ColumnConfig("status", "", 10, "center", emoji="📋"),
                 ColumnConfig("priority", "Приоритет", 8, "center", emoji="⭐")
             ],
             style=TableStyle(
@@ -333,7 +335,7 @@ class TableConfigManager:
             columns=[
                 ColumnConfig("number", "№", 2, "right"),
                 ColumnConfig("item", "Элемент", 20, "left"),
-                ColumnConfig("status", "Статус", 6, "center")
+                ColumnConfig("status", "", 6, "center")
             ],
             style=TableStyle(max_name_length=20),
             title=f"Таблица {table_type.value}",

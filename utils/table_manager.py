@@ -115,7 +115,11 @@ class TableManager:
         
         # Создаем заголовок
         table_lines = []
-        table_lines.append(f"**{config.title}:**\n")
+        if self.locale_manager and context:
+            title = self.locale_manager.get_text("sheets.callback.matching_table_title", context)
+        else:
+            title = config.title
+        table_lines.append(f"{title}\n")
         
         # Создаем таблицу
         table_lines.append("```")
@@ -425,16 +429,19 @@ class TableManager:
         if not text:
             return ""
         
-        # Ограничиваем общую длину текста
-        if len(text) > max_name_length:
-            text = text[:max_name_length-3] + "..."
-        
         # Если текст помещается в колонку, возвращаем как есть
         if len(text) <= max_width:
             return text
         
         # Переносим текст по словам
-        return self._wrap_text_by_words(text, max_width)
+        wrapped_text = self._wrap_text_by_words(text, max_width)
+        
+        # Ограничиваем количество строк, но не общую длину текста
+        lines = wrapped_text.split('\n')
+        if len(lines) > 5:  # Максимум 5 строк для читаемости
+            return '\n'.join(lines[:4]) + '\n...'
+        
+        return wrapped_text
     
     def _wrap_text_by_words(self, text: str, max_width: int) -> str:
         """Переносит текст по словам, не разрывая слова"""
@@ -449,13 +456,18 @@ class TableManager:
         current_line = ""
         
         for word in words:
-            # Если слово само по себе длиннее max_width, обрезаем его
+            # Если слово само по себе длиннее max_width, разбиваем его
             if len(word) > max_width:
                 if current_line:
                     lines.append(current_line.strip())
                     current_line = ""
-                # Обрезаем длинное слово
-                lines.append(word[:max_width-3] + "...")
+                # Разбиваем длинное слово на части
+                remaining_word = word
+                while len(remaining_word) > max_width:
+                    lines.append(remaining_word[:max_width-3] + "...")
+                    remaining_word = remaining_word[max_width-3:]
+                if remaining_word:
+                    current_line = remaining_word
                 continue
             
             # Проверяем, поместится ли слово в текущую строку
@@ -472,10 +484,7 @@ class TableManager:
         if current_line:
             lines.append(current_line.strip())
         
-        # Возвращаем результат (максимум 3 строки для читаемости)
-        if len(lines) > 3:
-            return "\n".join(lines[:2]) + "\n..."
-        
+        # Возвращаем результат без ограничения на количество строк
         return "\n".join(lines)
     
     def _format_multiline_cell(self, text: str, column_width: int, align: str = "left") -> List[str]:
@@ -487,6 +496,11 @@ class TableManager:
         formatted_lines = []
         
         for line in lines:
+            # Обрезаем строку если она длиннее ширины столбца
+            if len(line) > column_width:
+                line = line[:column_width]
+            
+            # Форматируем с учетом выравнивания
             if align == "right":
                 formatted_lines.append(f"{line:>{column_width}}")
             elif align == "center":

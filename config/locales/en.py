@@ -302,7 +302,7 @@ EN_TRANSLATIONS = {
     # Add new sheet messages
     "add_sheet": {
         "step1_title": "📄 Adding Table (Step 1 of 3)",
-        "step1_instruction": "To connect a table, follow these steps:\n\n📝 1. Create a new Google Sheet, or use an existing one (make sure there's no confidential information).\n\n🔗 2. Click 'Share' button in the top right corner.\n\n📧 3. In the 'Add people and groups' field, paste this email:\n\n<code>{service_email}</code>\n\n✅ 4. Make sure you gave <b>Editor</b> permissions.\n\n📋 5. Copy the sheet link from your browser and send it to me in the next message.",
+        "step1_instruction": "To connect a table, follow these steps:\n\n📝 1. Create a new Google Sheet, or use an existing one (make sure there's no confidential information).\n\n🔗 2. Click 'Share' button in the top right corner in your Google Sheets.\n\n📧 3. In the 'Add people and groups' field, paste this email:\n\n<code>{service_email}</code>\n\n✅ 4. Make sure you gave <b>Editor</b> permissions.\n\n📋 5. Copy the sheet link from your browser and send it to me in the next message.",
         "step2_title": "📝 Choose a Name (Step 2 of 3)",
         "step2_instruction": "✅ Great, access granted! Now choose a simple name for the table so you won't get confused. For example: <i>Home Expenses</i>.",
         "step3_title": "📊 Table Configuration (Step 3 of 3)",
@@ -314,7 +314,9 @@ EN_TRANSLATIONS = {
             "product": "Product", 
             "quantity": "Qty",
             "price": "Price",
-            "sum": "Sum"
+            "sum": "Sum",
+            "name": "Name",
+            "ingredient": "Ingredient"
         },
         "step3_success": "🎉 Table '{sheet_name}' successfully added!",
         "buttons": {
@@ -412,9 +414,9 @@ EN_TRANSLATIONS = {
             "no_matching_data_for_file": "❌ No Google Sheets matching data for file generation.",
             "excel_generation_error": "❌ Error creating Excel file.",
             "excel_generation_error_detailed": "❌ Error creating Excel file: {error}",
-            "matching_table_title": "**Matching with Google Sheets ingredients:**",
+            "matching_table_title": "**Mapping with Google Sheets:**",
             "no_ingredients_for_matching": "No ingredients for matching.",
-            "table_header": "№ | Name                 | Google Sheets        | Status",
+            "table_header": "№ | Name                         | Ingredient                   | Status",
             "manual_matching_editor_title": "**Google Sheets matching editor**",
             "current_item": "**Item:** {item_name}",
             "choose_suitable_ingredient": "**Choose suitable ingredient:**",
@@ -450,6 +452,8 @@ EN_TRANSLATIONS = {
             "preview": "👁️ Preview",
             "back_to_receipt": "◀️ Back to receipt",
             "upload_to_google_sheets": "✅ Upload to Google Sheets",
+            "upload_to_sheet": "📊 Upload to '{sheet_name}'",
+            "upload_to_main_sheet": "✅ Upload to '{sheet_name}'",
             "back": "◀️ Back",
             "select_position_for_matching": "🔍 Select position for matching",
             "search": "🔍 Search",
@@ -530,7 +534,9 @@ EN_TRANSLATIONS = {
             "product": "Product",
             "quantity": "Qty",
             "price": "Price",
-            "amount": "Amount"
+            "amount": "Amount",
+            "name": "Name",
+            "ingredient": "Ingredient"
         },
         "total_label": "Total:"
     }

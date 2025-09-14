@@ -15,7 +15,7 @@ from services.file_generator_service import FileGeneratorService
 from services.google_sheets_manager import get_google_sheets_manager
 from utils.common_handlers import CommonHandlers
 from config.locales.locale_manager import get_global_locale_manager
-from config.table_config import TableConfig, ColumnConfig, TableStyle, DeviceType
+from config.table_config import TableConfig, ColumnConfig, TableStyle, DeviceType, TableType
 
 
 class GoogleSheetsCallbackHandler(BaseCallbackHandler):
@@ -873,10 +873,7 @@ class GoogleSheetsCallbackHandler(BaseCallbackHandler):
         
         # Main upload button for selected sheet
         selected_sheet_name = selected_sheet.get('friendly_name', 'Unknown')
-        if selected_sheet.get('is_default', False):
-            upload_text = f"✅ Загрузить в '{selected_sheet_name}'"
-        else:
-            upload_text = f"✅ Загрузить в '{selected_sheet_name}'"
+        upload_text = self.locale_manager.get_text("sheets.callback.upload_to_main_sheet", context).format(sheet_name=selected_sheet_name)
         
         keyboard.append([InlineKeyboardButton(upload_text, callback_data="confirm_google_sheets_upload")])
         
@@ -884,7 +881,7 @@ class GoogleSheetsCallbackHandler(BaseCallbackHandler):
         for sheet in user_sheets:
             if sheet.get('doc_id') != selected_sheet.get('doc_id'):  # Skip currently selected sheet
                 sheet_name = sheet.get('friendly_name', 'Unknown')
-                button_text = f"📊 Загрузить в '{sheet_name}'"
+                button_text = self.locale_manager.get_text("sheets.callback.upload_to_sheet", context).format(sheet_name=sheet_name)
                 callback_data = f"gs_select_sheet_{sheet.get('doc_id')}"
                 keyboard.append([InlineKeyboardButton(button_text, callback_data=callback_data)])
         
@@ -1137,104 +1134,66 @@ class GoogleSheetsCallbackHandler(BaseCallbackHandler):
         total_width = sum(column.width for column in dynamic_columns) + (len(dynamic_columns) - 1) * 3
         lines.append("─" * total_width)
         
-        # Строки данных
+        # Строки данных - используем TableManager для правильного переноса текста
+        from utils.table_manager import TableManager
+        table_manager = TableManager(self.locale_manager)
+        
         for row_data in table_data:
-            row_parts = []
+            # Подготавливаем данные для строки
+            row_data_list = []
             for column in dynamic_columns:
                 value = str(row_data.get(column.key, ""))
-                
-                # Переносим длинный текст по словам внутри столбца
-                if len(value) > column.width:
-                    words = value.split()
-                    lines_to_add = []
-                    current_line = ""
-                    
-                    for word in words:
-                        # Проверяем, поместится ли слово на текущей строке
-                        test_line = current_line + (" " if current_line else "") + word
-                        if len(test_line) <= column.width:
-                            current_line = test_line
-                        else:
-                            # Если текущая строка не пустая, сохраняем её и начинаем новую
-                            if current_line:
-                                lines_to_add.append(current_line)
-                                current_line = word
-                            else:
-                                # Если слово само по себе длиннее ширины колонки, обрезаем его
-                                current_line = word[:column.width-3] + "..."
-                    
-                    # Добавляем последнюю строку
-                    if current_line:
-                        lines_to_add.append(current_line)
-                    
-                    # Берем только первую строку для основной таблицы
-                    value = lines_to_add[0] if lines_to_add else ""
-                
-                # Выравнивание
-                if column.align == "right":
-                    row_parts.append(f"{value:>{column.width}}")
-                elif column.align == "center":
-                    row_parts.append(f"{value:^{column.width}}")
-                else:  # left
-                    row_parts.append(f"{value:<{column.width}}")
+                # Используем улучшенную функцию переноса текста из TableManager
+                wrapped_value = table_manager._wrap_text(value, column.width, column.width * 5)  # max_name_length = width * 5
+                row_data_list.append(wrapped_value)
             
-            lines.append(" | ".join(row_parts))
+            # Создаем многострочную строку таблицы
+            table_lines = table_manager._create_multiline_table_row(row_data_list, 
+                TableConfig(
+                    table_type=TableType.GOOGLE_SHEETS_PREVIEW,
+                    device_type=device_type,
+                    columns=dynamic_columns,
+                    style=TableStyle(max_name_length=50),
+                    title=""
+                )
+            )
+            lines.extend(table_lines)
         
         return "\n".join(lines)
     
     
     def _format_google_sheets_matching_table(self, matching_result: IngredientMatchingResult, context=None) -> str:
         """Format Google Sheets matching table for editing"""
-        # Используем TableManager если доступен
-        if hasattr(self, 'table_manager') and self.table_manager:
-            return self.table_manager.format_google_sheets_matching_table(matching_result, context)
-        
-        # Fallback на старую логику
-        if not matching_result.matches:
-            if context:
-                return self.locale_manager.get_text("sheets.callback.no_ingredients_for_matching", context)
-            return "Нет ингредиентов для сопоставления."
-        
-        # Create table header
-        table_lines = []
-        if context:
-            title = self.locale_manager.get_text("sheets.callback.matching_table_title", context)
-        else:
-            title = "**Сопоставление с ингредиентами Google Таблиц:**"
-        table_lines.append(f"{title}\n")
-        
-        # Create table
-        table_lines.append("```")
-        table_lines.append(self._create_google_sheets_table_header(context))
-        table_lines.append(self._create_google_sheets_table_separator())
-        
-        # Add table rows
-        for i, match in enumerate(matching_result.matches, 1):
-            table_lines.append(self._create_google_sheets_table_row(i, match))
-        
-        table_lines.append("```")
-        
-        return "\n".join(table_lines)
+        # Всегда используем TableManager для правильной локализации
+        from utils.table_manager import TableManager
+        table_manager = TableManager(self.locale_manager)
+        return table_manager.format_google_sheets_matching_table(matching_result, context)
     
     def _create_google_sheets_table_header(self, context=None) -> str:
         """Create Google Sheets table header"""
         if context:
-            header_template = self.locale_manager.get_text("sheets.callback.table_header", context)
-            return header_template
-        return f"{'№':<2} | {'Наименование':<24} | {'Ингредиент':<20} | {'Статус':<4}"
+            # Используем локализованные заголовки
+            name_header = self.locale_manager.get_text("formatters.table_headers.name", context)
+            ingredient_header = self.locale_manager.get_text("formatters.table_headers.ingredient", context)
+            return f"{'№':<2} | {name_header:<25} | {ingredient_header:<20} | {'':<4}"
+        return f"{'№':<2} | {'Nama':<25} | {'Bahan':<20} | {'':<4}"
     
     def _create_google_sheets_table_separator(self) -> str:
         """Create Google Sheets table separator"""
-        return "-" * 54  # Fixed width to match table structure (2 + 24 + 20 + 4 + 4 = 54)
+        return "-" * 55  # Fixed width to match table structure (2 + 25 + 20 + 4 + 4 = 55)
     
     def _create_google_sheets_table_row(self, row_number: int, match: IngredientMatch) -> str:
         """Create a Google Sheets table row for a match"""
         # Wrap names instead of truncating
-        receipt_name_lines = self._wrap_text(match.receipt_item_name, 24)
-        ingredient_name_lines = self._wrap_text(
+        receipt_name_wrapped = self._wrap_text(match.receipt_item_name, 24)
+        ingredient_name_wrapped = self._wrap_text(
             match.matched_ingredient_name or "—", 
             20
         )
+        
+        # Split into lines
+        receipt_name_lines = receipt_name_wrapped.split('\n')
+        ingredient_name_lines = ingredient_name_wrapped.split('\n')
         
         # Get status emoji
         status_emoji = self._get_google_sheets_status_emoji(match.match_status)
@@ -1332,9 +1291,10 @@ class GoogleSheetsCallbackHandler(BaseCallbackHandler):
         """Truncate name to max length"""
         return self.common_handlers.truncate_name(name, max_length)
     
-    def _wrap_text(self, text: str, max_width: int) -> list[str]:
+    def _wrap_text(self, text: str, max_width: int) -> str:
         """Wrap text to fit within max_width, breaking on words when possible"""
-        return self.common_handlers.wrap_text(text, max_width)
+        wrapped_lines = self.common_handlers.wrap_text(text, max_width)
+        return "\n".join(wrapped_lines) if wrapped_lines else text
     
     def _save_ingredient_matching_data(self, user_id: int, context: ContextTypes.DEFAULT_TYPE):
         """Save ingredient matching data to storage"""

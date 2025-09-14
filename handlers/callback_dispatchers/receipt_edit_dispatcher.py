@@ -86,12 +86,15 @@ class ReceiptEditDispatcher(BaseCallbackHandler):
         elif action == "reanalyze":
             await update.callback_query.answer(self.locale_manager.get_text("status.analyzing_receipt", context))
             
+            # Clean up all messages except anchor BEFORE sending processing message
+            await self.ui_manager.cleanup_all_except_anchor(update, context)
+            
             # Send processing message without auto-delete
             processing_text = self.locale_manager.get_text("status.processing_receipt", context)
             processing_message = await update.callback_query.message.reply_text(processing_text)
             context.user_data['processing_message_id'] = processing_message.message_id
             
-            await self.ui_manager.cleanup_all_except_anchor(update, context)
+            # Clear receipt data AFTER storing processing message ID
             self._clear_receipt_data(context)
             
             try:
