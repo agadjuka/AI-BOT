@@ -41,6 +41,32 @@ class MessageHandlers(BaseMessageHandler):
         """Handle /start command"""
         print(f"DEBUG: Start command received from user {update.effective_user.id}")
         
+        # Check user permissions
+        user_id = update.effective_user.id
+        username = update.effective_user.username
+        
+        from utils.role_initializer import check_user_permissions
+        from google.cloud import firestore
+        
+        # Get Firestore instance
+        try:
+            import main
+            db = main.db
+        except (ImportError, AttributeError):
+            db = None
+        
+        if db:
+            permissions = await check_user_permissions(user_id, username, db)
+            
+            if not permissions['has_access']:
+                await update.message.reply_text(
+                    "❌ **Access Denied**\n\n"
+                    "You don't have permission to use this bot.\n"
+                    "Please contact the administrator for access.",
+                    parse_mode='Markdown'
+                )
+                return self.config.AWAITING_DASHBOARD
+        
         # Save user_id to context for language loading
         self.save_user_context(update, context)
         
@@ -154,6 +180,188 @@ class MessageHandlers(BaseMessageHandler):
             reply_markup=reply_markup
         )
         
+        return self.config.AWAITING_DASHBOARD
+    
+    async def admin_commands(self, update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
+        """Handle admin commands - show admin panel"""
+        user_id = update.effective_user.id
+        username = update.effective_user.username
+        
+        # Check if user is admin
+        from utils.role_initializer import check_user_permissions
+        from google.cloud import firestore
+        
+        # Get Firestore instance
+        try:
+            import main
+            db = main.db
+        except (ImportError, AttributeError):
+            db = None
+        
+        if not db:
+            await update.message.reply_text("❌ Database not available")
+            return self.config.AWAITING_DASHBOARD
+        
+        permissions = await check_user_permissions(user_id, username, db)
+        
+        if not permissions['is_admin']:
+            await update.message.reply_text("❌ Access denied. Admin privileges required.")
+            return self.config.AWAITING_DASHBOARD
+        
+        # Create admin keyboard
+        keyboard = [
+            [InlineKeyboardButton("👥 Manage Whitelist", callback_data="admin_whitelist")],
+            [InlineKeyboardButton("👤 User Roles", callback_data="admin_roles")],
+            [InlineKeyboardButton("📊 System Status", callback_data="admin_status")],
+            [InlineKeyboardButton("🔙 Back to Dashboard", callback_data="dashboard")]
+        ]
+        
+        await update.message.reply_text(
+            "🔧 **Admin Panel**\n\n"
+            "Select an option to manage the system:",
+            reply_markup=InlineKeyboardMarkup(keyboard),
+            parse_mode='Markdown'
+        )
+        return self.config.AWAITING_DASHBOARD
+    
+    async def add_to_whitelist(self, update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
+        """Handle adding user to whitelist"""
+        user_id = update.effective_user.id
+        
+        # Check if user is admin
+        from utils.role_initializer import check_user_permissions
+        from google.cloud import firestore
+        
+        try:
+            import main
+            db = main.db
+        except (ImportError, AttributeError):
+            db = None
+        
+        if not db:
+            await update.message.reply_text("❌ Database not available")
+            return self.config.AWAITING_DASHBOARD
+        
+        permissions = await check_user_permissions(user_id, None, db)
+        
+        if not permissions['is_admin']:
+            await update.message.reply_text("❌ Access denied. Admin privileges required.")
+            return self.config.AWAITING_DASHBOARD
+        
+        # Get username from message text
+        message_text = update.message.text
+        if not message_text or len(message_text.split()) < 2:
+            await update.message.reply_text(
+                "❌ Please provide a username.\n"
+                "Usage: `/add_whitelist username`\n"
+                "Example: `/add_whitelist john_doe`",
+                parse_mode='Markdown'
+            )
+            return self.config.AWAITING_DASHBOARD
+        
+        username = message_text.split()[1]
+        
+        # Add to whitelist
+        from services.user_service import get_user_service
+        user_service = get_user_service(db)
+        
+        success = await user_service.add_to_whitelist(username)
+        
+        if success:
+            await update.message.reply_text(f"✅ Added `{username}` to whitelist", parse_mode='Markdown')
+        else:
+            await update.message.reply_text(f"❌ Failed to add `{username}` to whitelist", parse_mode='Markdown')
+        
+        return self.config.AWAITING_DASHBOARD
+    
+    async def remove_from_whitelist(self, update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
+        """Handle removing user from whitelist"""
+        user_id = update.effective_user.id
+        
+        # Check if user is admin
+        from utils.role_initializer import check_user_permissions
+        from google.cloud import firestore
+        
+        try:
+            import main
+            db = main.db
+        except (ImportError, AttributeError):
+            db = None
+        
+        if not db:
+            await update.message.reply_text("❌ Database not available")
+            return self.config.AWAITING_DASHBOARD
+        
+        permissions = await check_user_permissions(user_id, None, db)
+        
+        if not permissions['is_admin']:
+            await update.message.reply_text("❌ Access denied. Admin privileges required.")
+            return self.config.AWAITING_DASHBOARD
+        
+        # Get username from message text
+        message_text = update.message.text
+        if not message_text or len(message_text.split()) < 2:
+            await update.message.reply_text(
+                "❌ Please provide a username.\n"
+                "Usage: `/remove_whitelist username`\n"
+                "Example: `/remove_whitelist john_doe`",
+                parse_mode='Markdown'
+            )
+            return self.config.AWAITING_DASHBOARD
+        
+        username = message_text.split()[1]
+        
+        # Remove from whitelist
+        from services.user_service import get_user_service
+        user_service = get_user_service(db)
+        
+        success = await user_service.remove_from_whitelist(username)
+        
+        if success:
+            await update.message.reply_text(f"✅ Removed `{username}` from whitelist", parse_mode='Markdown')
+        else:
+            await update.message.reply_text(f"❌ Failed to remove `{username}` from whitelist", parse_mode='Markdown')
+        
+        return self.config.AWAITING_DASHBOARD
+    
+    async def list_whitelist(self, update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
+        """Handle listing whitelist"""
+        user_id = update.effective_user.id
+        
+        # Check if user is admin
+        from utils.role_initializer import check_user_permissions
+        from google.cloud import firestore
+        
+        try:
+            import main
+            db = main.db
+        except (ImportError, AttributeError):
+            db = None
+        
+        if not db:
+            await update.message.reply_text("❌ Database not available")
+            return self.config.AWAITING_DASHBOARD
+        
+        permissions = await check_user_permissions(user_id, None, db)
+        
+        if not permissions['is_admin']:
+            await update.message.reply_text("❌ Access denied. Admin privileges required.")
+            return self.config.AWAITING_DASHBOARD
+        
+        # Get whitelist
+        from services.user_service import get_user_service
+        user_service = get_user_service(db)
+        
+        whitelist = await user_service.get_whitelist()
+        
+        if whitelist:
+            whitelist_text = "📋 **Whitelisted Users:**\n\n"
+            for username in whitelist:
+                whitelist_text += f"• `{username}`\n"
+        else:
+            whitelist_text = "📋 **Whitelist is empty**"
+        
+        await update.message.reply_text(whitelist_text, parse_mode='Markdown')
         return self.config.AWAITING_DASHBOARD
     
     async def handle_photo(self, update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:

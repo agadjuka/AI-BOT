@@ -60,6 +60,9 @@ class BotConfig:
         self.SUPPORTED_LANGUAGES = ['ru', 'en', 'id']
         self.DEFAULT_LANGUAGE = 'en'
         self.LANGUAGE_COLLECTION_NAME = 'user_languages'
+        
+        # Admin settings
+        self.ADMIN_TELEGRAM_ID: int = 261617302
 
 
 # AI prompts moved to config/prompts.py

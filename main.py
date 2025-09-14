@@ -44,6 +44,12 @@ except Exception as e:
 from config.locales.locale_manager import initialize_locale_manager
 initialize_locale_manager(db)
 
+# Initialize roles and permissions after Firestore is ready
+if db:
+    from utils.role_initializer import initialize_roles_and_permissions
+    # Run role initialization in background
+    asyncio.create_task(initialize_roles_and_permissions(db))
+
 # Проверяем совместимость numpy/pandas перед импортом других модулей
 try:
     import numpy as np
@@ -240,6 +246,11 @@ def create_application() -> Application:
     ingredients_manager = get_ingredients_manager(db)
     print("✅ IngredientsManager предзагружен с Firestore")
     
+    # Preload UserService to initialize user role management
+    from services.user_service import get_user_service
+    user_service = get_user_service(db)
+    print("✅ UserService предзагружен с Firestore")
+    
     # Preload GoogleSheetsService to initialize Google Sheets API
     from services.google_sheets_service import GoogleSheetsService
     google_sheets_service = GoogleSheetsService(
@@ -320,6 +331,10 @@ def create_application() -> Application:
             CommandHandler("start", message_handlers.start),
             CommandHandler("reset_language", message_handlers.reset_language),
             CommandHandler("dashboard", message_handlers.dashboard),
+            CommandHandler("admin", message_handlers.admin_commands),
+            CommandHandler("add_whitelist", message_handlers.add_to_whitelist),
+            CommandHandler("remove_whitelist", message_handlers.remove_from_whitelist),
+            CommandHandler("list_whitelist", message_handlers.list_whitelist),
             MessageHandler(filters.PHOTO, message_handlers.handle_photo)
         ],
         states={

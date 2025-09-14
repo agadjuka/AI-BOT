@@ -116,6 +116,13 @@ def main() -> None:
     # КРИТИЧЕСКИ ВАЖНО: Инициализируем LocaleManager ПЕРЕД созданием handlers
     initialize_locale_manager(db)
     
+    # Initialize roles and permissions after Firestore is ready
+    if db:
+        from utils.role_initializer import initialize_roles_and_permissions
+        # Run role initialization synchronously for local development
+        import asyncio
+        asyncio.run(initialize_roles_and_permissions(db))
+    
     # Initialize handlers
     message_handlers = MessageHandlers(config, analysis_service)
     callback_handlers = CallbackHandlers(config, analysis_service)
@@ -147,6 +154,11 @@ def main() -> None:
     ingredients_manager = get_ingredients_manager(db)
     print("✅ IngredientsManager предзагружен с Firestore")
     
+    # Preload UserService to initialize user role management
+    from services.user_service import get_user_service
+    user_service = get_user_service(db)
+    print("✅ UserService предзагружен с Firestore")
+    
     # Preload GoogleSheetsService to initialize Google Sheets API
     from services.google_sheets_service import GoogleSheetsService
     google_sheets_service = GoogleSheetsService(
@@ -161,6 +173,10 @@ def main() -> None:
             CommandHandler("start", message_handlers.start),
             CommandHandler("reset_language", message_handlers.reset_language),
             CommandHandler("dashboard", message_handlers.dashboard),
+            CommandHandler("admin", message_handlers.admin_commands),
+            CommandHandler("add_whitelist", message_handlers.add_to_whitelist),
+            CommandHandler("remove_whitelist", message_handlers.remove_from_whitelist),
+            CommandHandler("list_whitelist", message_handlers.list_whitelist),
             MessageHandler(filters.PHOTO, message_handlers.handle_photo)
         ],
         states={
