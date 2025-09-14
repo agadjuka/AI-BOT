@@ -117,7 +117,7 @@ EN_TRANSLATIONS = {
     
     # Status messages
     "status": {
-        "processing_receipt": "Processing receipt",
+        "processing_receipt": "🔄 Processing receipt",
         "analyzing_receipt": "🔄 Re-analyzing photo...",
         "processing": "Processing...",
         "total_auto_calculated": "✅ Total automatically calculated: **{total}**",

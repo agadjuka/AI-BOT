@@ -86,11 +86,10 @@ class ReceiptEditDispatcher(BaseCallbackHandler):
         elif action == "reanalyze":
             await update.callback_query.answer(self.locale_manager.get_text("status.analyzing_receipt", context))
             
-            await self.ui_manager.send_temp(
-                update, context,
-                self.locale_manager.get_text("status.processing_receipt", context),
-                duration=10
-            )
+            # Send processing message without auto-delete
+            processing_text = self.locale_manager.get_text("status.processing_receipt", context)
+            processing_message = await update.callback_query.message.reply_text(processing_text)
+            context.user_data['processing_message_id'] = processing_message.message_id
             
             await self.ui_manager.cleanup_all_except_anchor(update, context)
             self._clear_receipt_data(context)
@@ -106,6 +105,9 @@ class ReceiptEditDispatcher(BaseCallbackHandler):
                 context.user_data['receipt_data'] = receipt_data
                 context.user_data['original_data'] = ReceiptData.from_dict(receipt_data.to_dict())
                 
+                # Delete processing message after successful analysis
+                await self._delete_processing_message(update, context)
+                
                 from handlers.photo_handler import PhotoHandler
                 photo_handler = PhotoHandler(self.config, self.analysis_service)
                 await photo_handler.show_final_report_with_edit_button(update, context)
@@ -113,6 +115,8 @@ class ReceiptEditDispatcher(BaseCallbackHandler):
                 
             except (json.JSONDecodeError, KeyError, IndexError, ValueError) as e:
                 print(f"JSON parsing error or data structure from Gemini: {e}")
+                # Delete processing message on error
+                await self._delete_processing_message(update, context)
                 await update.callback_query.message.reply_text(self.locale_manager.get_text("errors.parsing_error", context))
                 return self.config.AWAITING_CORRECTION
         elif action == "back_to_receipt":
@@ -202,3 +206,17 @@ class ReceiptEditDispatcher(BaseCallbackHandler):
             return self.config.AWAITING_CORRECTION
         
         return self.config.AWAITING_CORRECTION
+    
+    async def _delete_processing_message(self, update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+        """Delete processing message if it exists"""
+        processing_message_id = context.user_data.get('processing_message_id')
+        if processing_message_id:
+            try:
+                chat_id = update.effective_chat.id
+                await context.bot.delete_message(chat_id=chat_id, message_id=processing_message_id)
+                print(f"DEBUG: Deleted processing message {processing_message_id}")
+            except Exception as e:
+                print(f"DEBUG: Failed to delete processing message {processing_message_id}: {e}")
+            finally:
+                # Remove from context
+                context.user_data.pop('processing_message_id', None)

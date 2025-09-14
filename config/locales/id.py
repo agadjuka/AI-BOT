@@ -117,7 +117,7 @@ ID_TRANSLATIONS = {
     
     # Pesan status
     "status": {
-        "processing_receipt": "Memproses struk",
+        "processing_receipt": "🔄 Memproses struk",
         "analyzing_receipt": "🔄 Menganalisis foto ulang...",
         "processing": "Memproses...",
         "total_auto_calculated": "✅ Total dihitung otomatis: **{total}**",

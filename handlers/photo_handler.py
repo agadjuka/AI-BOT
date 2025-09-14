@@ -34,7 +34,17 @@ class PhotoHandler(BaseMessageHandler):
         self._clear_receipt_data(context)
         print(f"DEBUG: Cleared all data for new receipt upload")
         
-        processing_message = await self.ui_manager.send_temp(update, context, self.locale_manager.get_text("status.processing_receipt", context), duration=10)
+        # Send processing message without auto-delete
+        processing_text = self.locale_manager.get_text("status.processing_receipt", context)
+        if hasattr(update, 'callback_query') and update.callback_query:
+            processing_message = await update.callback_query.message.reply_text(processing_text)
+        elif hasattr(update, 'message') and update.message:
+            processing_message = await update.message.reply_text(processing_text)
+        else:
+            raise ValueError("Invalid update object")
+        
+        # Store processing message ID for later deletion
+        context.user_data['processing_message_id'] = processing_message.message_id
         
         photo_file = await update.message.photo[-1].get_file()
         await photo_file.download_to_drive(self.config.PHOTO_FILE_NAME)
@@ -61,8 +71,13 @@ class PhotoHandler(BaseMessageHandler):
             # AUTOMATICALLY create ingredient matching table for this receipt
             await self._create_ingredient_matching_for_receipt(update, context, receipt_data)
             
+            # Delete processing message after successful analysis
+            await self._delete_processing_message(update, context)
+            
         except (json.JSONDecodeError, KeyError, IndexError, ValueError) as e:
             print(f"{self.locale_manager.get_text('errors.json_parsing_error', context)}: {e}")
+            # Delete processing message on error
+            await self._delete_processing_message(update, context)
             await update.message.reply_text(self.locale_manager.get_text("errors.parsing_error", context))
             return self.config.AWAITING_CORRECTION
         
@@ -70,6 +85,8 @@ class PhotoHandler(BaseMessageHandler):
             print(f"{self.locale_manager.get_text('errors.critical_photo_error', context)}: {e}")
             import traceback
             traceback.print_exc()
+            # Delete processing message on error
+            await self._delete_processing_message(update, context)
             await update.message.reply_text(self.locale_manager.get_text("errors.critical_photo_error", context))
             return self.config.AWAITING_CORRECTION
 
@@ -317,6 +334,20 @@ class PhotoHandler(BaseMessageHandler):
         except Exception as e:
             print(f"DEBUG: Error creating automatic ingredient matching: {e}")
     
+    async def _delete_processing_message(self, update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+        """Delete processing message if it exists"""
+        processing_message_id = context.user_data.get('processing_message_id')
+        if processing_message_id:
+            try:
+                chat_id = update.effective_chat.id
+                await context.bot.delete_message(chat_id=chat_id, message_id=processing_message_id)
+                print(f"DEBUG: Deleted processing message {processing_message_id}")
+            except Exception as e:
+                print(f"DEBUG: Failed to delete processing message {processing_message_id}: {e}")
+            finally:
+                # Remove from context
+                context.user_data.pop('processing_message_id', None)
+
     def _clear_receipt_data(self, context: ContextTypes.DEFAULT_TYPE) -> None:
         """Clear all receipt-related data from context"""
         keys_to_clear = [
