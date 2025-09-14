@@ -52,6 +52,10 @@ class BotConfig:
         self.AWAITING_INGREDIENTS_FILE = 16
         self.AWAITING_INGREDIENTS_TEXT = 17
         
+        # Admin panel states
+        self.AWAITING_ADMIN_USERNAME = 18
+        self.AWAITING_ADMIN_CONFIRM_DELETE = 19
+        
         # Message settings
         self.MAX_MESSAGE_LENGTH = 4096
         self.MESSAGE_DELAY = 0.5

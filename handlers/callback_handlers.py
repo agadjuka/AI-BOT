@@ -16,6 +16,7 @@ from handlers.ingredient_matching_callback_handler import IngredientMatchingCall
 from handlers.google_sheets_callback_handler import GoogleSheetsCallbackHandler
 from handlers.file_generation_callback_handler import FileGenerationCallbackHandler
 from handlers.table_settings_handler import TableSettingsHandler
+from handlers.admin_panel import AdminPanelHandler
 from config.table_config import TableType, DeviceType
 from config.locales.locale_manager import get_global_locale_manager
 from config.locales.language_buttons import get_language_keyboard
@@ -41,6 +42,7 @@ class CallbackHandlers(BaseCallbackHandler):
         self.google_sheets_handler = GoogleSheetsCallbackHandler(config, analysis_service)
         self.file_generation_handler = FileGenerationCallbackHandler(config, analysis_service)
         self.table_settings_handler = TableSettingsHandler(config, analysis_service)
+        self.admin_panel_handler = AdminPanelHandler(config, analysis_service)
         
         # Initialize dispatchers
         self.receipt_edit_dispatcher = ReceiptEditDispatcher(config, analysis_service)
@@ -125,6 +127,26 @@ class CallbackHandlers(BaseCallbackHandler):
         
         elif action == "dashboard_main":
             return await self._handle_dashboard_main(update, context)
+        
+        # Admin panel callbacks
+        elif action == "admin_panel":
+            return await self.admin_panel_handler.show_admin_panel(update, context)
+        
+        elif action == "admin_add_user":
+            return await self.admin_panel_handler.show_add_user_screen(update, context)
+        
+        elif action == "admin_list_users":
+            return await self.admin_panel_handler.show_list_users(update, context)
+        
+        elif action == "admin_delete_user":
+            return await self.admin_panel_handler.show_delete_user_screen(update, context)
+        
+        elif action.startswith("admin_delete_confirm_"):
+            user_id_to_delete = action.replace("admin_delete_confirm_", "")
+            return await self.admin_panel_handler.show_delete_confirmation(update, context, user_id_to_delete)
+        
+        elif action == "admin_delete_final":
+            return await self.admin_panel_handler.confirm_user_deletion(update, context)
         
         elif action == "back_to_main_menu":
             return await self._handle_back_to_main_menu(update, context)
@@ -255,6 +277,10 @@ class CallbackHandlers(BaseCallbackHandler):
         query = update.callback_query
         await query.answer()
         
+        # Check if user is admin
+        user_id = update.effective_user.id
+        is_admin = await self.admin_panel_handler.is_admin(user_id, None)
+        
         # Create dashboard keyboard
         keyboard = [
             [InlineKeyboardButton(
@@ -272,12 +298,21 @@ class CallbackHandlers(BaseCallbackHandler):
             [InlineKeyboardButton(
                 self.get_text("welcome.dashboard.buttons.instruction", context, update=update), 
                 callback_data="dashboard_instruction"
-            )],
-            [InlineKeyboardButton(
-                self.get_text("buttons.back_to_main_menu", context, update=update), 
-                callback_data="back_to_main_menu"
             )]
         ]
+        
+        # Add admin panel button if user is admin
+        if is_admin:
+            keyboard.append([InlineKeyboardButton(
+                "👑 Админ-панель", 
+                callback_data="admin_panel"
+            )])
+        
+        # Add back button
+        keyboard.append([InlineKeyboardButton(
+            self.get_text("buttons.back_to_main_menu", context, update=update), 
+            callback_data="back_to_main_menu"
+        )])
         
         reply_markup = InlineKeyboardMarkup(keyboard)
         

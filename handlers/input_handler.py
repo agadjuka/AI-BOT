@@ -7,6 +7,7 @@ from telegram.ext import ContextTypes
 from models.receipt import ReceiptData
 from handlers.base_message_handler import BaseMessageHandler
 from handlers.google_sheets_input_handler import GoogleSheetsInputHandler
+from handlers.admin_panel import AdminPanelHandler
 from utils.common_handlers import CommonHandlers
 from config.locales.locale_manager import get_global_locale_manager
 
@@ -18,6 +19,7 @@ class InputHandler(BaseMessageHandler):
         super().__init__(config, analysis_service)
         self.locale_manager = get_global_locale_manager()
         self.google_sheets_input_handler = GoogleSheetsInputHandler(config, analysis_service)
+        self.admin_panel_handler = AdminPanelHandler(config, analysis_service)
         self.common_handlers = CommonHandlers(config, analysis_service)
     
     async def handle_user_input(self, update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
@@ -40,6 +42,10 @@ class InputHandler(BaseMessageHandler):
             )
         except Exception as e:
             print(f"DEBUG: Failed to delete user message: {e}")
+        
+        # Check for admin username input
+        if context.user_data.get('_conversation_state') == self.config.AWAITING_ADMIN_USERNAME:
+            return await self.admin_panel_handler.handle_username_input(update, context)
         
         # Check for Google Sheets ingredient search
         if context.user_data.get('awaiting_google_sheets_ingredient_name'):
