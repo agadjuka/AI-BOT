@@ -539,6 +539,12 @@ EN_TRANSLATIONS = {
             "ingredient": "Ingredient"
         },
         "total_label": "Total:"
+    },
+    
+    # Access control
+    "access_control": {
+        "access_denied": "Sorry, you don't have access to this bot. Please contact the administrator @markov1u",
+        "admin_only": "This command is available only to the administrator."
     }
     
 }

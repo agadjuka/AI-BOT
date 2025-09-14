@@ -41,8 +41,8 @@ async def test_role_system():
     config = BotConfig()
     admin_id = config.ADMIN_TELEGRAM_ID
     
-    role = await user_service.get_user_role(admin_id)
-    print(f"Admin {admin_id} role: {role}")
+    has_user_role = await user_service.get_user_role(admin_id)
+    print(f"Admin {admin_id} has user role: {has_user_role}")
     
     is_admin = await user_service.is_user_admin(admin_id)
     print(f"Is admin: {is_admin}")

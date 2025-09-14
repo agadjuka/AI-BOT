@@ -116,13 +116,6 @@ def main() -> None:
     # КРИТИЧЕСКИ ВАЖНО: Инициализируем LocaleManager ПЕРЕД созданием handlers
     initialize_locale_manager(db)
     
-    # Initialize roles and permissions after Firestore is ready
-    if db:
-        from utils.role_initializer import initialize_roles_and_permissions
-        # Run role initialization synchronously for local development
-        import asyncio
-        asyncio.run(initialize_roles_and_permissions(db))
-    
     # Initialize handlers
     message_handlers = MessageHandlers(config, analysis_service)
     callback_handlers = CallbackHandlers(config, analysis_service)
@@ -301,6 +294,21 @@ def main() -> None:
 
     # Add handlers
     application.add_handler(conv_handler)
+    
+    # Initialize roles and permissions after application is created
+    if db:
+        try:
+            from utils.role_initializer import initialize_roles_and_permissions
+            import asyncio
+            # Run role initialization in a new event loop for local development
+            loop = asyncio.new_event_loop()
+            asyncio.set_event_loop(loop)
+            loop.run_until_complete(initialize_roles_and_permissions(db))
+            loop.close()
+            print("✅ Roles and permissions initialized for local development")
+        except Exception as e:
+            print(f"⚠️ Role initialization failed: {e}")
+            # НЕ прерываем инициализацию - роли не критичны для базовой работы
 
     # 4. Запускаем бота с улучшенной обработкой ошибок и автоочисткой
     print("🚀 Бот запускается...")

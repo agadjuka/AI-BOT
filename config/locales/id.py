@@ -533,6 +533,12 @@ ID_TRANSLATIONS = {
             "ingredient": "Bahan"
         },
         "total_label": "Total:"
+    },
+    
+    # Kontrol akses
+    "access_control": {
+        "access_denied": "Maaf, Anda tidak memiliki akses ke bot ini. Silakan hubungi administrator @markov1u",
+        "admin_only": "Perintah ini hanya tersedia untuk administrator."
     }
     
 }

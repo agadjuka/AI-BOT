@@ -10,6 +10,7 @@ from telegram.ext import ContextTypes
 from models.receipt import ReceiptData
 from handlers.base_message_handler import BaseMessageHandler
 from config.locales.locale_manager import get_global_locale_manager
+from utils.access_control import access_check
 
 
 class PhotoHandler(BaseMessageHandler):
@@ -21,10 +22,12 @@ class PhotoHandler(BaseMessageHandler):
         self.max_concurrent_photos = 3  # Maximum number of photos to process simultaneously
         self.processing_photos: Dict[int, Dict[str, Any]] = {}  # Track processing photos by user_id
     
+    @access_check
     async def handle_photo(self, update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
         """Handle single photo upload (backward compatibility)"""
         return await self.handle_single_photo(update, context)
     
+    @access_check
     async def handle_single_photo(self, update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
         """Handle single photo upload"""
         # Set anchor message (first receipt message)

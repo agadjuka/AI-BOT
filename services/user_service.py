@@ -32,33 +32,47 @@ class UserService:
         else:
             print("❌ UserService initialized without Firestore - operations will fail")
     
-    async def get_user_role(self, user_id: int) -> Optional[str]:
+    async def get_user_role(self, user_id: int) -> bool:
         """
-        Get user role from Firestore
+        Check if user has "user" role in Firestore
         
         Args:
             user_id: Telegram user ID
             
         Returns:
-            User role ("admin" or "user") or None if not found
+            True if document exists AND role field exists AND role equals "user"
+            False in all other cases
         """
         if not self.db:
             print("❌ Firestore not available")
-            return None
+            return False
         
         try:
             user_ref = self.db.collection('users').document(str(user_id))
             user_doc = user_ref.get()
             
-            if user_doc.exists:
-                user_data = user_doc.to_dict()
-                return user_data.get('role', 'user')  # Default to 'user' if role not set
+            if not user_doc.exists:
+                print(f"❌ User {user_id} document does not exist")
+                return False
+            
+            user_data = user_doc.to_dict()
+            
+            # Check if 'role' key exists in the document
+            if 'role' not in user_data:
+                print(f"❌ User {user_id} document exists but 'role' field is missing")
+                return False
+            
+            # Check if role equals "user"
+            if user_data['role'] == "user":
+                print(f"✅ User {user_id} has 'user' role - access granted")
+                return True
             else:
-                return None
+                print(f"❌ User {user_id} has role '{user_data['role']}', not 'user'")
+                return False
                 
         except Exception as e:
-            print(f"❌ Error getting user role: {e}")
-            return None
+            print(f"❌ Error checking user role: {e}")
+            return False
     
     async def set_user_role(self, user_id: int, role: str) -> bool:
         """
@@ -114,19 +128,23 @@ class UserService:
             return False
         
         try:
-            current_role = await self.get_user_role(admin_user_id)
+            # Check if user has admin role by looking at the document directly
+            user_ref = self.db.collection('users').document(str(admin_user_id))
+            user_doc = user_ref.get()
             
-            if current_role == 'admin':
-                print(f"✅ User {admin_user_id} already has admin role")
-                return True
+            if user_doc.exists:
+                user_data = user_doc.to_dict()
+                if user_data.get('role') == 'admin':
+                    print(f"✅ User {admin_user_id} already has admin role")
+                    return True
+            
+            # Set admin role
+            success = await self.set_user_role(admin_user_id, 'admin')
+            if success:
+                print(f"✅ Assigned admin role to user {admin_user_id}")
             else:
-                # Set admin role
-                success = await self.set_user_role(admin_user_id, 'admin')
-                if success:
-                    print(f"✅ Assigned admin role to user {admin_user_id}")
-                else:
-                    print(f"❌ Failed to assign admin role to user {admin_user_id}")
-                return success
+                print(f"❌ Failed to assign admin role to user {admin_user_id}")
+            return success
                 
         except Exception as e:
             print(f"❌ Error ensuring admin role: {e}")
@@ -142,8 +160,31 @@ class UserService:
         Returns:
             True if user is admin, False otherwise
         """
-        role = await self.get_user_role(user_id)
-        return role == 'admin'
+        if not self.db:
+            print("❌ Firestore not available")
+            return False
+        
+        try:
+            user_ref = self.db.collection('users').document(str(user_id))
+            user_doc = user_ref.get()
+            
+            if not user_doc.exists:
+                print(f"❌ User {user_id} document does not exist")
+                return False
+            
+            user_data = user_doc.to_dict()
+            
+            # Check if 'role' key exists and equals 'admin'
+            if 'role' in user_data and user_data['role'] == 'admin':
+                print(f"✅ User {user_id} has admin role")
+                return True
+            else:
+                print(f"❌ User {user_id} does not have admin role")
+                return False
+                
+        except Exception as e:
+            print(f"❌ Error checking admin role: {e}")
+            return False
     
     async def is_user_whitelisted(self, username: str) -> bool:
         """

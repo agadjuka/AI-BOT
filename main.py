@@ -44,11 +44,7 @@ except Exception as e:
 from config.locales.locale_manager import initialize_locale_manager
 initialize_locale_manager(db)
 
-# Initialize roles and permissions after Firestore is ready
-if db:
-    from utils.role_initializer import initialize_roles_and_permissions
-    # Run role initialization in background
-    asyncio.create_task(initialize_roles_and_permissions(db))
+# Role initialization will be done in initialize_bot function
 
 # Проверяем совместимость numpy/pandas перед импортом других модулей
 try:
@@ -494,6 +490,16 @@ async def initialize_bot():
     # Start background cleanup task
     cleanup_task = asyncio.create_task(cleanup_old_files_periodically(ingredient_storage))
     print("✅ Фоновая задача очистки запущена")
+    
+    # Initialize roles and permissions
+    if db:
+        try:
+            from utils.role_initializer import initialize_roles_and_permissions
+            await initialize_roles_and_permissions(db)
+            print("✅ Roles and permissions initialized")
+        except Exception as e:
+            print(f"⚠️ Role initialization failed: {e}")
+            # НЕ прерываем инициализацию - роли не критичны для базовой работы
     
     # Start keep-alive task - НЕ блокируем инициализацию бота
     try:

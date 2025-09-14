@@ -15,6 +15,7 @@ from handlers.google_sheets_input_handler import GoogleSheetsInputHandler
 from handlers.ingredients_file_handler import IngredientsFileHandler
 from handlers.ingredients_text_handler import IngredientsTextHandler
 from utils.common_handlers import CommonHandlers
+from utils.access_control import access_check
 from config.locales.locale_manager import get_global_locale_manager
 from config.locales.language_buttons import get_language_keyboard
 
@@ -37,6 +38,7 @@ class MessageHandlers(BaseMessageHandler):
         self.ingredients_text_handler = IngredientsTextHandler(config, analysis_service)
         self.common_handlers = CommonHandlers(config, analysis_service)
     
+    @access_check
     async def start(self, update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
         """Handle /start command"""
         print(f"DEBUG: Start command received from user {update.effective_user.id}")
@@ -140,6 +142,7 @@ class MessageHandlers(BaseMessageHandler):
         await update.message.reply_text(message)
         return self.config.AWAITING_CORRECTION
     
+    @access_check
     async def dashboard(self, update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
         """Handle /dashboard command - show user dashboard"""
         # Language will be automatically loaded by get_text() calls
@@ -364,6 +367,7 @@ class MessageHandlers(BaseMessageHandler):
         await update.message.reply_text(whitelist_text, parse_mode='Markdown')
         return self.config.AWAITING_DASHBOARD
     
+    @access_check
     async def handle_photo(self, update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
         """Handle photo upload - delegate to photo handler"""
         # Save user_id to context for language loading
