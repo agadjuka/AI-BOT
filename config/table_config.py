@@ -78,8 +78,8 @@ class TableConfigManager:
             device_type=DeviceType.MOBILE,
             columns=[
                 ColumnConfig("number", "№", 2, "right"),
-                ColumnConfig("receipt_item", "Товар", 12, "left", emoji="📦"),
-                ColumnConfig("ingredient", "Google Sheets", 12, "left", emoji="🏷️"),
+                ColumnConfig("receipt_item", "formatters.table_headers.product", 12, "left", emoji="📦"),
+                ColumnConfig("ingredient", "formatters.table_headers.ingredient", 12, "left", emoji="🏷️"),
                  ColumnConfig("status", "", 4, "center", emoji="📊")
             ],
             style=TableStyle(
@@ -87,7 +87,7 @@ class TableConfigManager:
                 compact_mode=True,
                 show_separators=True
             ),
-            title="Сопоставление ингредиентов",
+            title="matching.matching_title",
             max_items_per_page=8
         )
         
@@ -97,8 +97,8 @@ class TableConfigManager:
             device_type=DeviceType.DESKTOP,
             columns=[
                 ColumnConfig("number", "№", 2, "right"),
-                ColumnConfig("receipt_item", "Товар", 20, "left", emoji="📦"),
-                ColumnConfig("ingredient", "Google Sheets", 20, "left", emoji="🏷️"),
+                ColumnConfig("receipt_item", "formatters.table_headers.product", 20, "left", emoji="📦"),
+                ColumnConfig("ingredient", "formatters.table_headers.ingredient", 20, "left", emoji="🏷️"),
                  ColumnConfig("status", "", 6, "center", emoji="📊")
             ],
             style=TableStyle(
@@ -106,7 +106,7 @@ class TableConfigManager:
                 compact_mode=False,
                 show_separators=True
             ),
-            title="Сопоставление ингредиентов",
+            title="matching.matching_title",
             max_items_per_page=15
         )
         
@@ -116,8 +116,8 @@ class TableConfigManager:
             device_type=DeviceType.MOBILE,
             columns=[
                 ColumnConfig("number", "№", 2, "right"),
-                ColumnConfig("receipt_item", "Nama", 25, "left"),
-                ColumnConfig("google_sheets", "Bahan", 20, "left"),
+                ColumnConfig("receipt_item", "formatters.table_headers.name", 25, "left"),
+                ColumnConfig("google_sheets", "formatters.table_headers.ingredient", 20, "left"),
                 ColumnConfig("status", "", 4, "center")
             ],
             style=TableStyle(
@@ -125,7 +125,7 @@ class TableConfigManager:
                 compact_mode=True,
                 show_separators=True
             ),
-            title="Pencocokan dengan Google Sheets",
+            title="sheets.callback.matching_table_title",
             max_items_per_page=8
         )
         
@@ -135,8 +135,8 @@ class TableConfigManager:
             device_type=DeviceType.DESKTOP,
             columns=[
                 ColumnConfig("number", "№", 2, "right"),
-                ColumnConfig("receipt_item", "Nama", 35, "left"),
-                ColumnConfig("google_sheets", "Bahan", 30, "left"),
+                ColumnConfig("receipt_item", "formatters.table_headers.name", 35, "left"),
+                ColumnConfig("google_sheets", "formatters.table_headers.ingredient", 30, "left"),
                 ColumnConfig("status", "", 6, "center")
             ],
             style=TableStyle(
@@ -144,7 +144,7 @@ class TableConfigManager:
                 compact_mode=False,
                 show_separators=True
             ),
-            title="Pencocokan dengan Google Sheets",
+            title="sheets.callback.matching_table_title",
             max_items_per_page=15
         )
         

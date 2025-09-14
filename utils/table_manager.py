@@ -70,7 +70,11 @@ class TableManager:
         
         # Создаем заголовок с статистикой
         table_lines = []
-        table_lines.append(f"**{config.title}:**\n")
+        if self.locale_manager and context and config.title.startswith("matching."):
+            title = self.locale_manager.get_text(config.title, context)
+        else:
+            title = config.title
+        table_lines.append(f"**{title}:**\n")
         
         # Добавляем статистику
         summary = self._format_summary(result, context)
@@ -78,7 +82,7 @@ class TableManager:
         
         # Создаем таблицу
         table_lines.append("```")
-        table_lines.append(self._create_table_header(config))
+        table_lines.append(self._create_table_header(config, context))
         table_lines.append(self._create_table_separator(config))
         
         # Добавляем строки таблицы
@@ -123,7 +127,7 @@ class TableManager:
         
         # Создаем таблицу
         table_lines.append("```")
-        table_lines.append(self._create_table_header(config))
+        table_lines.append(self._create_table_header(config, context))
         table_lines.append(self._create_table_separator(config))
         
         # Добавляем строки таблицы
@@ -163,7 +167,7 @@ class TableManager:
         
         # Создаем таблицу
         table_lines.append("```")
-        table_lines.append(self._create_table_header(config))
+        table_lines.append(self._create_table_header(config, context))
         table_lines.append(self._create_table_separator(config))
         
         # Добавляем строки таблицы
@@ -203,7 +207,7 @@ class TableManager:
         
         # Создаем таблицу
         table_lines.append("```")
-        table_lines.append(self._create_table_header(config))
+        table_lines.append(self._create_table_header(config, context))
         table_lines.append(self._create_table_separator(config))
         
         # Добавляем строки таблицы
@@ -266,14 +270,22 @@ class TableManager:
         
         return table_text, navigation_keyboard
     
-    def _create_table_header(self, config: TableConfig) -> str:
+    def _create_table_header(self, config: TableConfig, context: Optional[ContextTypes.DEFAULT_TYPE] = None) -> str:
         """Создает заголовок таблицы"""
         header_parts = []
         for column in config.columns:
-            if column.emoji and config.style.use_emojis:
-                title = f"{column.emoji} {column.title}"
+            # Получаем локализованный заголовок
+            if self.locale_manager and context and column.title.startswith("formatters."):
+                title = self.locale_manager.get_text(column.title, context)
+            elif self.locale_manager and context and column.title.startswith("matching."):
+                title = self.locale_manager.get_text(column.title, context)
+            elif self.locale_manager and context and column.title.startswith("sheets."):
+                title = self.locale_manager.get_text(column.title, context)
             else:
                 title = column.title
+            
+            if column.emoji and config.style.use_emojis:
+                title = f"{column.emoji} {title}"
             
             # Выравнивание
             if column.align == "right":
