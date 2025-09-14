@@ -142,8 +142,7 @@ class CallbackHandlers(BaseCallbackHandler):
             return await self.admin_panel_handler.show_delete_user_screen(update, context)
         
         elif action.startswith("admin_delete_confirm_"):
-            user_id_to_delete = action.replace("admin_delete_confirm_", "")
-            return await self.admin_panel_handler.show_delete_confirmation(update, context, user_id_to_delete)
+            return await self.admin_panel_handler.show_delete_confirmation(update, context)
         
         elif action == "admin_delete_final":
             return await self.admin_panel_handler.confirm_user_deletion(update, context)
