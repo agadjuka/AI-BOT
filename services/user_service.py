@@ -44,7 +44,6 @@ class UserService:
             False in all other cases
         """
         if not self.db:
-            print("❌ Firestore not available")
             return False
         
         try:
@@ -52,35 +51,29 @@ class UserService:
             user_doc = user_ref.get()
             
             if not user_doc.exists:
-                print(f"❌ User {user_id} document does not exist")
                 return False
             
             user_data = user_doc.to_dict()
             
             # Check if 'role' key exists in the document
             if 'role' not in user_data:
-                print(f"❌ User {user_id} document exists but 'role' field is missing")
                 return False
             
             # Check if role equals "user"
-            if user_data['role'] == "user":
-                print(f"✅ User {user_id} has 'user' role - access granted")
-                return True
-            else:
-                print(f"❌ User {user_id} has role '{user_data['role']}', not 'user'")
-                return False
+            return user_data['role'] == "user"
                 
         except Exception as e:
             print(f"❌ Error checking user role: {e}")
             return False
     
-    async def set_user_role(self, user_id: int, role: str) -> bool:
+    async def set_user_role(self, user_id: int, role: str, username: str = None) -> bool:
         """
         Set user role in Firestore
         
         Args:
             user_id: Telegram user ID
             role: Role to assign ("admin" or "user")
+            username: Username to store (optional)
             
         Returns:
             True if successful, False otherwise
@@ -96,16 +89,21 @@ class UserService:
         try:
             user_ref = self.db.collection('users').document(str(user_id))
             
+            # Prepare user data
+            user_data = {'role': role}
+            if username:
+                user_data['username'] = username
+            
             # Check if user document exists
             user_doc = user_ref.get()
             if user_doc.exists:
                 # Update existing user document
-                user_ref.update({'role': role})
-                print(f"✅ Updated user {user_id} role to {role}")
+                user_ref.update(user_data)
+                print(f"✅ Updated user {user_id} role to {role}" + (f" with username {username}" if username else ""))
             else:
-                # Create new user document with role
-                user_ref.set({'role': role})
-                print(f"✅ Created user {user_id} with role {role}")
+                # Create new user document with role and username
+                user_ref.set(user_data)
+                print(f"✅ Created user {user_id} with role {role}" + (f" and username {username}" if username else ""))
             
             return True
             

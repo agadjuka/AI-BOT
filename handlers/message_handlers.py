@@ -14,6 +14,7 @@ from handlers.ingredient_matching_input_handler import IngredientMatchingInputHa
 from handlers.google_sheets_input_handler import GoogleSheetsInputHandler
 from handlers.ingredients_file_handler import IngredientsFileHandler
 from handlers.ingredients_text_handler import IngredientsTextHandler
+from handlers.admin_panel import AdminPanelHandler
 from utils.common_handlers import CommonHandlers
 from utils.access_control import access_check
 from config.locales.locale_manager import get_global_locale_manager
@@ -36,6 +37,7 @@ class MessageHandlers(BaseMessageHandler):
         self.google_sheets_handler = GoogleSheetsInputHandler(config, analysis_service)
         self.ingredients_file_handler = IngredientsFileHandler(config, analysis_service)
         self.ingredients_text_handler = IngredientsTextHandler(config, analysis_service)
+        self.admin_panel_handler = AdminPanelHandler(config, analysis_service)
         self.common_handlers = CommonHandlers(config, analysis_service)
     
     @access_check
@@ -43,31 +45,7 @@ class MessageHandlers(BaseMessageHandler):
         """Handle /start command"""
         print(f"DEBUG: Start command received from user {update.effective_user.id}")
         
-        # Check user permissions
-        user_id = update.effective_user.id
-        username = update.effective_user.username
-        
-        from utils.role_initializer import check_user_permissions
-        from google.cloud import firestore
-        
-        # Get Firestore instance
-        try:
-            import main
-            db = main.db
-        except (ImportError, AttributeError):
-            db = None
-        
-        if db:
-            permissions = await check_user_permissions(user_id, username, db)
-            
-            if not permissions['has_access']:
-                await update.message.reply_text(
-                    "❌ **Access Denied**\n\n"
-                    "You don't have permission to use this bot.\n"
-                    "Please contact the administrator for access.",
-                    parse_mode='Markdown'
-                )
-                return self.config.AWAITING_DASHBOARD
+        # Access check is already handled by @access_check decorator
         
         # Save user_id to context for language loading
         self.save_user_context(update, context)
@@ -150,6 +128,26 @@ class MessageHandlers(BaseMessageHandler):
         # Set anchor message for dashboard
         self.ui_manager.set_anchor(context, update.message.message_id)
         
+        # Create dashboard keyboard using common method
+        keyboard, is_admin = await self._create_dashboard_keyboard(update, context)
+        
+        reply_markup = InlineKeyboardMarkup(keyboard)
+        
+        # Send dashboard message
+        await update.message.reply_html(
+            self.get_text("welcome.dashboard.welcome_message", context, update=update, 
+                         user=update.effective_user.mention_html()),
+            reply_markup=reply_markup
+        )
+        
+        return self.config.AWAITING_DASHBOARD
+    
+    async def _create_dashboard_keyboard(self, update: Update, context: ContextTypes.DEFAULT_TYPE) -> tuple:
+        """Create dashboard keyboard with admin panel button if user is admin"""
+        # Check if user is admin
+        user_id = update.effective_user.id
+        is_admin = await self.admin_panel_handler.is_admin(user_id, None)
+        
         # Create dashboard keyboard
         keyboard = [
             [InlineKeyboardButton(
@@ -167,23 +165,23 @@ class MessageHandlers(BaseMessageHandler):
             [InlineKeyboardButton(
                 self.get_text("welcome.dashboard.buttons.instruction", context, update=update), 
                 callback_data="dashboard_instruction"
-            )],
-            [InlineKeyboardButton(
-                self.get_text("buttons.back_to_main_menu", context, update=update), 
-                callback_data="back_to_main_menu"
             )]
         ]
         
-        reply_markup = InlineKeyboardMarkup(keyboard)
+        # Add admin panel button if user is admin
+        if is_admin:
+            keyboard.append([InlineKeyboardButton(
+                "👑 Админ-панель", 
+                callback_data="admin_panel"
+            )])
         
-        # Send dashboard message
-        await update.message.reply_html(
-            self.get_text("welcome.dashboard.welcome_message", context, update=update, 
-                         user=update.effective_user.mention_html()),
-            reply_markup=reply_markup
-        )
+        # Add back button
+        keyboard.append([InlineKeyboardButton(
+            self.get_text("buttons.back_to_main_menu", context, update=update), 
+            callback_data="back_to_main_menu"
+        )])
         
-        return self.config.AWAITING_DASHBOARD
+        return keyboard, is_admin
     
     async def admin_commands(self, update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
         """Handle admin commands - show admin panel"""

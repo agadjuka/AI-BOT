@@ -11,6 +11,7 @@ from config.settings import BotConfig
 from services.ai_service import ReceiptAnalysisServiceCompat
 from services.user_service import get_user_service
 from utils.role_initializer import check_user_permissions
+from utils.access_control import admin_only
 from config.locales.locale_manager import get_global_locale_manager
 
 
@@ -36,22 +37,11 @@ class AdminPanelHandler:
         permissions = await check_user_permissions(user_id, None, db)
         return permissions['is_admin']
     
+    @admin_only
     async def show_admin_panel(self, update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
         """Show main admin panel screen"""
         query = update.callback_query
         await query.answer()
-        
-        # Check admin permissions
-        user_id = update.effective_user.id
-        try:
-            import main
-            db = main.db
-        except (ImportError, AttributeError):
-            db = None
-        
-        if not await self.is_admin(user_id, db):
-            await query.edit_message_text("❌ Access denied. Admin privileges required.")
-            return self.config.AWAITING_DASHBOARD
         
         # Create admin panel keyboard
         keyboard = [
@@ -69,24 +59,13 @@ class AdminPanelHandler:
             parse_mode='Markdown'
         )
         
-        return self.config.AWAITING_DASHBOARD
+        return self.config.AWAITING_CORRECTION
     
+    @admin_only
     async def show_add_user_screen(self, update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
         """Show add user screen and request username"""
         query = update.callback_query
         await query.answer()
-        
-        # Check admin permissions
-        user_id = update.effective_user.id
-        try:
-            import main
-            db = main.db
-        except (ImportError, AttributeError):
-            db = None
-        
-        if not await self.is_admin(user_id, db):
-            await query.edit_message_text("❌ Access denied. Admin privileges required.")
-            return self.config.AWAITING_DASHBOARD
         
         # Create back button
         keyboard = [
@@ -106,19 +85,9 @@ class AdminPanelHandler:
         
         return self.config.AWAITING_ADMIN_USERNAME
     
+    @admin_only
     async def handle_username_input(self, update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
         """Handle username input for adding user"""
-        # Check admin permissions
-        user_id = update.effective_user.id
-        try:
-            import main
-            db = main.db
-        except (ImportError, AttributeError):
-            db = None
-        
-        if not await self.is_admin(user_id, db):
-            await update.message.reply_text("❌ Access denied. Admin privileges required.")
-            return self.config.AWAITING_DASHBOARD
         
         # Get username from message
         username = update.message.text.strip()
@@ -140,6 +109,17 @@ class AdminPanelHandler:
                 parse_mode='Markdown'
             )
             return self.config.AWAITING_ADMIN_USERNAME
+        
+        # Get database instance
+        try:
+            import main
+            db = main.db
+        except (ImportError, AttributeError):
+            db = None
+        
+        if not db:
+            await update.message.reply_text("❌ Database not available")
+            return self.config.AWAITING_CORRECTION
         
         # Add user to whitelist
         user_service = get_user_service(db)
@@ -164,24 +144,24 @@ class AdminPanelHandler:
             )
             return self.config.AWAITING_ADMIN_USERNAME
         
-        return self.config.AWAITING_DASHBOARD
+        return self.config.AWAITING_CORRECTION
     
+    @admin_only
     async def show_list_users(self, update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
         """Show list of authorized users"""
         query = update.callback_query
         await query.answer()
         
-        # Check admin permissions
-        user_id = update.effective_user.id
+        # Get database instance
         try:
             import main
             db = main.db
         except (ImportError, AttributeError):
             db = None
         
-        if not await self.is_admin(user_id, db):
-            await query.edit_message_text("❌ Access denied. Admin privileges required.")
-            return self.config.AWAITING_DASHBOARD
+        if not db:
+            await query.edit_message_text("❌ Database not available")
+            return self.config.AWAITING_CORRECTION
         
         # Get users with role "user"
         user_service = get_user_service(db)
@@ -203,7 +183,9 @@ class AdminPanelHandler:
                 for i, user in enumerate(users, 1):
                     username = user.get('username', f"User_{user.get('user_id', 'Unknown')}")
                     user_id = user.get('user_id', 'N/A')
-                    message_text += f"{i}. {username} (@{username}) - ID: {user_id}\n"
+                    # Display username with @ prefix
+                    display_username = f"@{username}" if username and not username.startswith('@') else username
+                    message_text += f"{i}. {display_username} - ID: {user_id}\n"
             else:
                 message_text = "📋 **Список пользователей пуст**\n\nНет авторизованных пользователей."
             
@@ -229,24 +211,24 @@ class AdminPanelHandler:
                 ]])
             )
         
-        return self.config.AWAITING_DASHBOARD
+        return self.config.AWAITING_CORRECTION
     
+    @admin_only
     async def show_delete_user_screen(self, update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
         """Show delete user screen with user selection buttons"""
         query = update.callback_query
         await query.answer()
         
-        # Check admin permissions
-        user_id = update.effective_user.id
+        # Get database instance
         try:
             import main
             db = main.db
         except (ImportError, AttributeError):
             db = None
         
-        if not await self.is_admin(user_id, db):
-            await query.edit_message_text("❌ Access denied. Admin privileges required.")
-            return self.config.AWAITING_DASHBOARD
+        if not db:
+            await query.edit_message_text("❌ Database not available")
+            return self.config.AWAITING_CORRECTION
         
         try:
             # Query users collection for documents with role "user"
@@ -271,16 +253,18 @@ class AdminPanelHandler:
                     reply_markup=reply_markup,
                     parse_mode='Markdown'
                 )
-                return self.config.AWAITING_DASHBOARD
+                return self.config.AWAITING_CORRECTION
             
             # Create keyboard with user buttons
             keyboard = []
             for user in users:
                 username = user.get('username', f"User_{user.get('user_id', 'Unknown')}")
                 user_id = user.get('user_id')
+                # Display username with @ prefix
+                display_username = f"@{username}" if username and not username.startswith('@') else username
                 keyboard.append([
                     InlineKeyboardButton(
-                        f"👤 {username}",
+                        f"👤 {display_username}",
                         callback_data=f"admin_delete_confirm_{user_id}"
                     )
                 ])
@@ -306,24 +290,32 @@ class AdminPanelHandler:
                 ]])
             )
         
-        return self.config.AWAITING_DASHBOARD
+        return self.config.AWAITING_CORRECTION
     
-    async def show_delete_confirmation(self, update: Update, context: ContextTypes.DEFAULT_TYPE, user_id_to_delete: str) -> int:
+    @admin_only
+    async def show_delete_confirmation(self, update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
         """Show delete confirmation for specific user"""
         query = update.callback_query
         await query.answer()
         
-        # Check admin permissions
-        user_id = update.effective_user.id
+        # Extract user_id_to_delete from callback_data
+        callback_data = query.data
+        if not callback_data.startswith("admin_delete_confirm_"):
+            await query.edit_message_text("❌ Invalid callback data")
+            return self.config.AWAITING_CORRECTION
+        
+        user_id_to_delete = callback_data.replace("admin_delete_confirm_", "")
+        
+        # Get database instance
         try:
             import main
             db = main.db
         except (ImportError, AttributeError):
             db = None
         
-        if not await self.is_admin(user_id, db):
-            await query.edit_message_text("❌ Access denied. Admin privileges required.")
-            return self.config.AWAITING_DASHBOARD
+        if not db:
+            await query.edit_message_text("❌ Database not available")
+            return self.config.AWAITING_CORRECTION
         
         try:
             # Get user info
@@ -337,7 +329,7 @@ class AdminPanelHandler:
                         InlineKeyboardButton("⬅️ Назад в Админ-панель", callback_data="admin_panel")
                     ]])
                 )
-                return self.config.AWAITING_DASHBOARD
+                return self.config.AWAITING_CORRECTION
             
             user_data = user_doc.to_dict()
             username = user_data.get('username', f"User_{user_id_to_delete}")
@@ -356,8 +348,10 @@ class AdminPanelHandler:
             
             reply_markup = InlineKeyboardMarkup(keyboard)
             
+            # Display username with @ prefix
+            display_username = f"@{username}" if username and not username.startswith('@') else username
             await query.edit_message_text(
-                f"Вы уверены, что хотите удалить пользователя @{username}?",
+                f"Вы уверены, что хотите удалить пользователя {display_username}?",
                 reply_markup=reply_markup
             )
             
@@ -372,22 +366,11 @@ class AdminPanelHandler:
         
         return self.config.AWAITING_ADMIN_CONFIRM_DELETE
     
+    @admin_only
     async def confirm_user_deletion(self, update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
         """Confirm and execute user deletion"""
         query = update.callback_query
         await query.answer()
-        
-        # Check admin permissions
-        user_id = update.effective_user.id
-        try:
-            import main
-            db = main.db
-        except (ImportError, AttributeError):
-            db = None
-        
-        if not await self.is_admin(user_id, db):
-            await query.edit_message_text("❌ Access denied. Admin privileges required.")
-            return self.config.AWAITING_DASHBOARD
         
         # Get user info from context
         user_id_to_delete = context.user_data.get('admin_delete_user_id')
@@ -400,7 +383,18 @@ class AdminPanelHandler:
                     InlineKeyboardButton("⬅️ Назад в Админ-панель", callback_data="admin_panel")
                 ]])
             )
-            return self.config.AWAITING_DASHBOARD
+            return self.config.AWAITING_CORRECTION
+        
+        # Get database instance
+        try:
+            import main
+            db = main.db
+        except (ImportError, AttributeError):
+            db = None
+        
+        if not db:
+            await query.edit_message_text("❌ Database not available")
+            return self.config.AWAITING_CORRECTION
         
         try:
             # Delete user document
@@ -418,18 +412,22 @@ class AdminPanelHandler:
             
             reply_markup = InlineKeyboardMarkup(keyboard)
             
+            # Display username with @ prefix
+            display_username = f"@{username}" if username and not username.startswith('@') else username
             await query.edit_message_text(
-                f"🗑️ Пользователь @{username} удален.",
+                f"🗑️ Пользователь {display_username} удален.",
                 reply_markup=reply_markup
             )
             
         except Exception as e:
             print(f"❌ Error deleting user: {e}")
+            # Display username with @ prefix
+            display_username = f"@{username}" if username and not username.startswith('@') else username
             await query.edit_message_text(
-                f"❌ Ошибка при удалении пользователя @{username}.",
+                f"❌ Ошибка при удалении пользователя {display_username}.",
                 reply_markup=InlineKeyboardMarkup([[
                     InlineKeyboardButton("⬅️ Назад в Админ-панель", callback_data="admin_panel")
                 ]])
             )
         
-        return self.config.AWAITING_DASHBOARD
+        return self.config.AWAITING_CORRECTION

@@ -284,6 +284,17 @@ def main() -> None:
                 MessageHandler(filters.TEXT & ~filters.COMMAND, message_handlers.handle_ingredients_text_upload),
                 MessageHandler(filters.PHOTO, message_handlers.handle_photo)
             ],
+            config.AWAITING_ADMIN_USERNAME: [
+                CallbackQueryHandler(callback_handlers.handle_correction_choice),
+                CommandHandler("dashboard", message_handlers.dashboard),
+                MessageHandler(filters.TEXT & ~filters.COMMAND, message_handlers.handle_user_input),
+                MessageHandler(filters.PHOTO, message_handlers.handle_photo)
+            ],
+            config.AWAITING_ADMIN_CONFIRM_DELETE: [
+                CallbackQueryHandler(callback_handlers.handle_correction_choice),
+                CommandHandler("dashboard", message_handlers.dashboard),
+                MessageHandler(filters.PHOTO, message_handlers.handle_photo)
+            ],
         },
         fallbacks=[
             CommandHandler("cancel", message_handlers.start),

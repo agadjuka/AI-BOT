@@ -56,17 +56,13 @@ def access_check(func: Callable) -> Callable:
         user_service = get_user_service()
         locale_manager = get_global_locale_manager()
         
-        print(f"🔍 Checking access for user {user_id} (@{username})")
-        
         # Шаг 1: Проверка на админа
         if user_id == config.ADMIN_TELEGRAM_ID:
-            print(f"✅ User {user_id} is admin - access granted")
             return await func(self, update, context)
         
         # Шаг 2: Проверка существующего пользователя с ролью "user"
         has_user_role = await user_service.get_user_role(user_id)
         if has_user_role:
-            print(f"✅ User {user_id} has user role - access granted")
             return await func(self, update, context)
         
         # Шаг 3: Проверка по whitelist (только если есть username)
@@ -78,21 +74,11 @@ def access_check(func: Callable) -> Callable:
             is_whitelisted = await user_service.is_user_whitelisted(clean_username)
             
             if is_whitelisted:
-                print(f"✅ User {user_id} (@{username}) is whitelisted - granting access")
-                
-                # Добавляем/обновляем пользователя в коллекции users с ролью "user"
-                success = await user_service.set_user_role(user_id, "user")
-                if success:
-                    print(f"✅ User {user_id} added to users collection with role 'user'")
-                else:
-                    print(f"❌ Failed to add user {user_id} to users collection")
+                # Добавляем/обновляем пользователя в коллекции users с ролью "user" и username
+                await user_service.set_user_role(user_id, "user", clean_username)
                 
                 # Удаляем пользователя из whitelist
-                remove_success = await user_service.remove_from_whitelist(clean_username)
-                if remove_success:
-                    print(f"✅ User @{username} removed from whitelist")
-                else:
-                    print(f"❌ Failed to remove user @{username} from whitelist")
+                await user_service.remove_from_whitelist(clean_username)
                 
                 # Выполняем основную функцию
                 return await func(self, update, context)

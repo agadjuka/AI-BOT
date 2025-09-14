@@ -277,42 +277,10 @@ class CallbackHandlers(BaseCallbackHandler):
         query = update.callback_query
         await query.answer()
         
-        # Check if user is admin
-        user_id = update.effective_user.id
-        is_admin = await self.admin_panel_handler.is_admin(user_id, None)
-        
-        # Create dashboard keyboard
-        keyboard = [
-            [InlineKeyboardButton(
-                self.get_text("welcome.dashboard.buttons.language_settings", context, update=update), 
-                callback_data="dashboard_language_settings"
-            )],
-            [InlineKeyboardButton(
-                self.get_text("welcome.dashboard.buttons.google_sheets_management", context, update=update), 
-                callback_data="dashboard_google_sheets_management"
-            )],
-            [InlineKeyboardButton(
-                self.get_text("welcome.dashboard.buttons.ingredients_management", context, update=update), 
-                callback_data="ingredients_management"
-            )],
-            [InlineKeyboardButton(
-                self.get_text("welcome.dashboard.buttons.instruction", context, update=update), 
-                callback_data="dashboard_instruction"
-            )]
-        ]
-        
-        # Add admin panel button if user is admin
-        if is_admin:
-            keyboard.append([InlineKeyboardButton(
-                "👑 Админ-панель", 
-                callback_data="admin_panel"
-            )])
-        
-        # Add back button
-        keyboard.append([InlineKeyboardButton(
-            self.get_text("buttons.back_to_main_menu", context, update=update), 
-            callback_data="back_to_main_menu"
-        )])
+        # Create dashboard keyboard using common method from message_handlers
+        from handlers.message_handlers import MessageHandlers
+        message_handlers = MessageHandlers(self.config, self.analysis_service)
+        keyboard, is_admin = await message_handlers._create_dashboard_keyboard(update, context)
         
         reply_markup = InlineKeyboardMarkup(keyboard)
         
