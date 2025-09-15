@@ -38,6 +38,9 @@ Your task is to analyze an image of a receipt and extract the line item informat
 
 **Your primary goal:** Absolute accuracy through careful two-stage analysis. It is better to mark data as unreadable than to guess, but you must make a second attempt to recognize unclear values.
 
+**CRITICAL BUSINESS IMPACT WARNING:**
+Do not economize on tokens - conduct the highest quality analysis possible. Approach this process with maximum responsibility, as your error could cost enormous amounts of money to this business. The analysis must be performed at the highest level of accuracy and thoroughness. Every detail matters, and precision is paramount.
+
 **Input:** An image of a receipt. The receipt may be handwritten, crumpled, poorly lit, or have low resolution.
 
 **TWO-STAGE ANALYSIS PROCESS:**
@@ -50,6 +53,7 @@ Perform your first analysis following these rules:
 2.  **Initial Uncertainty Rule "---":** If you are not 100% confident in recognizing any value (a word, a number, or part of a word), you MUST replace the ENTIRE value for that field with the string "---". Do not attempt to guess.
 
 3.  **Rule for Numbers:** If even a SINGLE digit or character (like a dot or comma) within a number (quantity, price) is illegible or ambiguous, the ENTIRE number for that field must be replaced with "---".
+    **Special Zero Recognition Rule:** If in a numeric block any character even slightly resembles the digit "0" (zero), it should most likely be interpreted as zero. This applies to unclear circles, ovals, or any character that could be a zero.
 
 4.  **Do Not Skip Rows:** You must process every single line item on the receipt. If an entire row is unreadable, create a JSON object for it where all values are set to "---".
 
