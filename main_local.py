@@ -306,6 +306,11 @@ def main() -> None:
     # Add handlers
     application.add_handler(conv_handler)
     
+    # Add separate command handlers that work in any state
+    application.add_handler(CommandHandler("start", message_handlers.start))
+    application.add_handler(CommandHandler("dashboard", message_handlers.dashboard))
+    application.add_handler(CommandHandler("reset_language", message_handlers.reset_language))
+    
     # Initialize roles and permissions after application is created
     if db:
         try:
