@@ -550,11 +550,13 @@ EN_TRANSLATIONS = {
     
     # TURBO mode
     "turbo_mode": {
-        "enabled": "🚀 TURBO mode enabled\n\nNow all photo processing will be sent directly to Gemini Flash without OpenCV processing for maximum speed!",
-        "disabled": "🚀 TURBO mode disabled\n\nReturned to standard processing using OpenCV.",
-        "status_enabled": "✅ TURBO mode enabled",
-        "status_disabled": "❌ TURBO mode disabled",
-        "description": "🚀 **TURBO Mode**\n\nIn this mode, photos are sent directly to Gemini Flash without preliminary OpenCV processing.\n\n**Advantages:**\n• ⚡ Maximum processing speed\n• 🎯 Direct AI work\n\n**Disadvantages:**\n• 📷 Less image optimization\n• 🔍 May be less accurate for poor photos\n\n**Current status:** {status}",
+        "enabled_simple": "🚀 TURBO mode enabled",
+        "disabled_simple": "⏹️ TURBO mode disabled",
+        "enabled": "🚀 TURBO mode enabled\n\nNow all photo processing will be sent directly to Gemini Flash without OpenCV processing for maximum speed!\n\n🔍 **OpenCV analysis disabled**",
+        "disabled": "🚀 TURBO mode disabled\n\nReturned to standard processing using OpenCV.\n\n🔍 **OpenCV analysis enabled**",
+        "status_enabled": "✅ TURBO mode enabled (OpenCV disabled)",
+        "status_disabled": "❌ TURBO mode disabled (OpenCV enabled)",
+        "description": "🚀 **TURBO Mode**\n\nIn this mode, photos are sent directly to Gemini Flash without preliminary OpenCV processing.\n\n**Advantages:**\n• ⚡ Maximum processing speed\n• 🎯 Direct AI work\n\n**Disadvantages:**\n• 📷 Less image optimization\n• 🔍 May be less accurate for poor photos\n\n**Inverse dependency:**\n• TURBO enabled → OpenCV disabled\n• TURBO disabled → OpenCV enabled\n\n**Current status:** {status}",
         "buttons": {
             "toggle_turbo": "🚀 Toggle TURBO",
             "back_to_dashboard": "⬅️ Back to dashboard"

@@ -1,6 +1,7 @@
 """
 Refactored callback handlers for Telegram bot - dispatcher only
 """
+import asyncio
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import ContextTypes
 
@@ -1533,7 +1534,7 @@ class CallbackHandlers(BaseCallbackHandler):
             return await self.table_settings_handler.show_table_settings_menu(update, context)
     
     async def _handle_dashboard_turbo_mode(self, update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
-        """Handle TURBO mode button from dashboard"""
+        """Handle TURBO mode button from dashboard - simple toggle"""
         query = update.callback_query
         await query.answer()
         
@@ -1541,30 +1542,26 @@ class CallbackHandlers(BaseCallbackHandler):
         user_id = update.effective_user.id
         turbo_enabled = context.user_data.get('turbo_mode', False)
         
-        # Create keyboard
-        keyboard = [
-            [InlineKeyboardButton(
-                self.get_text("turbo_mode.buttons.toggle_turbo", context, update=update), 
-                callback_data="turbo_toggle"
-            )],
-            [InlineKeyboardButton(
-                self.get_text("turbo_mode.buttons.back_to_dashboard", context, update=update), 
-                callback_data="turbo_back_to_dashboard"
-            )]
-        ]
+        # Toggle TURBO mode
+        new_turbo = not turbo_enabled
+        context.user_data['turbo_mode'] = new_turbo
         
-        reply_markup = InlineKeyboardMarkup(keyboard)
+        # Save to Firestore
+        await self._save_turbo_mode_to_firestore(user_id, new_turbo)
         
-        # Show TURBO mode description with current status
-        status_text = self.get_text("turbo_mode.status_enabled", context, update=update) if turbo_enabled else self.get_text("turbo_mode.status_disabled", context, update=update)
-        description = self.get_text("turbo_mode.description", context, update=update, status=status_text)
+        # Show appropriate message
+        if new_turbo:
+            message = self.get_text("turbo_mode.enabled_simple", context, update=update)
+        else:
+            message = self.get_text("turbo_mode.disabled_simple", context, update=update)
         
-        await query.edit_message_text(
-            description,
-            reply_markup=reply_markup,
-            parse_mode='Markdown'
-        )
+        # Send temporary message that will be deleted after 3 seconds
+        temp_message = await query.message.reply_text(message)
         
+        # Delete the temporary message after 3 seconds
+        asyncio.create_task(self._delete_message_after_delay(context.bot, temp_message.chat_id, temp_message.message_id, 3))
+        
+        # Return to dashboard without changing the current message
         return self.config.AWAITING_CORRECTION
     
     async def _handle_turbo_toggle(self, update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
@@ -1605,3 +1602,78 @@ class CallbackHandlers(BaseCallbackHandler):
         )
         
         return self.config.AWAITING_CORRECTION
+    
+    async def _save_turbo_mode_to_firestore(self, user_id: int, turbo_enabled: bool) -> None:
+        """Save turbo mode setting to Firestore"""
+        try:
+            # Import Firestore client
+            from google.cloud import firestore
+            
+            # Get global Firestore instance
+            import main
+            db = main.db
+            
+            if not db:
+                print("❌ Firestore not available for saving turbo mode")
+                return
+            
+            # Save to users/{user_id}/settings/turbo_mode
+            user_ref = db.collection('users').document(str(user_id))
+            user_doc = user_ref.get()
+            
+            if user_doc.exists:
+                # Update existing user document
+                user_ref.update({
+                    'turbo_mode': turbo_enabled,
+                    'turbo_mode_updated_at': firestore.SERVER_TIMESTAMP
+                })
+            else:
+                # Create new user document
+                user_ref.set({
+                    'turbo_mode': turbo_enabled,
+                    'turbo_mode_updated_at': firestore.SERVER_TIMESTAMP
+                })
+            
+            print(f"✅ Turbo mode saved to Firestore: user {user_id}, turbo={turbo_enabled}")
+            
+        except Exception as e:
+            print(f"❌ Error saving turbo mode to Firestore: {e}")
+    
+    async def _load_turbo_mode_from_firestore(self, user_id: int) -> bool:
+        """Load turbo mode setting from Firestore"""
+        try:
+            # Import Firestore client
+            from google.cloud import firestore
+            
+            # Get global Firestore instance
+            import main
+            db = main.db
+            
+            if not db:
+                print("❌ Firestore not available for loading turbo mode")
+                return False
+            
+            # Load from users/{user_id}/settings/turbo_mode
+            user_ref = db.collection('users').document(str(user_id))
+            user_doc = user_ref.get()
+            
+            if user_doc.exists:
+                user_data = user_doc.to_dict()
+                turbo_mode = user_data.get('turbo_mode', False)
+                print(f"✅ Turbo mode loaded from Firestore: user {user_id}, turbo={turbo_mode}")
+                return turbo_mode
+            else:
+                print(f"ℹ️ User {user_id} not found in Firestore, using default turbo=False")
+                return False
+                
+        except Exception as e:
+            print(f"❌ Error loading turbo mode from Firestore: {e}")
+            return False
+    
+    async def _delete_message_after_delay(self, bot, chat_id: int, message_id: int, delay: int) -> None:
+        """Delete a message after specified delay in seconds"""
+        try:
+            await asyncio.sleep(delay)
+            await bot.delete_message(chat_id=chat_id, message_id=message_id)
+        except Exception as e:
+            print(f"❌ Error deleting message {message_id} after delay: {e}")

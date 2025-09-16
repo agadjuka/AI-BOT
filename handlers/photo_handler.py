@@ -72,21 +72,25 @@ class PhotoHandler(BaseMessageHandler):
             turbo_enabled = context.user_data.get('turbo_mode', False)
             
             if turbo_enabled:
-                print("🚀 TURBO режим включен - отправляем фото напрямую в Gemini Flash")
+                print("🚀 TURBO режим включен - отправляем фото напрямую в Gemini Flash без OpenCV")
                 # В TURBO режиме используем только Gemini Flash без OpenCV обработки
                 chosen_model = 'flash'
+                opencv_enabled = False
             else:
-                # ОПТИМИЗАЦИЯ: Упрощенный выбор модели без сложного анализа OpenCV
-                # Используем простую эвристику на основе размера файла и настроек
-                chosen_model = self._choose_model_simple()
-                print(f"🎯 Выбрана модель: {chosen_model}")
+                print("🔍 TURBO режим выключен - используем OpenCV анализ")
+                # В обычном режиме используем OpenCV анализ для выбора модели
+                chosen_model = await self._choose_model_with_opencv()
+                opencv_enabled = True
+                print(f"🎯 Выбрана модель: {chosen_model}, OpenCV анализ: {opencv_enabled}")
             
             # Проверяем режим анализа
             if self.config.GEMINI_ANALYSIS_MODE == "debug":
                 # Режим отладки - только показываем результат выбора модели
                 debug_message = f"🔍 **Режим отладки**: для этого чека выбрана модель **{chosen_model.upper()}**"
                 if turbo_enabled:
-                    debug_message += "\n🚀 **TURBO режим активен**"
+                    debug_message += "\n🚀 **TURBO режим активен** - OpenCV отключен"
+                else:
+                    debug_message += f"\n🔍 **TURBO режим выключен** - OpenCV анализ: {'включен' if opencv_enabled else 'отключен'}"
                 
                 # Удаляем сообщение о обработке
                 await self._delete_processing_message(update, context)
@@ -100,6 +104,8 @@ class PhotoHandler(BaseMessageHandler):
             print(f"🔍 Режим production: используем модель {chosen_model} для анализа")
             if turbo_enabled:
                 print("🚀 TURBO режим: пропускаем OpenCV обработку")
+            else:
+                print(f"🔍 Обычный режим: OpenCV анализ {'включен' if opencv_enabled else 'отключен'}")
             
             # Передаем выбранную модель в сервис анализа
             print(f"🎯 Отправляем запрос в модель: {chosen_model.upper()}")
@@ -149,13 +155,6 @@ class PhotoHandler(BaseMessageHandler):
         Использует простые эвристики для быстрого выбора
         """
         try:
-            # Проверяем, отключен ли сложный анализ OpenCV
-            if getattr(self.config, 'DISABLE_OPENCV_ANALYSIS', True):
-                # Если OpenCV анализ отключен, используем модель по умолчанию
-                default_model = getattr(self.config, 'DEFAULT_MODEL', 'pro')
-                print(f"🔍 OpenCV анализ отключен, используем модель по умолчанию: {default_model}")
-                return default_model
-            
             # Получаем размер файла
             import os
             file_size = os.path.getsize(self.config.PHOTO_FILE_NAME)
@@ -173,6 +172,39 @@ class PhotoHandler(BaseMessageHandler):
         except Exception as e:
             print(f"⚠️ Ошибка при выборе модели: {e}, используем Pro")
             return 'pro'
+    
+    async def _choose_model_with_opencv(self) -> str:
+        """
+        Выбор модели с использованием OpenCV анализа
+        Анализирует изображение для определения типа текста (печатный/рукописный)
+        """
+        try:
+            print("🔍 Выполняем OpenCV анализ для выбора модели...")
+            
+            # Читаем изображение для анализа
+            with open(self.config.PHOTO_FILE_NAME, 'rb') as f:
+                image_bytes = f.read()
+            
+            # Импортируем оптимизированную функцию анализа с ленивой загрузкой OpenCV
+            from utils.receipt_analyzer_optimized import analyze_receipt_and_choose_model
+            
+            # Анализируем и выбираем модель (OpenCV загружается только здесь)
+            chosen_model = await analyze_receipt_and_choose_model(image_bytes)
+            print(f"🔍 OpenCV анализ завершен, выбрана модель: {chosen_model}")
+            
+            # Выгружаем OpenCV после анализа для освобождения памяти
+            try:
+                from utils.receipt_analyzer import unload_opencv
+                unload_opencv()
+                print("🧹 OpenCV выгружен из памяти")
+            except Exception as e:
+                print(f"⚠️ Ошибка при выгрузке OpenCV: {e}")
+            
+            return chosen_model
+            
+        except Exception as e:
+            print(f"⚠️ Ошибка при OpenCV анализе: {e}, используем упрощенный выбор")
+            return self._choose_model_simple()
     
     async def _process_photo_async(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         """Асинхронная обработка фото в фоне - НЕ блокирует webhook"""

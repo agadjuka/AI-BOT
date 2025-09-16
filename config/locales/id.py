@@ -544,11 +544,13 @@ ID_TRANSLATIONS = {
     
     # Mode TURBO
     "turbo_mode": {
-        "enabled": "🚀 Mode TURBO diaktifkan\n\nSekarang semua pemrosesan foto akan dikirim langsung ke Gemini Flash tanpa pemrosesan OpenCV untuk kecepatan maksimal!",
-        "disabled": "🚀 Mode TURBO dinonaktifkan\n\nKembali ke pemrosesan standar menggunakan OpenCV.",
-        "status_enabled": "✅ Mode TURBO diaktifkan",
-        "status_disabled": "❌ Mode TURBO dinonaktifkan",
-        "description": "🚀 **Mode TURBO**\n\nDalam mode ini, foto dikirim langsung ke Gemini Flash tanpa pemrosesan awal OpenCV.\n\n**Keuntungan:**\n• ⚡ Kecepatan pemrosesan maksimal\n• 🎯 Kerja AI langsung\n\n**Kerugian:**\n• 📷 Optimasi gambar lebih sedikit\n• 🔍 Mungkin kurang akurat untuk foto buruk\n\n**Status saat ini:** {status}",
+        "enabled_simple": "🚀 Mode TURBO diaktifkan",
+        "disabled_simple": "⏹️ Mode TURBO dinonaktifkan",
+        "enabled": "🚀 Mode TURBO diaktifkan\n\nSekarang semua pemrosesan foto akan dikirim langsung ke Gemini Flash tanpa pemrosesan OpenCV untuk kecepatan maksimal!\n\n🔍 **Analisis OpenCV dinonaktifkan**",
+        "disabled": "🚀 Mode TURBO dinonaktifkan\n\nKembali ke pemrosesan standar menggunakan OpenCV.\n\n🔍 **Analisis OpenCV diaktifkan**",
+        "status_enabled": "✅ Mode TURBO diaktifkan (OpenCV dinonaktifkan)",
+        "status_disabled": "❌ Mode TURBO dinonaktifkan (OpenCV diaktifkan)",
+        "description": "🚀 **Mode TURBO**\n\nDalam mode ini, foto dikirim langsung ke Gemini Flash tanpa pemrosesan awal OpenCV.\n\n**Keuntungan:**\n• ⚡ Kecepatan pemrosesan maksimal\n• 🎯 Kerja AI langsung\n\n**Kerugian:**\n• 📷 Optimasi gambar lebih sedikit\n• 🔍 Mungkin kurang akurat untuk foto buruk\n\n**Ketergantungan terbalik:**\n• TURBO aktif → OpenCV nonaktif\n• TURBO nonaktif → OpenCV aktif\n\n**Status saat ini:** {status}",
         "buttons": {
             "toggle_turbo": "🚀 Toggle TURBO",
             "back_to_dashboard": "⬅️ Kembali ke dashboard"
