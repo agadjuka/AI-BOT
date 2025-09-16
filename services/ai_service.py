@@ -41,7 +41,7 @@ class AIService:
         
         # Set GOOGLE_APPLICATION_CREDENTIALS if not set and credentials file exists
         if not os.getenv('GOOGLE_APPLICATION_CREDENTIALS'):
-            credentials_file = "just-advice-470905-a3-32c0b9960b41.json"
+            credentials_file = "just-advice-470905-a3-ee25a8712359.json"
             if os.path.exists(credentials_file):
                 os.environ['GOOGLE_APPLICATION_CREDENTIALS'] = credentials_file
                 print(f"✅ Установлена переменная GOOGLE_APPLICATION_CREDENTIALS: {credentials_file}")

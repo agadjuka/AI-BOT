@@ -22,6 +22,15 @@ from config.locales.locale_manager import initialize_locale_manager
 from google.cloud import firestore
 import os
 
+# Установка переменной окружения для Google Cloud credentials
+if not os.getenv('GOOGLE_APPLICATION_CREDENTIALS'):
+    credentials_file = "just-advice-470905-a3-ee25a8712359.json"
+    if os.path.exists(credentials_file):
+        os.environ['GOOGLE_APPLICATION_CREDENTIALS'] = credentials_file
+        print(f"✅ Установлена переменная GOOGLE_APPLICATION_CREDENTIALS: {credentials_file}")
+    else:
+        print(f"❌ Файл учетных данных не найден: {credentials_file}")
+
 # Инициализация клиента Firestore с обработкой ошибок
 try:
     db = firestore.Client(database='billscaner')

@@ -17,7 +17,7 @@ class BotConfig:
         
         
         # Google Sheets settings
-        self.GOOGLE_SHEETS_CREDENTIALS: str = "google_sheets_credentials_fixed.json"  # Путь к файлу credentials.json
+        self.GOOGLE_SHEETS_CREDENTIALS: str = "just-advice-470905-a3-ee25a8712359.json"  # Путь к файлу credentials.json
         self.GOOGLE_SHEETS_SPREADSHEET_ID: str = "1ah85v40ZqJzTz8PGHO6Ndoctw378NOYATH9X3OeeuUI"  # ID таблицы Google Sheets
         self.GOOGLE_SHEETS_WORKSHEET_NAME: str = "Лист1"  # Название листа
         
