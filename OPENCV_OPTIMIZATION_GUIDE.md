@@ -183,3 +183,4 @@ python test_opencv_optimization.py
 - `handlers/photo_handler.py` - Обновленный обработчик фото
 - `test_opencv_optimization.py` - Тест оптимизации
 - `main.py` - Обновленный main с проверкой OpenCV
+

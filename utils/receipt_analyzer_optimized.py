@@ -438,3 +438,4 @@ async def visualize_text_regions(image_bytes: bytes, regions: List[Tuple[int, in
     except Exception as e:
         print(f"Ошибка при создании визуализации: {e}")
         return b''
+
