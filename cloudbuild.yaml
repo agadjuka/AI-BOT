@@ -17,7 +17,7 @@ steps:
       - '--image'
       - 'gcr.io/$PROJECT_ID/ai-bot:latest'
       - '--region'
-      - 'asia-southeast1'
+      - 'us-central1'
       - '--platform'
       - 'managed'
       - '--allow-unauthenticated'
@@ -34,7 +34,7 @@ steps:
       - '--timeout'
       - '300'
       - '--set-env-vars'
-      - 'BOT_TOKEN=${_BOT_TOKEN},PROJECT_ID=${_PROJECT_ID},GOOGLE_APPLICATION_CREDENTIALS_JSON=${_GOOGLE_APPLICATION_CREDENTIALS_JSON},GOOGLE_SHEETS_CREDENTIALS_JSON=${_GOOGLE_SHEETS_CREDENTIALS_JSON}'
+      - 'BOT_TOKEN=${_BOT_TOKEN},PROJECT_ID=${_PROJECT_ID},GOOGLE_APPLICATION_CREDENTIALS_JSON=${_GOOGLE_APPLICATION_CREDENTIALS_JSON},GOOGLE_SHEETS_CREDENTIALS_JSON=${_GOOGLE_SHEETS_CREDENTIALS_JSON},DEFAULT_MODEL=pro,GOOGLE_CLOUD_LOCATION=global'
       - '--service-account'
       - 'ai-bot-service-account@${_PROJECT_ID}.iam.gserviceaccount.com'
 

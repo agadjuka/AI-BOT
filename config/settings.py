@@ -30,8 +30,14 @@ class BotConfig:
         # AI Model settings - поддержка двух моделей
         self.MODEL_PRO: str = "gemini-2.5-pro"  # Основная модель (Pro)
         self.MODEL_FLASH: str = "gemini-2.5-flash"  # Быстрая модель (Flash)
-        self.DEFAULT_MODEL: str = "pro"  # По умолчанию используем Pro
+        
+        # Читаем настройки из переменных окружения для Cloud Run
+        self.DEFAULT_MODEL: str = os.getenv("DEFAULT_MODEL", "pro")  # По умолчанию Pro
         self.MODEL_NAME: str = self.MODEL_PRO  # Для обратной совместимости
+        
+        # Переопределяем локацию из переменных окружения если задана
+        if os.getenv("GOOGLE_CLOUD_LOCATION"):
+            self.LOCATION = os.getenv("GOOGLE_CLOUD_LOCATION")
         
         # Conversation states
         self.AWAITING_CORRECTION = 0
