@@ -25,7 +25,8 @@ class BotConfig:
         
         # Google Cloud settings
         self.PROJECT_ID: str = secrets.PROJECT_ID
-        self.LOCATION: str = "global"  # Global для совместимости с google-generativeai
+        self.LOCATION: str = "asia-southeast1"  # Сингапур для Flash-модели как в откатной версии
+        self.LOCATION_GLOBAL: str = "global"  # Global для Pro-модели
         
         # AI Model settings - поддержка двух моделей
         self.MODEL_PRO: str = "gemini-2.5-pro"  # Основная модель (Pro)
@@ -103,6 +104,16 @@ class BotConfig:
             "pro": self.MODEL_PRO,
             "flash": self.MODEL_FLASH
         }
+    
+    def get_location_by_model_type(self, model_type: str = None) -> str:
+        """Получить локацию по типу модели"""
+        if model_type is None:
+            model_type = self.DEFAULT_MODEL
+        
+        if model_type.lower() == "flash":
+            return self.LOCATION  # asia-southeast1 для Flash
+        else:
+            return self.LOCATION_GLOBAL  # global для Pro
 
 
 # AI prompts moved to config/prompts.py

@@ -6,6 +6,8 @@ import asyncio
 import time
 from typing import Dict, Any, Optional
 import google.generativeai as genai
+import vertexai
+from vertexai.generative_models import GenerativeModel, Part
 import httpx
 from httpx import AsyncClient, Limits, Timeout
 import threading
@@ -32,7 +34,7 @@ class AIService:
         self._initialize_http_client()
     
     def _initialize_vertex_ai(self):
-        """Initialize Vertex AI once at startup using Application Default Credentials (ADC)"""
+        """Initialize AI services - vertexai for Flash, google.generativeai for Pro"""
         import os
         import json
         import tempfile
@@ -80,18 +82,40 @@ class AIService:
                 else:
                     print(f"❌ Файл учетных данных не найден: {credentials_file}")
         
-        # Initialize Google Generative AI using ADC (recommended approach for Cloud Run)
+        # Initialize based on model type
         try:
-            # Configure the API key or use ADC
-            genai.configure()
-            print("✅ Google Generative AI инициализирован с Application Default Credentials (ADC)")
-            
-            # Store model name based on model type
-            self._model_name = self.config.get_model_name(self.model_type)
-            print(f"✅ Модель {self._model_name} ({self.model_type.upper()}) готова к созданию экземпляров")
+            if self.model_type.lower() == "flash":
+                # Flash model uses vertexai with asia-southeast1 (exactly like rollback version)
+                location = self.config.get_location_by_model_type("flash")
+                try:
+                    vertexai.init(project=self.config.PROJECT_ID, location=location)
+                    print(f"✅ Vertex AI инициализирован для Flash модели (регион: {location})")
+                except Exception as e:
+                    print(f"❌ Ошибка инициализации Vertex AI с {location}: {e}")
+                    # Try fallback to us-central1 if asia-southeast1 fails
+                    try:
+                        print("🔄 Пробуем fallback на us-central1...")
+                        vertexai.init(project=self.config.PROJECT_ID, location="us-central1")
+                        print("✅ Vertex AI инициализирован с fallback на us-central1")
+                    except Exception as e2:
+                        print(f"❌ Ошибка инициализации Vertex AI с fallback: {e2}")
+                        raise
+                
+                # Store model name
+                self._model_name = self.config.get_model_name("flash")
+                print(f"✅ Flash модель {self._model_name} готова к созданию экземпляров")
+                
+            else:
+                # Pro model uses google.generativeai with global
+                genai.configure()
+                print("✅ Google Generative AI инициализирован для Pro модели (регион: global)")
+                
+                # Store model name
+                self._model_name = self.config.get_model_name(self.model_type)
+                print(f"✅ Pro модель {self._model_name} готова к созданию экземпляров")
             
         except Exception as e:
-            print(f"❌ Ошибка инициализации Google Generative AI с ADC: {e}")
+            print(f"❌ Ошибка инициализации AI сервиса: {e}")
             raise
     
     def _create_model_instance(self, model_type: str = None):
@@ -99,11 +123,18 @@ class AIService:
         if model_type:
             # Use the specified model type
             model_name = self._get_model_name_by_type(model_type)
+            actual_model_type = model_type
         else:
             # Use the default model name
             model_name = self._model_name
+            actual_model_type = self.model_type
         
-        return genai.GenerativeModel(model_name)
+        # Flash model uses vertexai (exactly like rollback version)
+        if actual_model_type.lower() == "flash":
+            return GenerativeModel(model_name)
+        else:
+            # Pro model uses google.generativeai
+            return genai.GenerativeModel(model_name)
     
     def _get_model_name_by_type(self, model_type: str) -> str:
         """Get model name by type (pro or flash)"""
@@ -119,6 +150,7 @@ class AIService:
         # Create new instances to avoid any shared state
         config = BotConfig()
         prompt_manager = PromptManager()
+        # Use the same model type as the current service
         return AIService(config, prompt_manager, self.model_type)
     
     def _get_ai_service_from_pool(self):
@@ -219,10 +251,19 @@ class AIService:
             
             with open(image_path, "rb") as f:
                 image_data = f.read()
-            image_part = {
-                "mime_type": "image/jpeg",
-                "data": image_data
-            }
+            
+            # Determine model type for proper image part creation
+            actual_model_type = model_type or isolated_ai_service.model_type
+            
+            if actual_model_type.lower() == "flash":
+                # Flash model uses vertexai Part (exactly like rollback version)
+                image_part = Part.from_data(data=image_data, mime_type="image/jpeg")
+            else:
+                # Pro model uses google.generativeai format
+                image_part = {
+                    "mime_type": "image/jpeg",
+                    "data": image_data
+                }
             
             # print("Отправка запроса в Gemini (Фаза 1: Анализ) - из пула экземпляров...")  # Отключено для чистоты консоли
             
@@ -234,10 +275,19 @@ class AIService:
             # Run the synchronous generate_content in our dedicated thread pool
             loop = asyncio.get_running_loop()
             start_time = time.time()
-            response = await loop.run_in_executor(
-                self._thread_pool, 
-                lambda: model.generate_content([image_part, isolated_ai_service.prompt_manager.get_analyze_prompt()])
-            )
+            
+            if actual_model_type.lower() == "flash":
+                # Flash model uses vertexai format (exactly like rollback version)
+                response = await loop.run_in_executor(
+                    self._thread_pool, 
+                    lambda: model.generate_content([image_part, isolated_ai_service.prompt_manager.get_analyze_prompt()])
+                )
+            else:
+                # Pro model uses google.generativeai format
+                response = await loop.run_in_executor(
+                    self._thread_pool, 
+                    lambda: model.generate_content([image_part, isolated_ai_service.prompt_manager.get_analyze_prompt()])
+                )
             end_time = time.time()
             print(f"⏱️ Время выполнения запроса Gemini: {end_time - start_time:.2f} секунд")
             
@@ -266,10 +316,19 @@ class AIService:
         
         with open(image_path, "rb") as f:
             image_data = f.read()
-        image_part = {
-            "mime_type": "image/jpeg",
-            "data": image_data
-        }
+        
+        # Determine model type for proper image part creation
+        actual_model_type = model_type or self.model_type
+        
+        if actual_model_type.lower() == "flash":
+            # Flash model uses vertexai Part (exactly like rollback version)
+            image_part = Part.from_data(data=image_data, mime_type="image/jpeg")
+        else:
+            # Pro model uses google.generativeai format
+            image_part = {
+                "mime_type": "image/jpeg",
+                "data": image_data
+            }
         
         # print("Отправка запроса в Gemini (Фаза 1: Анализ)...")  # Отключено для чистоты консоли
         response = model.generate_content([image_part, self.prompt_manager.get_analyze_prompt()])
@@ -278,55 +337,6 @@ class AIService:
         # print("Ответ от Gemini (Фаза 1):", clean_response)  # Отключено для чистоты консоли
         return clean_response
     
-    async def analyze_receipt_phase2(self, final_data: str) -> str:
-        """
-        Phase 2: Format the analyzed data (async version)
-        Uses AI service pool for better resource management
-        """
-        isolated_ai_service = None
-        try:
-            # Get an AI service instance from the pool
-            isolated_ai_service = self._get_ai_service_from_pool()
-            
-            # print("Отправка запроса в Gemini (Фаза 2: Форматирование) - из пула экземпляров...")  # Отключено для чистоты консоли
-            
-            # Create a new model instance in the isolated service
-            model = isolated_ai_service._create_model_instance()
-            
-            # Run the synchronous generate_content in our dedicated thread pool
-            loop = asyncio.get_running_loop()
-            start_time = time.time()
-            response = await loop.run_in_executor(
-                self._thread_pool,
-                lambda: model.generate_content(isolated_ai_service.prompt_manager.get_format_prompt() + final_data)
-            )
-            end_time = time.time()
-            print(f"⏱️ Время выполнения запроса Gemini (Фаза 2): {end_time - start_time:.2f} секунд")
-            
-            # print("Ответ от Gemini (Фаза 2):", response.text)  # Отключено для чистоты консоли
-            
-            return response.text
-            
-        except Exception as e:
-            print(f"❌ Ошибка в analyze_receipt_phase2: {e}")
-            raise ValueError(f"Ошибка форматирования данных (Фаза 2): {e}")
-        finally:
-            # Return the service to the pool instead of closing it
-            if isolated_ai_service:
-                self._return_ai_service_to_pool(isolated_ai_service)
-    
-    def analyze_receipt_phase2_sync(self, final_data: str) -> str:
-        """
-        Phase 2: Format the analyzed data (sync version for backward compatibility)
-        Creates a new model instance for parallel processing
-        """
-        # Create a new model instance for this request to avoid blocking
-        model = self._create_model_instance()
-        
-        # print("Отправка запроса в Gemini (Фаза 2: Форматирование)...")  # Отключено для чистоты консоли
-        response = model.generate_content(self.prompt_manager.get_format_prompt() + final_data)
-        # print("Ответ от Gemini (Фаза 2):", response.text)  # Отключено для чистоты консоли
-        return response.text
     
     def parse_receipt_data(self, json_str: str) -> Dict[str, Any]:
         """
@@ -363,10 +373,10 @@ class ReceiptAnalysisService:
     
     async def analyze_receipt(self, image_path: str, model_type: str = None) -> Dict[str, Any]:
         """
-        Complete receipt analysis process (async version)
+        Complete receipt analysis process (async version) - single request like rollback version
         """
         try:
-            # Phase 1: Extract data from image
+            # Single request to extract data from image (no phases)
             analysis_json_str = await self.ai_service.analyze_receipt_phase1(image_path, model_type)
             
             # Parse the JSON response
@@ -394,9 +404,9 @@ class ReceiptAnalysisService:
     
     def analyze_receipt_sync(self, image_path: str, model_type: str = None) -> Dict[str, Any]:
         """
-        Complete receipt analysis process (sync version for backward compatibility)
+        Complete receipt analysis process (sync version for backward compatibility) - single request like rollback version
         """
-        # Phase 1: Extract data from image
+        # Single request to extract data from image (no phases)
         analysis_json_str = self.ai_service.analyze_receipt_phase1_sync(image_path, model_type)
         
         # Parse the JSON response
@@ -420,16 +430,11 @@ class ReceiptAnalysisService:
     
     async def format_receipt_data(self, data: Dict[str, Any]) -> str:
         """
-        Format receipt data for display (async version)
+        Format receipt data for display (async version) - no phases, direct formatting
         """
         try:
-            # Convert data to JSON string for formatting
-            json_str = json.dumps(data, ensure_ascii=False, indent=2)
-            
-            # Phase 2: Format the data
-            formatted_text = await self.ai_service.analyze_receipt_phase2(json_str)
-            
-            return formatted_text
+            # Direct formatting without AI - just format the data as table
+            return self._format_receipt_data_direct(data)
             
         except Exception as e:
             print(f"❌ Ошибка в format_receipt_data: {e}")
@@ -437,15 +442,64 @@ class ReceiptAnalysisService:
     
     def format_receipt_data_sync(self, data: Dict[str, Any]) -> str:
         """
-        Format receipt data for display (sync version for backward compatibility)
+        Format receipt data for display (sync version for backward compatibility) - no phases, direct formatting
         """
-        # Convert data to JSON string for formatting
-        json_str = json.dumps(data, ensure_ascii=False, indent=2)
-        
-        # Phase 2: Format the data
-        formatted_text = self.ai_service.analyze_receipt_phase2_sync(json_str)
-        
-        return formatted_text
+        # Direct formatting without AI - just format the data as table
+        return self._format_receipt_data_direct(data)
+    
+    def _format_receipt_data_direct(self, data: Dict[str, Any]) -> str:
+        """
+        Direct formatting of receipt data as table (no AI phases)
+        """
+        try:
+            items = data.get('items', [])
+            if not items:
+                return "❌ Нет данных для отображения"
+            
+            # Create table header
+            table = "#| Item       |Qty | Price     |   Total |\n"
+            table += "------------------------------------------------\n"
+            
+            # Add items
+            for i, item in enumerate(items, 1):
+                name = item.get('name', '---')
+                quantity = item.get('quantity', '---')
+                price = item.get('price', '---')
+                total = item.get('total', '---')
+                status = item.get('status', 'OK')
+                
+                # Format status
+                if status == 'confirmed':
+                    status_display = 'OK'
+                elif status == 'error':
+                    status_display = 'ERR'
+                elif status == 'needs_review':
+                    status_display = 'WARN'
+                else:
+                    status_display = 'OK'
+                
+                # Format numbers with spaces for thousands
+                if isinstance(price, (int, float)) and price != '---':
+                    price_str = f"{price:,.0f}".replace(',', ' ')
+                else:
+                    price_str = str(price)
+                
+                if isinstance(total, (int, float)) and total != '---':
+                    total_str = f"{total:,.0f}".replace(',', ' ')
+                else:
+                    total_str = str(total)
+                
+                table += f"{i}| {name[:10]:<10} |{str(quantity):<3} | {price_str:<9} | {total_str:<7} | {status_display}\n"
+            
+            # Add total
+            grand_total = data.get('grand_total_text', '0')
+            table += f"\nTOTAL: {grand_total}"
+            
+            return table
+            
+        except Exception as e:
+            print(f"❌ Ошибка в _format_receipt_data_direct: {e}")
+            return f"❌ Ошибка форматирования: {e}"
 
 
 class ReceiptAnalysisServiceCompat:

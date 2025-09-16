@@ -14,8 +14,8 @@ class SecretsConfig:
         self.BOT_TOKEN: str = os.getenv("BOT_TOKEN", "")
         
         
-        # Google Cloud Project ID (только из переменных окружения)
-        self.PROJECT_ID: str = os.getenv("PROJECT_ID", "")
+        # Google Cloud Project ID (из переменных окружения с fallback)
+        self.PROJECT_ID: str = os.getenv("PROJECT_ID", "just-advice-470905-a3")
     
     def _get_env_var(self, env_name: str, default_value: str) -> str:
         """
