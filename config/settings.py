@@ -35,6 +35,9 @@ class BotConfig:
         self.DEFAULT_MODEL: str = os.getenv("DEFAULT_MODEL", "pro")  # По умолчанию Pro
         self.MODEL_NAME: str = self.MODEL_PRO  # Для обратной совместимости
         
+        # Режим анализа Gemini - debug или production
+        self.GEMINI_ANALYSIS_MODE: str = os.getenv("GEMINI_ANALYSIS_MODE", "production")
+        
         # Переопределяем локацию из переменных окружения если задана
         if os.getenv("GOOGLE_CLOUD_LOCATION"):
             self.LOCATION = os.getenv("GOOGLE_CLOUD_LOCATION")

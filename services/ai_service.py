@@ -94,9 +94,22 @@ class AIService:
             print(f"❌ Ошибка инициализации Google Generative AI с ADC: {e}")
             raise
     
-    def _create_model_instance(self):
+    def _create_model_instance(self, model_type: str = None):
         """Create a new model instance for parallel processing"""
-        return genai.GenerativeModel(self._model_name)
+        if model_type:
+            # Use the specified model type
+            model_name = self._get_model_name_by_type(model_type)
+        else:
+            # Use the default model name
+            model_name = self._model_name
+        
+        return genai.GenerativeModel(model_name)
+    
+    def _get_model_name_by_type(self, model_type: str) -> str:
+        """Get model name by type (pro or flash)"""
+        from config.settings import BotConfig
+        config = BotConfig()
+        return config.get_model_name(model_type)
     
     def _create_isolated_ai_service(self):
         """Create a completely isolated AI service instance for maximum parallelization"""
@@ -194,7 +207,7 @@ class AIService:
                 await ai_service.close()
             self._ai_service_pool.clear()
     
-    async def analyze_receipt_phase1(self, image_path: str) -> str:
+    async def analyze_receipt_phase1(self, image_path: str, model_type: str = None) -> str:
         """
         Phase 1: Analyze receipt image and extract data (async version)
         Uses AI service pool for better resource management
@@ -213,9 +226,9 @@ class AIService:
             
             # print("Отправка запроса в Gemini (Фаза 1: Анализ) - из пула экземпляров...")  # Отключено для чистоты консоли
             
-            # Create a new model instance in the isolated service
-            model = isolated_ai_service._create_model_instance()
-            print("✅ Модель создана, отправляем запрос...")
+            # Create a new model instance in the isolated service with specified model type
+            model = isolated_ai_service._create_model_instance(model_type)
+            print(f"✅ Модель создана ({model_type or 'default'}), отправляем запрос...")
             
             # Run the synchronous generate_content in our dedicated thread pool
             loop = asyncio.get_running_loop()
@@ -240,13 +253,13 @@ class AIService:
             if isolated_ai_service:
                 self._return_ai_service_to_pool(isolated_ai_service)
     
-    def analyze_receipt_phase1_sync(self, image_path: str) -> str:
+    def analyze_receipt_phase1_sync(self, image_path: str, model_type: str = None) -> str:
         """
         Phase 1: Analyze receipt image and extract data (sync version for backward compatibility)
         Creates a new model instance for parallel processing
         """
         # Create a new model instance for this request to avoid blocking
-        model = self._create_model_instance()
+        model = self._create_model_instance(model_type)
         
         with open(image_path, "rb") as f:
             image_data = f.read()
@@ -345,13 +358,13 @@ class ReceiptAnalysisService:
     def __init__(self, ai_service: AIService):
         self.ai_service = ai_service
     
-    async def analyze_receipt(self, image_path: str) -> Dict[str, Any]:
+    async def analyze_receipt(self, image_path: str, model_type: str = None) -> Dict[str, Any]:
         """
         Complete receipt analysis process (async version)
         """
         try:
             # Phase 1: Extract data from image
-            analysis_json_str = await self.ai_service.analyze_receipt_phase1(image_path)
+            analysis_json_str = await self.ai_service.analyze_receipt_phase1(image_path, model_type)
             
             # Parse the JSON response
             data = self.ai_service.parse_receipt_data(analysis_json_str)
@@ -376,12 +389,12 @@ class ReceiptAnalysisService:
             print(f"❌ Ошибка в analyze_receipt: {e}")
             raise ValueError(f"Ошибка анализа чека: {e}")
     
-    def analyze_receipt_sync(self, image_path: str) -> Dict[str, Any]:
+    def analyze_receipt_sync(self, image_path: str, model_type: str = None) -> Dict[str, Any]:
         """
         Complete receipt analysis process (sync version for backward compatibility)
         """
         # Phase 1: Extract data from image
-        analysis_json_str = self.ai_service.analyze_receipt_phase1_sync(image_path)
+        analysis_json_str = self.ai_service.analyze_receipt_phase1_sync(image_path, model_type)
         
         # Parse the JSON response
         data = self.ai_service.parse_receipt_data(analysis_json_str)
@@ -442,18 +455,18 @@ class ReceiptAnalysisServiceCompat:
         self.ai_service = ai_service
         self._async_service = ReceiptAnalysisService(ai_service)
     
-    def analyze_receipt(self, image_path: str) -> Dict[str, Any]:
+    def analyze_receipt(self, image_path: str, model_type: str = None) -> Dict[str, Any]:
         """
         Analyze receipt - uses sync version for compatibility
         """
         # Always use sync version for compatibility
-        return self._async_service.analyze_receipt_sync(image_path)
+        return self._async_service.analyze_receipt_sync(image_path, model_type)
     
-    async def analyze_receipt_async(self, image_path: str) -> Dict[str, Any]:
+    async def analyze_receipt_async(self, image_path: str, model_type: str = None) -> Dict[str, Any]:
         """
         Async version of analyze_receipt
         """
-        return await self._async_service.analyze_receipt(image_path)
+        return await self._async_service.analyze_receipt(image_path, model_type)
     
     def format_receipt_data(self, data: Dict[str, Any]) -> str:
         """

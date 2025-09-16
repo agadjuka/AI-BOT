@@ -9,6 +9,8 @@ pandas==2.0.3
 
 # Computer Vision библиотеки
 opencv-python-headless==4.8.1.78
+scikit-image==0.21.0
+scipy==1.11.4
 
 # Остальные зависимости
 openpyxl==3.1.2

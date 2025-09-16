@@ -63,7 +63,39 @@ class PhotoHandler(BaseMessageHandler):
         """Асинхронная обработка фото в фоне - НЕ блокирует webhook"""
         try:
             print(f"🔍 {self.locale_manager.get_text('status.starting_analysis', context)}")
-            analysis_data = await self.analysis_service.analyze_receipt_async(self.config.PHOTO_FILE_NAME)
+            
+            # НОВАЯ ЛОГИКА: Анализ выбора модели
+            print("🔍 Анализируем изображение для выбора модели...")
+            
+            # Читаем изображение для анализа
+            with open(self.config.PHOTO_FILE_NAME, 'rb') as f:
+                image_bytes = f.read()
+            
+            # Импортируем функцию анализа
+            from utils.receipt_analyzer import analyze_receipt_and_choose_model
+            
+            # Анализируем и выбираем модель
+            chosen_model = await analyze_receipt_and_choose_model(image_bytes)
+            print(f"🎯 Выбрана модель: {chosen_model}")
+            
+            # Проверяем режим анализа
+            if self.config.GEMINI_ANALYSIS_MODE == "debug":
+                # Режим отладки - только показываем результат выбора модели
+                debug_message = f"🔍 **Режим отладки**: для этого чека выбрана модель **{chosen_model.upper()}**"
+                
+                # Удаляем сообщение о обработке
+                await self._delete_processing_message(update, context)
+                
+                # Отправляем сообщение с результатом
+                await update.message.reply_text(debug_message, parse_mode='Markdown')
+                print(f"🔍 Режим отладки: отправлено сообщение с результатом выбора модели")
+                return
+            
+            # Режим production - продолжаем обычную обработку
+            print(f"🔍 Режим production: используем модель {chosen_model} для анализа")
+            
+            # Передаем выбранную модель в сервис анализа
+            analysis_data = await self.analysis_service.analyze_receipt_async(self.config.PHOTO_FILE_NAME, model_type=chosen_model)
             print(f"✅ {self.locale_manager.get_text('status.analysis_completed', context)}")
             
             # Convert to ReceiptData model
