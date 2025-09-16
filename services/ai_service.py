@@ -228,7 +228,8 @@ class AIService:
             
             # Create a new model instance in the isolated service with specified model type
             model = isolated_ai_service._create_model_instance(model_type)
-            print(f"✅ Модель создана ({model_type or 'default'}), отправляем запрос...")
+            model_name = isolated_ai_service._get_model_name_by_type(model_type) if model_type else isolated_ai_service._model_name
+            print(f"✅ Модель создана: {model_name} ({model_type or 'default'}), отправляем запрос...")
             
             # Run the synchronous generate_content in our dedicated thread pool
             loop = asyncio.get_running_loop()
@@ -260,6 +261,8 @@ class AIService:
         """
         # Create a new model instance for this request to avoid blocking
         model = self._create_model_instance(model_type)
+        model_name = self._get_model_name_by_type(model_type) if model_type else self._model_name
+        print(f"✅ Модель создана (sync): {model_name} ({model_type or 'default'}), отправляем запрос...")
         
         with open(image_path, "rb") as f:
             image_data = f.read()
@@ -451,22 +454,38 @@ class ReceiptAnalysisServiceCompat:
     This ensures backward compatibility with existing code
     """
     
-    def __init__(self, ai_service: AIService):
+    def __init__(self, ai_service: AIService, ai_factory=None):
         self.ai_service = ai_service
+        self.ai_factory = ai_factory  # Добавляем фабрику для переключения моделей
         self._async_service = ReceiptAnalysisService(ai_service)
     
     def analyze_receipt(self, image_path: str, model_type: str = None) -> Dict[str, Any]:
         """
         Analyze receipt - uses sync version for compatibility
         """
-        # Always use sync version for compatibility
-        return self._async_service.analyze_receipt_sync(image_path, model_type)
+        # Если указан тип модели и есть фабрика, используем правильный сервис
+        if model_type and self.ai_factory:
+            print(f"🔄 Переключаемся на модель: {model_type.upper()}")
+            target_ai_service = self.ai_factory.get_service(model_type)
+            target_async_service = ReceiptAnalysisService(target_ai_service)
+            return target_async_service.analyze_receipt_sync(image_path, model_type)
+        else:
+            # Используем текущий сервис
+            return self._async_service.analyze_receipt_sync(image_path, model_type)
     
     async def analyze_receipt_async(self, image_path: str, model_type: str = None) -> Dict[str, Any]:
         """
         Async version of analyze_receipt
         """
-        return await self._async_service.analyze_receipt(image_path, model_type)
+        # Если указан тип модели и есть фабрика, используем правильный сервис
+        if model_type and self.ai_factory:
+            print(f"🔄 Переключаемся на модель (async): {model_type.upper()}")
+            target_ai_service = self.ai_factory.get_service(model_type)
+            target_async_service = ReceiptAnalysisService(target_ai_service)
+            return await target_async_service.analyze_receipt(image_path, model_type)
+        else:
+            # Используем текущий сервис
+            return await self._async_service.analyze_receipt(image_path, model_type)
     
     def format_receipt_data(self, data: Dict[str, Any]) -> str:
         """

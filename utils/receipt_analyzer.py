@@ -3,9 +3,55 @@
 
 Содержит функции для предварительной обработки изображений и выделения
 областей, которые могут содержать текст.
+
+ВНИМАНИЕ: Этот модуль загружает OpenCV при импорте!
+Для оптимизации используйте utils/receipt_analyzer_optimized.py
 """
 
-import cv2
+# Ленивая загрузка OpenCV - загружается только при первом использовании
+_cv2 = None
+
+def _get_cv2():
+    """Получает OpenCV модуль с ленивой загрузкой"""
+    global _cv2
+    if _cv2 is None:
+        try:
+            import cv2
+            _cv2 = cv2
+            print("🔍 OpenCV загружен для анализа изображения")
+        except ImportError as e:
+            print(f"❌ Ошибка загрузки OpenCV: {e}")
+            raise
+    return _cv2
+
+def unload_opencv():
+    """Выгружает OpenCV из памяти для освобождения ресурсов"""
+    global _cv2
+    if _cv2 is not None:
+        try:
+            print("🧹 Выгружаем OpenCV из памяти...")
+            
+            # Очищаем кэш OpenCV (если доступно)
+            try:
+                if hasattr(_cv2, 'destroyAllWindows'):
+                    _cv2.destroyAllWindows()
+            except Exception:
+                # Игнорируем ошибки destroyAllWindows (не критично)
+                pass
+            
+            # Очищаем глобальную переменную
+            _cv2 = None
+            
+            # Принудительная сборка мусора
+            import gc
+            gc.collect()
+            
+            print("✅ OpenCV выгружен из памяти")
+            
+        except Exception as e:
+            print(f"⚠️ Ошибка при выгрузке OpenCV: {e}")
+            # Не поднимаем исключение - это не критично
+
 import numpy as np
 from typing import List, Tuple, Dict
 import asyncio
@@ -25,6 +71,9 @@ async def find_text_regions(image_bytes: bytes) -> List[Tuple[int, int, int, int
         Список прямоугольников текстовых областей в формате (x, y, w, h)
     """
     try:
+        # Получаем OpenCV с ленивой загрузкой
+        cv2 = _get_cv2()
+        
         # Декодирование изображения из байтов
         nparr = np.frombuffer(image_bytes, np.uint8)
         image = cv2.imdecode(nparr, cv2.IMREAD_COLOR)
@@ -183,6 +232,9 @@ def straighten_receipt(image: np.ndarray) -> np.ndarray:
         Выровненное изображение
     """
     try:
+        # Получаем OpenCV с ленивой загрузкой
+        cv2 = _get_cv2()
+        
         # Преобразуем в оттенки серого
         gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
         
@@ -257,6 +309,9 @@ def find_character_contours(image: np.ndarray) -> List[Dict]:
         Список словарей с информацией о символах: {'contour', 'x', 'y', 'w', 'h', 'angle'}
     """
     try:
+        # Получаем OpenCV с ленивой загрузкой
+        cv2 = _get_cv2()
+        
         # Применяем адаптивную бинаризацию
         binary = cv2.adaptiveThreshold(
             image, 255, cv2.ADAPTIVE_THRESH_GAUSSIAN_C, cv2.THRESH_BINARY_INV, 11, 2
@@ -489,6 +544,9 @@ async def analyze_receipt_and_choose_model(image_bytes: bytes) -> str:
         'flash' для печатного текста или 'pro' для рукописного текста
     """
     try:
+        # Получаем OpenCV с ленивой загрузкой
+        cv2 = _get_cv2()
+        
         # Шаг 1: Подготовка - декодируем изображение
         nparr = np.frombuffer(image_bytes, np.uint8)
         image = cv2.imdecode(nparr, cv2.IMREAD_COLOR)
@@ -716,6 +774,9 @@ def _analyze_line_variation(binary_roi: np.ndarray) -> float:
         Коэффициент вариации толщины линий
     """
     try:
+        # Получаем OpenCV с ленивой загрузкой
+        cv2 = _get_cv2()
+        
         # Применяем морфологические операции для анализа толщины линий
         kernel = cv2.getStructuringElement(cv2.MORPH_RECT, (3, 3))
         
@@ -765,6 +826,9 @@ def _is_handwritten_block(text_density: float, line_variation: float) -> bool:
 def _analyze_size_variance(block_roi: np.ndarray) -> float:
     """Анализирует вариацию размеров символов в блоке"""
     try:
+        # Получаем OpenCV с ленивой загрузкой
+        cv2 = _get_cv2()
+        
         # Применяем морфологические операции для выделения символов
         kernel = cv2.getStructuringElement(cv2.MORPH_RECT, (3, 3))
         binary = cv2.adaptiveThreshold(block_roi, 255, cv2.ADAPTIVE_THRESH_GAUSSIAN_C, cv2.THRESH_BINARY_INV, 11, 2)
@@ -794,6 +858,9 @@ def _analyze_size_variance(block_roi: np.ndarray) -> float:
 def _analyze_angle_variance(block_roi: np.ndarray) -> float:
     """Анализирует вариацию углов наклона в блоке"""
     try:
+        # Получаем OpenCV с ленивой загрузкой
+        cv2 = _get_cv2()
+        
         # Применяем детектор краев
         edges = cv2.Canny(block_roi, 50, 150)
         
@@ -858,6 +925,9 @@ def _analyze_density_variance(block_roi: np.ndarray) -> float:
 def _analyze_contrast_variance(block_roi: np.ndarray) -> float:
     """Анализирует вариацию контраста в блоке"""
     try:
+        # Получаем OpenCV с ленивой загрузкой
+        cv2 = _get_cv2()
+        
         # Вычисляем локальный контраст
         kernel = np.array([[-1, -1, -1], [-1, 8, -1], [-1, -1, -1]])
         contrast = cv2.filter2D(block_roi.astype(np.float32), -1, kernel)
@@ -883,6 +953,9 @@ def visualize_text_regions(image_bytes: bytes, regions: List[Tuple[int, int, int
         Изображение с отмеченными регионами в байтах
     """
     try:
+        # Получаем OpenCV с ленивой загрузкой
+        cv2 = _get_cv2()
+        
         # Декодируем изображение
         nparr = np.frombuffer(image_bytes, np.uint8)
         image = cv2.imdecode(nparr, cv2.IMREAD_COLOR)

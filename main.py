@@ -58,6 +58,17 @@ except ImportError as e:
     np = None
     pd = None
 
+# Проверяем доступность OpenCV без его загрузки
+try:
+    from utils.opencv_lazy_loader import check_opencv_availability
+    opencv_available = check_opencv_availability()
+    print(f"✅ OpenCV доступен: {opencv_available}")
+    if not opencv_available:
+        print("⚠️ OpenCV недоступен - анализ изображений будет ограничен")
+except Exception as e:
+    print(f"⚠️ Не удалось проверить доступность OpenCV: {e}")
+    opencv_available = False
+
 # Импорты с обработкой ошибок
 try:
     from config.settings import BotConfig
@@ -216,9 +227,10 @@ def create_application() -> Application:
     
     # Get default AI service (Pro model)
     ai_service = ai_factory.get_default_service()
-    analysis_service = ReceiptAnalysisServiceCompat(ai_service)
+    analysis_service = ReceiptAnalysisServiceCompat(ai_service, ai_factory)
     
     print(f"🤖 AI Service инициализирован с моделью: {ai_service.get_current_model_info()['name']}")
+    print(f"🏭 AIServiceFactory готова для переключения между моделями: {list(ai_factory._services.keys())}")
     
     # LocaleManager уже инициализирован глобально с Firestore instance
     

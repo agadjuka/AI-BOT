@@ -71,12 +71,19 @@ class PhotoHandler(BaseMessageHandler):
             with open(self.config.PHOTO_FILE_NAME, 'rb') as f:
                 image_bytes = f.read()
             
-            # Импортируем функцию анализа
-            from utils.receipt_analyzer import analyze_receipt_and_choose_model
+            # Импортируем оптимизированную функцию анализа с ленивой загрузкой OpenCV
+            from utils.receipt_analyzer_optimized import analyze_receipt_and_choose_model
             
-            # Анализируем и выбираем модель
+            # Анализируем и выбираем модель (OpenCV загружается только здесь)
             chosen_model = await analyze_receipt_and_choose_model(image_bytes)
             print(f"🎯 Выбрана модель: {chosen_model}")
+            
+            # Выгружаем OpenCV после анализа для освобождения памяти
+            try:
+                from utils.receipt_analyzer import unload_opencv
+                unload_opencv()
+            except Exception as e:
+                print(f"⚠️ Ошибка при выгрузке OpenCV: {e}")
             
             # Проверяем режим анализа
             if self.config.GEMINI_ANALYSIS_MODE == "debug":
@@ -95,6 +102,7 @@ class PhotoHandler(BaseMessageHandler):
             print(f"🔍 Режим production: используем модель {chosen_model} для анализа")
             
             # Передаем выбранную модель в сервис анализа
+            print(f"🎯 Отправляем запрос в модель: {chosen_model.upper()}")
             analysis_data = await self.analysis_service.analyze_receipt_async(self.config.PHOTO_FILE_NAME, model_type=chosen_model)
             print(f"✅ {self.locale_manager.get_text('status.analysis_completed', context)}")
             

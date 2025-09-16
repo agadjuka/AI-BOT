@@ -41,9 +41,20 @@ except Exception as e:
     print(f"💡 Текущее значение: {os.environ.get('GOOGLE_APPLICATION_CREDENTIALS', 'НЕ УСТАНОВЛЕНО')}")
     db = None
 
+# Проверяем доступность OpenCV без его загрузки
+try:
+    from utils.opencv_lazy_loader import check_opencv_availability
+    opencv_available = check_opencv_availability()
+    print(f"✅ OpenCV доступен: {opencv_available}")
+    if not opencv_available:
+        print("⚠️ OpenCV недоступен - анализ изображений будет ограничен")
+except Exception as e:
+    print(f"⚠️ Не удалось проверить доступность OpenCV: {e}")
+    opencv_available = False
+
 from config.settings import BotConfig
 from config.prompts import PromptManager
-from services.ai_service import AIService, ReceiptAnalysisServiceCompat
+from services.ai_service import AIService, ReceiptAnalysisServiceCompat, AIServiceFactory
 from handlers.message_handlers import MessageHandlers
 from handlers.callback_handlers import CallbackHandlers
 from utils.ingredient_storage import IngredientStorage
