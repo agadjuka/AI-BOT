@@ -34,19 +34,51 @@ class AIService:
     def _initialize_vertex_ai(self):
         """Initialize Vertex AI once at startup using Application Default Credentials (ADC)"""
         import os
+        import json
+        import tempfile
         
         # Debug information
         print(f"🔍 Debug: GOOGLE_APPLICATION_CREDENTIALS = {os.getenv('GOOGLE_APPLICATION_CREDENTIALS')}")
         print(f"🔍 Debug: GOOGLE_APPLICATION_CREDENTIALS_JSON exists: {bool(os.getenv('GOOGLE_APPLICATION_CREDENTIALS_JSON'))}")
         
-        # Set GOOGLE_APPLICATION_CREDENTIALS if not set and credentials file exists
+        # Set GOOGLE_APPLICATION_CREDENTIALS if not set
         if not os.getenv('GOOGLE_APPLICATION_CREDENTIALS'):
-            credentials_file = "just-advice-470905-a3-ee25a8712359.json"
-            if os.path.exists(credentials_file):
-                os.environ['GOOGLE_APPLICATION_CREDENTIALS'] = credentials_file
-                print(f"✅ Установлена переменная GOOGLE_APPLICATION_CREDENTIALS: {credentials_file}")
+            # First try to use GOOGLE_APPLICATION_CREDENTIALS_JSON (for Cloud Run)
+            google_credentials_json = os.getenv('GOOGLE_APPLICATION_CREDENTIALS_JSON')
+            if google_credentials_json:
+                try:
+                    # Parse and validate JSON
+                    credentials_info = json.loads(google_credentials_json)
+                    print(f"🔍 Parsed GOOGLE_APPLICATION_CREDENTIALS_JSON successfully")
+                    print(f"  - Project ID: {credentials_info.get('project_id', 'Не найден')}")
+                    print(f"  - Client Email: {credentials_info.get('client_email', 'Не найден')}")
+                    print(f"  - Type: {credentials_info.get('type', 'Не найден')}")
+                    
+                    # Create temporary file with credentials
+                    with tempfile.NamedTemporaryFile(mode='w', suffix='.json', delete=False) as f:
+                        f.write(google_credentials_json)
+                        temp_credentials_file = f.name
+                    
+                    os.environ['GOOGLE_APPLICATION_CREDENTIALS'] = temp_credentials_file
+                    print(f"✅ Установлена переменная GOOGLE_APPLICATION_CREDENTIALS: {temp_credentials_file}")
+                    
+                except Exception as e:
+                    print(f"❌ Ошибка парсинга GOOGLE_APPLICATION_CREDENTIALS_JSON: {e}")
+                    # Fallback to local file
+                    credentials_file = "just-advice-470905-a3-ee25a8712359.json"
+                    if os.path.exists(credentials_file):
+                        os.environ['GOOGLE_APPLICATION_CREDENTIALS'] = credentials_file
+                        print(f"✅ Fallback: установлена переменная GOOGLE_APPLICATION_CREDENTIALS: {credentials_file}")
+                    else:
+                        print(f"❌ Файл учетных данных не найден: {credentials_file}")
             else:
-                print(f"❌ Файл учетных данных не найден: {credentials_file}")
+                # Fallback to local file
+                credentials_file = "just-advice-470905-a3-ee25a8712359.json"
+                if os.path.exists(credentials_file):
+                    os.environ['GOOGLE_APPLICATION_CREDENTIALS'] = credentials_file
+                    print(f"✅ Установлена переменная GOOGLE_APPLICATION_CREDENTIALS: {credentials_file}")
+                else:
+                    print(f"❌ Файл учетных данных не найден: {credentials_file}")
         
         # Initialize Google Generative AI using ADC (recommended approach for Cloud Run)
         try:
