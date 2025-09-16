@@ -25,7 +25,8 @@ class BotConfig:
         
         # Google Cloud settings
         self.PROJECT_ID: str = secrets.PROJECT_ID
-        self.LOCATION: str = "asia-southeast1"  # Сингапур для Flash-модели как в откатной версии
+        # Читаем локацию из переменных окружения для Cloud Run
+        self.LOCATION: str = os.getenv("GOOGLE_CLOUD_LOCATION", "asia-southeast1")  # Сингапур для Flash-модели
         self.LOCATION_GLOBAL: str = "global"  # Global для Pro-модели
         
         # AI Model settings - поддержка двух моделей
