@@ -165,6 +165,10 @@ class MessageHandlers(BaseMessageHandler):
             [InlineKeyboardButton(
                 self.get_text("welcome.dashboard.buttons.instruction", context, update=update), 
                 callback_data="dashboard_instruction"
+            )],
+            [InlineKeyboardButton(
+                self.get_text("welcome.dashboard.buttons.turbo_mode", context, update=update), 
+                callback_data="dashboard_turbo_mode"
             )]
         ]
         

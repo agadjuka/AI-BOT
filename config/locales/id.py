@@ -19,7 +19,8 @@ ID_TRANSLATIONS = {
                 "language_settings": "🌍 Pengaturan Bahasa",
                 "google_sheets_management": "⚙️ Google Sheets",
                 "ingredients_management": "🥕 Daftar Bahan",
-                "instruction": "📖 Instruksi"
+                "instruction": "📖 Instruksi",
+                "turbo_mode": "🚀 TURBO"
             }
         }
     },
@@ -539,6 +540,19 @@ ID_TRANSLATIONS = {
     "access_control": {
         "access_denied": "Maaf, Anda tidak memiliki akses ke bot ini. Silakan hubungi administrator @markov1u",
         "admin_only": "Perintah ini hanya tersedia untuk administrator."
+    },
+    
+    # Mode TURBO
+    "turbo_mode": {
+        "enabled": "🚀 Mode TURBO diaktifkan\n\nSekarang semua pemrosesan foto akan dikirim langsung ke Gemini Flash tanpa pemrosesan OpenCV untuk kecepatan maksimal!",
+        "disabled": "🚀 Mode TURBO dinonaktifkan\n\nKembali ke pemrosesan standar menggunakan OpenCV.",
+        "status_enabled": "✅ Mode TURBO diaktifkan",
+        "status_disabled": "❌ Mode TURBO dinonaktifkan",
+        "description": "🚀 **Mode TURBO**\n\nDalam mode ini, foto dikirim langsung ke Gemini Flash tanpa pemrosesan awal OpenCV.\n\n**Keuntungan:**\n• ⚡ Kecepatan pemrosesan maksimal\n• 🎯 Kerja AI langsung\n\n**Kerugian:**\n• 📷 Optimasi gambar lebih sedikit\n• 🔍 Mungkin kurang akurat untuk foto buruk\n\n**Status saat ini:** {status}",
+        "buttons": {
+            "toggle_turbo": "🚀 Toggle TURBO",
+            "back_to_dashboard": "⬅️ Kembali ke dashboard"
+        }
     }
     
 }

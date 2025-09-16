@@ -122,6 +122,15 @@ class CallbackHandlers(BaseCallbackHandler):
         elif action == "dashboard_instruction":
             return await self._handle_dashboard_instruction(update, context)
         
+        elif action == "dashboard_turbo_mode":
+            return await self._handle_dashboard_turbo_mode(update, context)
+        
+        elif action == "turbo_toggle":
+            return await self._handle_turbo_toggle(update, context)
+        
+        elif action == "turbo_back_to_dashboard":
+            return await self._handle_dashboard_main(update, context)
+        
         elif action == "ingredients_management":
             return await self._handle_ingredients_management(update, context)
         
@@ -1522,3 +1531,77 @@ class CallbackHandlers(BaseCallbackHandler):
         else:
             # Fallback to table settings menu
             return await self.table_settings_handler.show_table_settings_menu(update, context)
+    
+    async def _handle_dashboard_turbo_mode(self, update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
+        """Handle TURBO mode button from dashboard"""
+        query = update.callback_query
+        await query.answer()
+        
+        # Get current TURBO mode status from user data
+        user_id = update.effective_user.id
+        turbo_enabled = context.user_data.get('turbo_mode', False)
+        
+        # Create keyboard
+        keyboard = [
+            [InlineKeyboardButton(
+                self.get_text("turbo_mode.buttons.toggle_turbo", context, update=update), 
+                callback_data="turbo_toggle"
+            )],
+            [InlineKeyboardButton(
+                self.get_text("turbo_mode.buttons.back_to_dashboard", context, update=update), 
+                callback_data="turbo_back_to_dashboard"
+            )]
+        ]
+        
+        reply_markup = InlineKeyboardMarkup(keyboard)
+        
+        # Show TURBO mode description with current status
+        status_text = self.get_text("turbo_mode.status_enabled", context, update=update) if turbo_enabled else self.get_text("turbo_mode.status_disabled", context, update=update)
+        description = self.get_text("turbo_mode.description", context, update=update, status=status_text)
+        
+        await query.edit_message_text(
+            description,
+            reply_markup=reply_markup,
+            parse_mode='Markdown'
+        )
+        
+        return self.config.AWAITING_CORRECTION
+    
+    async def _handle_turbo_toggle(self, update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
+        """Handle TURBO mode toggle"""
+        query = update.callback_query
+        await query.answer()
+        
+        # Toggle TURBO mode
+        user_id = update.effective_user.id
+        current_turbo = context.user_data.get('turbo_mode', False)
+        new_turbo = not current_turbo
+        context.user_data['turbo_mode'] = new_turbo
+        
+        # Show appropriate message
+        if new_turbo:
+            message = self.get_text("turbo_mode.enabled", context, update=update)
+        else:
+            message = self.get_text("turbo_mode.disabled", context, update=update)
+        
+        # Create keyboard to go back to TURBO settings
+        keyboard = [
+            [InlineKeyboardButton(
+                self.get_text("turbo_mode.buttons.toggle_turbo", context, update=update), 
+                callback_data="turbo_toggle"
+            )],
+            [InlineKeyboardButton(
+                self.get_text("turbo_mode.buttons.back_to_dashboard", context, update=update), 
+                callback_data="turbo_back_to_dashboard"
+            )]
+        ]
+        
+        reply_markup = InlineKeyboardMarkup(keyboard)
+        
+        await query.edit_message_text(
+            message,
+            reply_markup=reply_markup,
+            parse_mode='Markdown'
+        )
+        
+        return self.config.AWAITING_CORRECTION

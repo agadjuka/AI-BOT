@@ -19,7 +19,8 @@ EN_TRANSLATIONS = {
                 "language_settings": "🌍 Language Settings",
                 "google_sheets_management": "⚙️ Google Sheets",
                 "ingredients_management": "🥕 Ingredients List",
-                "instruction": "📖 Instruction"
+                "instruction": "📖 Instruction",
+                "turbo_mode": "🚀 TURBO"
             }
         }
     },
@@ -545,6 +546,19 @@ EN_TRANSLATIONS = {
     "access_control": {
         "access_denied": "Sorry, you don't have access to this bot. Please contact the administrator @markov1u",
         "admin_only": "This command is available only to the administrator."
+    },
+    
+    # TURBO mode
+    "turbo_mode": {
+        "enabled": "🚀 TURBO mode enabled\n\nNow all photo processing will be sent directly to Gemini Flash without OpenCV processing for maximum speed!",
+        "disabled": "🚀 TURBO mode disabled\n\nReturned to standard processing using OpenCV.",
+        "status_enabled": "✅ TURBO mode enabled",
+        "status_disabled": "❌ TURBO mode disabled",
+        "description": "🚀 **TURBO Mode**\n\nIn this mode, photos are sent directly to Gemini Flash without preliminary OpenCV processing.\n\n**Advantages:**\n• ⚡ Maximum processing speed\n• 🎯 Direct AI work\n\n**Disadvantages:**\n• 📷 Less image optimization\n• 🔍 May be less accurate for poor photos\n\n**Current status:** {status}",
+        "buttons": {
+            "toggle_turbo": "🚀 Toggle TURBO",
+            "back_to_dashboard": "⬅️ Back to dashboard"
+        }
     }
     
 }
