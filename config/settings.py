@@ -38,6 +38,9 @@ class BotConfig:
         # Режим анализа Gemini - debug или production
         self.GEMINI_ANALYSIS_MODE: str = os.getenv("GEMINI_ANALYSIS_MODE", "production")
         
+        # Оптимизация производительности - отключить сложный анализ OpenCV
+        self.DISABLE_OPENCV_ANALYSIS: bool = os.getenv("DISABLE_OPENCV_ANALYSIS", "true").lower() == "true"
+        
         # Переопределяем локацию из переменных окружения если задана
         if os.getenv("GOOGLE_CLOUD_LOCATION"):
             self.LOCATION = os.getenv("GOOGLE_CLOUD_LOCATION")

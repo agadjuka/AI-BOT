@@ -29,7 +29,7 @@ class PhotoHandler(BaseMessageHandler):
     
     @access_check
     async def handle_single_photo(self, update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
-        """Handle single photo upload"""
+        """Handle single photo upload - OPTIMIZED VERSION"""
         # Set anchor message (first receipt message)
         self.ui_manager.set_anchor(context, update.message.message_id)
         
@@ -52,12 +52,115 @@ class PhotoHandler(BaseMessageHandler):
         photo_file = await update.message.photo[-1].get_file()
         await photo_file.download_to_drive(self.config.PHOTO_FILE_NAME)
 
-        # КРИТИЧЕСКОЕ ИЗМЕНЕНИЕ: Запускаем AI обработку асинхронно в фоне
-        # Это позволяет webhook сразу вернуть ответ, а AI работает параллельно
-        asyncio.create_task(self._process_photo_async(update, context))
+        # ОПТИМИЗАЦИЯ: Обрабатываем фото синхронно для быстрого ответа
+        # Убираем асинхронную обработку, которая вызывала таймауты
+        try:
+            await self._process_photo_optimized(update, context)
+        except Exception as e:
+            print(f"❌ Ошибка при обработке фото: {e}")
+            await self._delete_processing_message(update, context)
+            await update.message.reply_text(self.locale_manager.get_text("errors.critical_photo_error", context))
         
-        # Сразу возвращаем управление - webhook не блокируется!
-        return self.config.AWAITING_CORRECTION  # Stay in active state for button processing
+        return self.config.AWAITING_CORRECTION
+    
+    async def _process_photo_optimized(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
+        """ОПТИМИЗИРОВАННАЯ обработка фото - быстрая и эффективная"""
+        try:
+            print(f"🔍 {self.locale_manager.get_text('status.starting_analysis', context)}")
+            
+            # ОПТИМИЗАЦИЯ: Упрощенный выбор модели без сложного анализа OpenCV
+            # Используем простую эвристику на основе размера файла и настроек
+            chosen_model = self._choose_model_simple()
+            print(f"🎯 Выбрана модель: {chosen_model}")
+            
+            # Проверяем режим анализа
+            if self.config.GEMINI_ANALYSIS_MODE == "debug":
+                # Режим отладки - только показываем результат выбора модели
+                debug_message = f"🔍 **Режим отладки**: для этого чека выбрана модель **{chosen_model.upper()}**"
+                
+                # Удаляем сообщение о обработке
+                await self._delete_processing_message(update, context)
+                
+                # Отправляем сообщение с результатом
+                await update.message.reply_text(debug_message, parse_mode='Markdown')
+                print(f"🔍 Режим отладки: отправлено сообщение с результатом выбора модели")
+                return
+            
+            # Режим production - продолжаем обычную обработку
+            print(f"🔍 Режим production: используем модель {chosen_model} для анализа")
+            
+            # Передаем выбранную модель в сервис анализа
+            print(f"🎯 Отправляем запрос в модель: {chosen_model.upper()}")
+            analysis_data = await self.analysis_service.analyze_receipt_async(self.config.PHOTO_FILE_NAME, model_type=chosen_model)
+            print(f"✅ {self.locale_manager.get_text('status.analysis_completed', context)}")
+            
+            # Convert to ReceiptData model
+            receipt_data = ReceiptData.from_dict(analysis_data)
+            print(f"✅ {self.locale_manager.get_text('status.converted_to_receipt_data', context)}")
+            
+            # Validate and correct data
+            is_valid, message = self.validator.validate_receipt_data(receipt_data)
+            if not is_valid:
+                print(f"Validation warning: {message}")
+            
+            context.user_data['receipt_data'] = receipt_data
+            print(f"✅ {self.locale_manager.get_text('status.data_saved', context)}")
+            # Save original data for change tracking
+            context.user_data['original_data'] = ReceiptData.from_dict(receipt_data.to_dict())  # Deep copy
+            
+            # AUTOMATICALLY create ingredient matching table for this receipt
+            await self._create_ingredient_matching_for_receipt(update, context, receipt_data)
+            
+            # Delete processing message after successful analysis
+            await self._delete_processing_message(update, context)
+            
+            # Always show final report with edit button
+            await self.show_final_report_with_edit_button(update, context)
+            
+        except (json.JSONDecodeError, KeyError, IndexError, ValueError) as e:
+            print(f"{self.locale_manager.get_text('errors.json_parsing_error', context)}: {e}")
+            # Delete processing message on error
+            await self._delete_processing_message(update, context)
+            await update.message.reply_text(self.locale_manager.get_text("errors.parsing_error", context))
+        
+        except Exception as e:
+            print(f"{self.locale_manager.get_text('errors.critical_photo_error', context)}: {e}")
+            import traceback
+            traceback.print_exc()
+            # Delete processing message on error
+            await self._delete_processing_message(update, context)
+            await update.message.reply_text(self.locale_manager.get_text("errors.critical_photo_error", context))
+    
+    def _choose_model_simple(self) -> str:
+        """
+        Упрощенный выбор модели без сложного анализа OpenCV
+        Использует простые эвристики для быстрого выбора
+        """
+        try:
+            # Проверяем, отключен ли сложный анализ OpenCV
+            if getattr(self.config, 'DISABLE_OPENCV_ANALYSIS', True):
+                # Если OpenCV анализ отключен, используем модель по умолчанию
+                default_model = getattr(self.config, 'DEFAULT_MODEL', 'pro')
+                print(f"🔍 OpenCV анализ отключен, используем модель по умолчанию: {default_model}")
+                return default_model
+            
+            # Получаем размер файла
+            import os
+            file_size = os.path.getsize(self.config.PHOTO_FILE_NAME)
+            
+            # Простая эвристика: большие файлы = сложные чеки = Pro модель
+            if file_size > 500000:  # > 500KB
+                print("🔍 Большой файл (>500KB) - выбираем Pro модель")
+                return 'pro'
+            
+            # Проверяем настройки по умолчанию
+            default_model = getattr(self.config, 'DEFAULT_MODEL', 'pro')
+            print(f"🔍 Используем модель по умолчанию: {default_model}")
+            return default_model
+            
+        except Exception as e:
+            print(f"⚠️ Ошибка при выборе модели: {e}, используем Pro")
+            return 'pro'
     
     async def _process_photo_async(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         """Асинхронная обработка фото в фоне - НЕ блокирует webhook"""
