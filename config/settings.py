@@ -25,8 +25,13 @@ class BotConfig:
         
         # Google Cloud settings
         self.PROJECT_ID: str = secrets.PROJECT_ID
-        self.LOCATION: str = "asia-southeast1"  # Изменено на регион Cloud Run
-        self.MODEL_NAME: str = "gemini-2.5-flash"
+        self.LOCATION: str = "global"  # Global для совместимости с google-generativeai
+        
+        # AI Model settings - поддержка двух моделей
+        self.MODEL_PRO: str = "gemini-2.5-pro"  # Основная модель (Pro)
+        self.MODEL_FLASH: str = "gemini-2.5-flash"  # Быстрая модель (Flash)
+        self.DEFAULT_MODEL: str = "pro"  # По умолчанию используем Pro
+        self.MODEL_NAME: str = self.MODEL_PRO  # Для обратной совместимости
         
         # Conversation states
         self.AWAITING_CORRECTION = 0
@@ -67,6 +72,25 @@ class BotConfig:
         
         # Admin settings
         self.ADMIN_TELEGRAM_ID: int = 261617302
+    
+    def get_model_name(self, model_type: str = None) -> str:
+        """Получить имя модели по типу"""
+        if model_type is None:
+            model_type = self.DEFAULT_MODEL
+        
+        if model_type.lower() == "pro":
+            return self.MODEL_PRO
+        elif model_type.lower() == "flash":
+            return self.MODEL_FLASH
+        else:
+            return self.MODEL_PRO  # По умолчанию Pro
+    
+    def get_available_models(self) -> dict:
+        """Получить список доступных моделей"""
+        return {
+            "pro": self.MODEL_PRO,
+            "flash": self.MODEL_FLASH
+        }
 
 
 # AI prompts moved to config/prompts.py

@@ -62,7 +62,7 @@ except ImportError as e:
 try:
     from config.settings import BotConfig
     from config.prompts import PromptManager
-    from services.ai_service import AIService, ReceiptAnalysisServiceCompat
+    from services.ai_service import AIService, ReceiptAnalysisServiceCompat, AIServiceFactory
     from handlers.message_handlers import MessageHandlers
     from handlers.callback_handlers import CallbackHandlers
     from utils.ingredient_storage import IngredientStorage
@@ -211,9 +211,14 @@ def create_application() -> Application:
     config = BotConfig()
     prompt_manager = PromptManager()
     
-    # Initialize services
-    ai_service = AIService(config, prompt_manager)
+    # Initialize AI Service Factory for dual model support
+    ai_factory = AIServiceFactory(config, prompt_manager)
+    
+    # Get default AI service (Pro model)
+    ai_service = ai_factory.get_default_service()
     analysis_service = ReceiptAnalysisServiceCompat(ai_service)
+    
+    print(f"🤖 AI Service инициализирован с моделью: {ai_service.get_current_model_info()['name']}")
     
     # LocaleManager уже инициализирован глобально с Firestore instance
     
@@ -465,6 +470,8 @@ def create_application() -> Application:
     application.add_handler(CommandHandler("start", message_handlers.start))
     application.add_handler(CommandHandler("dashboard", message_handlers.dashboard))
     application.add_handler(CommandHandler("reset_language", message_handlers.reset_language))
+    application.add_handler(CommandHandler("switch_model", message_handlers.switch_model))
+    application.add_handler(CommandHandler("model_info", message_handlers.model_info))
     
     return application
 

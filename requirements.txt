@@ -1,7 +1,7 @@
 # Стабильные версии для Python 3.11
 python-telegram-bot==20.7
 google-cloud-aiplatform==1.71.1
-vertexai==1.71.1
+google-generativeai==0.8.3
 
 # Фиксированные версии numpy и pandas для совместимости
 numpy==1.24.3

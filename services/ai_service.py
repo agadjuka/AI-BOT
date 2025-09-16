@@ -5,8 +5,7 @@ import json
 import asyncio
 import time
 from typing import Dict, Any, Optional
-import vertexai
-from vertexai.generative_models import GenerativeModel, Part
+import google.generativeai as genai
 import httpx
 from httpx import AsyncClient, Limits, Timeout
 import threading
@@ -19,9 +18,10 @@ from config.prompts import PromptManager
 class AIService:
     """Service for AI operations using Google Gemini with parallel processing support"""
     
-    def __init__(self, config: BotConfig, prompt_manager: PromptManager):
+    def __init__(self, config: BotConfig, prompt_manager: PromptManager, model_type: str = None):
         self.config = config
         self.prompt_manager = prompt_manager
+        self.model_type = model_type or config.DEFAULT_MODEL  # Тип модели (pro/flash)
         self._http_client: Optional[AsyncClient] = None
         self._model_name = None  # Store model name instead of model instance
         self._thread_pool = ThreadPoolExecutor(max_workers=10, thread_name_prefix="gemini_worker")
@@ -48,31 +48,23 @@ class AIService:
             else:
                 print(f"❌ Файл учетных данных не найден: {credentials_file}")
         
-        # Initialize Vertex AI using ADC (recommended approach for Cloud Run)
+        # Initialize Google Generative AI using ADC (recommended approach for Cloud Run)
         try:
-            vertexai.init(project=self.config.PROJECT_ID, location=self.config.LOCATION)
-            print("✅ Vertex AI инициализирован с Application Default Credentials (ADC)")
+            # Configure the API key or use ADC
+            genai.configure()
+            print("✅ Google Generative AI инициализирован с Application Default Credentials (ADC)")
             
-            # Store model name instead of creating model instance
-            # This allows creating separate model instances for each request
-            self._model_name = self.config.MODEL_NAME
-            print(f"✅ Модель {self._model_name} готова к созданию экземпляров")
+            # Store model name based on model type
+            self._model_name = self.config.get_model_name(self.model_type)
+            print(f"✅ Модель {self._model_name} ({self.model_type.upper()}) готова к созданию экземпляров")
             
         except Exception as e:
-            print(f"❌ Ошибка инициализации Vertex AI с ADC: {e}")
-            # Try fallback to us-central1 if asia-southeast1 fails
-            try:
-                print("🔄 Пробуем fallback на us-central1...")
-                vertexai.init(project=self.config.PROJECT_ID, location="us-central1")
-                self._model_name = self.config.MODEL_NAME
-                print("✅ Vertex AI инициализирован с fallback на us-central1")
-            except Exception as e2:
-                print(f"❌ Ошибка инициализации Vertex AI с fallback: {e2}")
-                raise
+            print(f"❌ Ошибка инициализации Google Generative AI с ADC: {e}")
+            raise
     
     def _create_model_instance(self):
         """Create a new model instance for parallel processing"""
-        return GenerativeModel(self._model_name)
+        return genai.GenerativeModel(self._model_name)
     
     def _create_isolated_ai_service(self):
         """Create a completely isolated AI service instance for maximum parallelization"""
@@ -82,7 +74,7 @@ class AIService:
         # Create new instances to avoid any shared state
         config = BotConfig()
         prompt_manager = PromptManager()
-        return AIService(config, prompt_manager)
+        return AIService(config, prompt_manager, self.model_type)
     
     def _get_ai_service_from_pool(self):
         """Get an AI service instance from the pool or create a new one"""
@@ -100,6 +92,23 @@ class AIService:
             else:
                 # Pool is full, cleanup the service
                 asyncio.create_task(ai_service.close())
+    
+    def switch_model(self, model_type: str):
+        """Переключить тип модели (pro/flash)"""
+        if model_type.lower() in ["pro", "flash"]:
+            self.model_type = model_type.lower()
+            self._model_name = self.config.get_model_name(self.model_type)
+            print(f"🔄 Переключено на модель: {self._model_name} ({self.model_type.upper()})")
+        else:
+            print(f"❌ Неизвестный тип модели: {model_type}. Доступные: pro, flash")
+    
+    def get_current_model_info(self) -> dict:
+        """Получить информацию о текущей модели"""
+        return {
+            "type": self.model_type,
+            "name": self._model_name,
+            "available_models": self.config.get_available_models()
+        }
     
     def _initialize_http_client(self):
         """Initialize HTTP client with connection pooling"""
@@ -165,7 +174,10 @@ class AIService:
             
             with open(image_path, "rb") as f:
                 image_data = f.read()
-            image_part = Part.from_data(data=image_data, mime_type="image/jpeg")
+            image_part = {
+                "mime_type": "image/jpeg",
+                "data": image_data
+            }
             
             # print("Отправка запроса в Gemini (Фаза 1: Анализ) - из пула экземпляров...")  # Отключено для чистоты консоли
             
@@ -206,7 +218,10 @@ class AIService:
         
         with open(image_path, "rb") as f:
             image_data = f.read()
-        image_part = Part.from_data(data=image_data, mime_type="image/jpeg")
+        image_part = {
+            "mime_type": "image/jpeg",
+            "data": image_data
+        }
         
         # print("Отправка запроса в Gemini (Фаза 1: Анализ)...")  # Отключено для чистоты консоли
         response = model.generate_content([image_part, self.prompt_manager.get_analyze_prompt()])
@@ -435,3 +450,49 @@ class ReceiptAnalysisServiceCompat:
         Async version of format_receipt_data
         """
         return await self._async_service.format_receipt_data(data)
+
+
+class AIServiceFactory:
+    """Фабрика для создания AI сервисов с разными моделями"""
+    
+    def __init__(self, config: BotConfig, prompt_manager: PromptManager):
+        self.config = config
+        self.prompt_manager = prompt_manager
+        self._services = {}  # Кэш сервисов по типам моделей
+    
+    def get_service(self, model_type: str = None) -> AIService:
+        """Получить AI сервис для указанного типа модели"""
+        if model_type is None:
+            model_type = self.config.DEFAULT_MODEL
+        
+        model_type = model_type.lower()
+        
+        # Проверяем кэш
+        if model_type not in self._services:
+            self._services[model_type] = AIService(
+                self.config, 
+                self.prompt_manager, 
+                model_type
+            )
+            print(f"🏭 Создан новый AI сервис для модели: {model_type.upper()}")
+        
+        return self._services[model_type]
+    
+    def get_pro_service(self) -> AIService:
+        """Получить AI сервис для Pro модели"""
+        return self.get_service("pro")
+    
+    def get_flash_service(self) -> AIService:
+        """Получить AI сервис для Flash модели"""
+        return self.get_service("flash")
+    
+    def get_default_service(self) -> AIService:
+        """Получить AI сервис по умолчанию (Pro)"""
+        return self.get_service()
+    
+    def close_all_services(self):
+        """Закрыть все сервисы"""
+        for service in self._services.values():
+            asyncio.create_task(service.close())
+        self._services.clear()
+        print("🔒 Все AI сервисы закрыты")

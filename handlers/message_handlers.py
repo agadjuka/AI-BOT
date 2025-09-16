@@ -589,3 +589,54 @@ class MessageHandlers(BaseMessageHandler):
     async def _send_long_message_with_keyboard_callback(self, message, text: str, reply_markup):
         """Send long message with keyboard (for callback query)"""
         await self.common_handlers.send_long_message_with_keyboard(message, text, reply_markup)
+    
+    async def switch_model(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
+        """Переключение между моделями Gemini (Pro/Flash) - только для админа"""
+        try:
+            # Проверяем права доступа (только для админа)
+            if not await access_check(update, context, admin_only=True):
+                return
+            
+            args = context.args
+            if not args:
+                current_info = self.analysis_service.ai_service.get_current_model_info()
+                await update.message.reply_text(
+                    f"🤖 **Текущая модель:** {current_info['name']} ({current_info['type'].upper()})\n\n"
+                    f"Используйте: `/switch_model pro` или `/switch_model flash`",
+                    parse_mode='Markdown'
+                )
+                return
+            
+            model_type = args[0].lower()
+            if model_type not in ['pro', 'flash']:
+                await update.message.reply_text("❌ Неверный тип модели. Используйте: `pro` или `flash`")
+                return
+            
+            # Переключаем модель
+            self.analysis_service.ai_service.switch_model(model_type)
+            current_info = self.analysis_service.ai_service.get_current_model_info()
+            
+            await update.message.reply_text(
+                f"✅ Модель переключена на: **{current_info['name']}** ({current_info['type'].upper()})",
+                parse_mode='Markdown'
+            )
+            
+        except Exception as e:
+            print(f"❌ Ошибка при переключении модели: {e}")
+            await update.message.reply_text("❌ Ошибка при переключении модели.")
+    
+    async def model_info(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
+        """Показать информацию о текущей модели"""
+        try:
+            current_info = self.analysis_service.ai_service.get_current_model_info()
+            await update.message.reply_text(
+                f"🤖 **Текущая модель:** {current_info['name']} ({current_info['type'].upper()})\n\n"
+                f"**Доступные модели:**\n"
+                f"• Pro: gemini-2.5-pro (основная)\n"
+                f"• Flash: gemini-2.5-flash (быстрая)\n\n"
+                f"Команда: `/switch_model pro` или `/switch_model flash`",
+                parse_mode='Markdown'
+            )
+        except Exception as e:
+            print(f"❌ Ошибка при получении информации о модели: {e}")
+            await update.message.reply_text("❌ Ошибка при получении информации о модели.")
