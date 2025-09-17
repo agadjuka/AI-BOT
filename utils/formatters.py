@@ -436,18 +436,37 @@ class ReceiptFormatter:
             else:
                 quantity_str = str(quantity)
             
+            # Break long quantity numbers into parts with character wrapping for mobile
+            quantity_parts = []
+            if len(quantity_str) <= quantity_width - 1:  # -1 for space
+                quantity_parts = [quantity_str]
+            else:
+                # Break quantity by characters aggressively
+                while quantity_str:
+                    # Find maximum length that fits in the column
+                    for i in range(len(quantity_str), 0, -1):
+                        if len(quantity_str[:i]) <= quantity_width - 1:
+                            quantity_parts.append(quantity_str[:i])
+                            quantity_str = quantity_str[i:]
+                            break
+                    else:
+                        # If even one character doesn't fit, take it anyway
+                        quantity_parts.append(quantity_str[:1])
+                        quantity_str = quantity_str[1:]
+            
             # Format price - if 0 or None, show dash
             if price is None or price == 0:
                 price_str = "-"
             else:
-                # Use the same formatting as other places to preserve decimal places
-                price_str = self.number_formatter.format_number_with_spaces(price)
+                # Use compact formatting for mobile (no spaces)
+                price_str = self.number_formatter.format_number_compact(price)
             
             # Format total - if 0 or None, show dash
             if total is None or total == 0:
                 total_str = "-"
             else:
-                total_str = self.number_formatter.format_number_with_spaces(total)
+                # Use compact formatting for mobile (no spaces)
+                total_str = self.number_formatter.format_number_compact(total)
             
             # Determine status based on item data
             item_status = item.status
@@ -459,7 +478,15 @@ class ReceiptFormatter:
                 status = "⚠️"
             
             # Create rows with alignment (can be multiple rows for one product)
-            for i, name_part in enumerate(name_parts):
+            # Calculate maximum number of rows needed for both name and quantity
+            max_rows = max(len(name_parts), len(quantity_parts))
+            
+            for i in range(max_rows):
+                # Get name part for this row
+                name_part = name_parts[i] if i < len(name_parts) else ""
+                # Get quantity part for this row
+                quantity_part = quantity_parts[i] if i < len(quantity_parts) else ""
+                
                 # Apply Markdown formatting for unreadable names
                 formatted_name = name_part
                 if name_part == "???":
@@ -467,10 +494,10 @@ class ReceiptFormatter:
                 
                 if i == 0:
                     # First row with full data
-                    line = f"{line_number:^{number_width}} | {formatted_name:<{product_width}} | {quantity_str:^{quantity_width}} | {price_str:^{price_width}} | {total_str:>{total_width}} | {status:^{status_width}}"
+                    line = f"{line_number:^{number_width}} | {formatted_name:<{product_width}} | {quantity_part:^{quantity_width}} | {price_str:^{price_width}} | {total_str:>{total_width}} | {status:^{status_width}}"
                 else:
-                    # Subsequent rows only with name, but same length
-                    line = f"{'':^{number_width}} | {formatted_name:<{product_width}} | {'':^{quantity_width}} | {'':^{price_width}} | {'':>{total_width}} | {'':^{status_width}}"
+                    # Subsequent rows with name and quantity parts, but no price/total/status
+                    line = f"{'':^{number_width}} | {formatted_name:<{product_width}} | {quantity_part:^{quantity_width}} | {'':^{price_width}} | {'':>{total_width}} | {'':^{status_width}}"
                 lines.append(line)
         
         # Add "Total" block under table
