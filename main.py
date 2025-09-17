@@ -703,16 +703,16 @@ async def webhook(request: Request):
             if not update:
                 return {"ok": True}
             
-            # ОПТИМИЗАЦИЯ: Для callback queries обрабатываем синхронно
-            # чтобы избежать таймаутов, для остальных - асинхронно
+            # ULTRA FAST: Answer callback queries immediately to prevent timeout
             if update.callback_query:
-                # Синхронная обработка для callback queries
-                await application.process_update(update)
-                return {"ok": True}
-            else:
-                # Асинхронная обработка для остальных обновлений
-                asyncio.create_task(application.process_update(update))
-                return {"ok": True}
+                try:
+                    await update.callback_query.answer()
+                except Exception as e:
+                    print(f"⚠️ Ошибка при ответе на callback query: {e}")
+            
+            # Process all updates in background to avoid webhook timeout
+            asyncio.create_task(application.process_update(update))
+            return {"ok": True}
             
         except Exception as e:
             print(f"❌ Ошибка при обработке update: {e}")

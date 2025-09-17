@@ -197,9 +197,9 @@ class AIService:
         )
         
         timeout = Timeout(
-            connect=10.0,
-            read=60.0,
-            write=10.0,
+            connect=5.0,   # Быстрое подключение
+            read=120.0,    # Достаточно для Gemini (2 минуты)
+            write=5.0,     # Быстрая запись
             pool=5.0
         )
         
@@ -278,15 +278,21 @@ class AIService:
             
             if actual_model_type.lower() == "flash":
                 # Flash model uses vertexai format (exactly like rollback version)
-                response = await loop.run_in_executor(
-                    self._thread_pool, 
-                    lambda: model.generate_content([image_part, isolated_ai_service.prompt_manager.get_analyze_prompt()])
+                response = await asyncio.wait_for(
+                    loop.run_in_executor(
+                        self._thread_pool, 
+                        lambda: model.generate_content([image_part, isolated_ai_service.prompt_manager.get_analyze_prompt()])
+                    ),
+                    timeout=120.0  # 2 минуты для Gemini
                 )
             else:
                 # Pro model uses google.generativeai format
-                response = await loop.run_in_executor(
-                    self._thread_pool, 
-                    lambda: model.generate_content([image_part, isolated_ai_service.prompt_manager.get_analyze_prompt()])
+                response = await asyncio.wait_for(
+                    loop.run_in_executor(
+                        self._thread_pool, 
+                        lambda: model.generate_content([image_part, isolated_ai_service.prompt_manager.get_analyze_prompt()])
+                    ),
+                    timeout=120.0  # 2 минуты для Gemini
                 )
             end_time = time.time()
             print(f"⏱️ Время выполнения запроса Gemini: {end_time - start_time:.2f} секунд")
@@ -296,6 +302,9 @@ class AIService:
             
             return clean_response
             
+        except asyncio.TimeoutError:
+            print(f"⏰ Таймаут Gemini запроса (120 секунд)")
+            raise ValueError("Таймаут анализа чека - Gemini не ответил за 2 минуты")
         except Exception as e:
             print(f"❌ Ошибка в analyze_receipt_phase1: {e}")
             raise ValueError(f"Ошибка анализа чека (Фаза 1): {e}")
