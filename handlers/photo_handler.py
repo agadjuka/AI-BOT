@@ -63,22 +63,71 @@ class PhotoHandler(BaseMessageHandler):
         
         return self.config.AWAITING_CORRECTION
     
+    async def _ensure_turbo_mode_loaded(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
+        """Загружает turbo_mode из Firestore если не загружен"""
+        try:
+            # Проверяем, загружен ли уже turbo_mode
+            if 'turbo_mode' in context.user_data:
+                return
+            
+            # Получаем user_id
+            user_id = update.effective_user.id if update.effective_user else None
+            if not user_id:
+                print("❌ Не удалось получить user_id для загрузки turbo_mode")
+                context.user_data['turbo_mode'] = False
+                return
+            
+            # Импортируем Firestore
+            from google.cloud import firestore
+            import main
+            
+            db = main.db
+            if not db:
+                print("❌ Firestore недоступен для загрузки turbo_mode")
+                context.user_data['turbo_mode'] = False
+                return
+            
+            # Загружаем из Firestore
+            user_ref = db.collection('users').document(str(user_id))
+            user_doc = user_ref.get()
+            
+            if user_doc.exists:
+                user_data = user_doc.to_dict()
+                turbo_mode = user_data.get('turbo_mode', False)
+                context.user_data['turbo_mode'] = turbo_mode
+                print(f"✅ Turbo mode загружен из Firestore: user {user_id}, turbo={turbo_mode}")
+            else:
+                print(f"ℹ️ Пользователь {user_id} не найден в Firestore, используем turbo=False")
+                context.user_data['turbo_mode'] = False
+                
+        except Exception as e:
+            print(f"❌ Ошибка загрузки turbo_mode из Firestore: {e}")
+            context.user_data['turbo_mode'] = False
+    
     async def _process_photo_optimized(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         """ОПТИМИЗИРОВАННАЯ обработка фото - быстрая и эффективная"""
         try:
             print(f"🔍 {self.locale_manager.get_text('status.starting_analysis', context)}")
             
-            # Проверяем TURBO режим
-            turbo_enabled = context.user_data.get('turbo_mode', False)
+            # Загружаем TURBO режим из Firestore если не загружен
+            await self._ensure_turbo_mode_loaded(update, context)
             
-            if turbo_enabled:
-                print("🚀 TURBO режим включен - отправляем фото напрямую в Gemini Flash без OpenCV")
-                # В TURBO режиме используем только Gemini Flash без OpenCV обработки
-                chosen_model = 'flash'
+            # Проверяем TURBO режим и настройки OpenCV
+            turbo_enabled = context.user_data.get('turbo_mode', False)
+            opencv_disabled = getattr(self.config, 'DISABLE_OPENCV_ANALYSIS', False)
+            
+            if turbo_enabled or opencv_disabled:
+                if turbo_enabled:
+                    print("🚀 TURBO режим включен - отправляем фото напрямую в Gemini Flash без OpenCV")
+                else:
+                    print("🔍 OpenCV анализ отключен в настройках - используем упрощенный выбор")
+                
+                # В TURBO режиме или при отключенном OpenCV используем упрощенный выбор
+                chosen_model = self._choose_model_simple()
                 opencv_enabled = False
             else:
-                print("🔍 TURBO режим выключен - используем OpenCV анализ")
-                # В обычном режиме используем OpenCV анализ для выбора модели
+                print("🔍 TURBO режим выключен - используем быстрый OpenCV анализ")
+                # В обычном режиме используем быстрый OpenCV анализ для выбора модели
                 chosen_model = await self._choose_model_with_opencv()
                 opencv_enabled = True
                 print(f"🎯 Выбрана модель: {chosen_model}, OpenCV анализ: {opencv_enabled}")
@@ -89,6 +138,8 @@ class PhotoHandler(BaseMessageHandler):
                 debug_message = f"🔍 **Режим отладки**: для этого чека выбрана модель **{chosen_model.upper()}**"
                 if turbo_enabled:
                     debug_message += "\n🚀 **TURBO режим активен** - OpenCV отключен"
+                elif opencv_disabled:
+                    debug_message += "\n🔍 **OpenCV отключен в настройках** - используем упрощенный выбор"
                 else:
                     debug_message += f"\n🔍 **TURBO режим выключен** - OpenCV анализ: {'включен' if opencv_enabled else 'отключен'}"
                 
@@ -104,6 +155,8 @@ class PhotoHandler(BaseMessageHandler):
             print(f"🔍 Режим production: используем модель {chosen_model} для анализа")
             if turbo_enabled:
                 print("🚀 TURBO режим: пропускаем OpenCV обработку")
+            elif opencv_disabled:
+                print("🔍 OpenCV отключен в настройках: используем упрощенный выбор")
             else:
                 print(f"🔍 Обычный режим: OpenCV анализ {'включен' if opencv_enabled else 'отключен'}")
             
@@ -175,35 +228,88 @@ class PhotoHandler(BaseMessageHandler):
     
     async def _choose_model_with_opencv(self) -> str:
         """
-        Выбор модели с использованием OpenCV анализа
+        БЫСТРЫЙ выбор модели с использованием упрощенного OpenCV анализа
         Анализирует изображение для определения типа текста (печатный/рукописный)
         """
         try:
-            print("🔍 Выполняем OpenCV анализ для выбора модели...")
+            print("🔍 Выполняем БЫСТРЫЙ OpenCV анализ для выбора модели...")
             
             # Читаем изображение для анализа
             with open(self.config.PHOTO_FILE_NAME, 'rb') as f:
                 image_bytes = f.read()
             
-            # Импортируем оптимизированную функцию анализа с ленивой загрузкой OpenCV
-            from utils.receipt_analyzer_optimized import analyze_receipt_and_choose_model
-            
-            # Анализируем и выбираем модель (OpenCV загружается только здесь)
-            chosen_model = await analyze_receipt_and_choose_model(image_bytes)
-            print(f"🔍 OpenCV анализ завершен, выбрана модель: {chosen_model}")
-            
-            # Выгружаем OpenCV после анализа для освобождения памяти
-            try:
-                from utils.receipt_analyzer import unload_opencv
-                unload_opencv()
-                print("🧹 OpenCV выгружен из памяти")
-            except Exception as e:
-                print(f"⚠️ Ошибка при выгрузке OpenCV: {e}")
+            # Используем УПРОЩЕННУЮ функцию анализа для максимальной скорости
+            chosen_model = await self._fast_opencv_analysis(image_bytes)
+            print(f"🔍 Быстрый OpenCV анализ завершен, выбрана модель: {chosen_model}")
             
             return chosen_model
             
         except Exception as e:
-            print(f"⚠️ Ошибка при OpenCV анализе: {e}, используем упрощенный выбор")
+            print(f"⚠️ Ошибка при быстром OpenCV анализе: {e}, используем упрощенный выбор")
+            return self._choose_model_simple()
+    
+    async def _fast_opencv_analysis(self, image_bytes: bytes) -> str:
+        """
+        БЫСТРЫЙ OpenCV анализ - только основные проверки для выбора модели
+        """
+        try:
+            # Проверяем доступность OpenCV
+            from utils.opencv_lazy_loader import check_opencv_availability
+            if not check_opencv_availability():
+                print("❌ OpenCV недоступен, используем упрощенный выбор")
+                return self._choose_model_simple()
+            
+            # Используем контекстный менеджер для автоматической загрузки/выгрузки OpenCV
+            from utils.opencv_lazy_loader import OpenCVContext
+            import numpy as np
+            
+            with OpenCVContext() as cv2:
+                # Декодирование изображения
+                nparr = np.frombuffer(image_bytes, np.uint8)
+                image = cv2.imdecode(nparr, cv2.IMREAD_COLOR)
+                
+                if image is None:
+                    print("❌ Не удалось декодировать изображение")
+                    return self._choose_model_simple()
+                
+                # БЫСТРЫЙ анализ: только основные признаки
+                height, width = image.shape[:2]
+                
+                # 1. Проверяем размер изображения
+                if width < 200 or height < 200:
+                    print("🔍 Маленькое изображение - выбираем Flash")
+                    return 'flash'
+                
+                # 2. Проверяем соотношение сторон
+                aspect_ratio = width / height
+                if aspect_ratio < 0.5 or aspect_ratio > 3.0:
+                    print("🔍 Необычное соотношение сторон - выбираем Flash")
+                    return 'flash'
+                
+                # 3. БЫСТРАЯ проверка на рукописный текст (упрощенная)
+                gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
+                
+                # Простая проверка контраста
+                mean_brightness = np.mean(gray)
+                std_brightness = np.std(gray)
+                
+                # Если изображение слишком темное или неконтрастное - Flash
+                if mean_brightness < 50 or std_brightness < 20:
+                    print("🔍 Темное/неконтрастное изображение - выбираем Flash")
+                    return 'flash'
+                
+                # 4. Простая проверка на размытость
+                laplacian_var = cv2.Laplacian(gray, cv2.CV_64F).var()
+                if laplacian_var < 100:  # Размытое изображение
+                    print("🔍 Размытое изображение - выбираем Flash")
+                    return 'flash'
+                
+                # 5. Если все проверки пройдены - выбираем Pro для сложных случаев
+                print("🔍 Сложное изображение - выбираем Pro")
+                return 'pro'
+                
+        except Exception as e:
+            print(f"❌ Ошибка в быстром OpenCV анализе: {e}")
             return self._choose_model_simple()
     
     async def _process_photo_async(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
