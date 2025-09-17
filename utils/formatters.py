@@ -366,13 +366,13 @@ class ReceiptFormatter:
             price = item.price
             total = item.total
             
-            # Break long names into parts with word/character wrapping
+            # Break long names into parts with aggressive character wrapping for mobile
             # Consider real emoji width in display
             name_parts = []
             if self.number_formatter.get_display_width(name) <= product_width - 1:  # -1 for space
                 name_parts = [name]
             else:
-                # Wrap by words if possible
+                # Try to wrap by words first
                 words = name.split()
                 current_line = ""
                 for word in words:
@@ -380,23 +380,27 @@ class ReceiptFormatter:
                     if self.number_formatter.get_display_width(test_line) <= product_width - 1:
                         current_line = test_line
                     else:
+                        # If current line has content, save it and start new line
                         if current_line:
                             name_parts.append(current_line)
+                            current_line = ""
+                        
+                        # Check if single word fits
+                        if self.number_formatter.get_display_width(word) <= product_width - 1:
                             current_line = word
                         else:
-                            # If word is too long, break by characters
-                            while self.number_formatter.get_display_width(word) > product_width - 1:
-                                # Find maximum length that fits
+                            # Word is too long - break it by characters aggressively
+                            while word:
+                                # Find maximum length that fits in the column
                                 for i in range(len(word), 0, -1):
                                     if self.number_formatter.get_display_width(word[:i]) <= product_width - 1:
                                         name_parts.append(word[:i])
                                         word = word[i:]
                                         break
                                 else:
-                                    # If even one character doesn't fit, take it
+                                    # If even one character doesn't fit, take it anyway
                                     name_parts.append(word[:1])
                                     word = word[1:]
-                            current_line = word
                 if current_line:
                     name_parts.append(current_line)
             
