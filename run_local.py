@@ -56,7 +56,7 @@ def main():
     if not load_env_file():
         sys.exit(1)
     
-    # Проверяем обязательные перемеанные
+    # Проверяем обязательные перемеанные gjkyfz
     if not check_required_vars():
         sys.exit(1)
     
