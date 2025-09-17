@@ -153,13 +153,14 @@ class TableConfigManager:
             table_type=TableType.RECEIPT_PREVIEW,
             device_type=DeviceType.MOBILE,
             columns=[
-                ColumnConfig("number", "№", 2, "right"),
-                ColumnConfig("item", "Товар", 18, "left", emoji="🛒"),
-                ColumnConfig("quantity", "Кол-во", 6, "right", emoji="📊"),
-                ColumnConfig("price", "Цена", 8, "right", emoji="💰")
+                ColumnConfig("number", "№", 2, "center"),
+                ColumnConfig("item", "Товар", 15, "left", emoji="🛒"),
+                ColumnConfig("quantity", "Кол", 7, "center", emoji="📊"),
+                ColumnConfig("price", "Цена", 7, "center", emoji="💰"),
+                ColumnConfig("total", "Сумма", 7, "center", emoji="💵")
             ],
             style=TableStyle(
-                max_name_length=18,
+                max_name_length=15,
                 compact_mode=True
             ),
             title="Предпросмотр чека",

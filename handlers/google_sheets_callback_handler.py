@@ -581,25 +581,45 @@ class GoogleSheetsCallbackHandler(BaseCallbackHandler):
             'total_price': 10
         }
         
-        # Определяем ширину колонок для Mobile версии (уменьшенная до 40 символов с учетом разделителей)
-        # Общая ширина Desktop: 10+20+6+10+10 = 56 символов
-        # Общая ширина Mobile: 40 символов (включая разделители)
-        # Разделители: 4 × 3 = 12 символов
-        # Доступно для колонок: 40 - 12 = 28 символов
-        # Цены и суммы делаем одинаковой ширины для лучшего выравнивания
-        mobile_field_widths = {
-            'check_date': 5,      # 4 + 1 = 5 (увеличиваем дату)
-            'product_name': 9,    # без изменений
-            'quantity': 3,        # без изменений
-            'unit_price': 5,      # 6 - 1 = 5 (уменьшаем цену)
-            'total_price': 6      # без изменений (оставляем сумму больше для итогов)
+        # Определяем выравнивание для Desktop версии
+        desktop_field_alignments = {
+            'check_date': 'center',    # Короткие даты - по центру
+            'product_name': 'left',    # Длинные названия продуктов - по левому краю
+            'quantity': 'center',      # Числовые значения - по центру
+            'unit_price': 'center',    # Цены - по центру
+            'total_price': 'center'    # Суммы - по центру
         }
         
-        # Выбираем нужные ширины в зависимости от типа устройства
+        # Определяем ширину колонок для Mobile версии (увеличена до 38 символов с учетом разделителей)
+        # Общая ширина Desktop: 10+20+6+10+10 = 56 символов
+        # Общая ширина Mobile: 38 символов (включая разделители)
+        # Разделители: 4 × 1 = 4 символа (компактные разделители)
+        # Доступно для колонок: 38 - 4 = 34 символа
+        # Перераспределяем: B увеличиваем, C увеличиваем, D уменьшаем на 1, E увеличиваем на 1
+        mobile_field_widths = {
+            'check_date': 5,      # без изменений
+            'product_name': 14,   # 12 + 2 = 14 (увеличиваем название продукта на 2)
+            'quantity': 4,        # без изменений
+            'unit_price': 3,      # 4 - 1 = 3 (уменьшаем цену на 1)
+            'total_price': 8      # 9 - 1 = 8 (уменьшаем сумму на 1)
+        }
+        
+        # Определяем выравнивание для Mobile версии
+        mobile_field_alignments = {
+            'check_date': 'center',    # Короткие даты - по центру
+            'product_name': 'left',    # Длинные названия продуктов - по левому краю
+            'quantity': 'center',      # Числовые значения - по центру
+            'unit_price': 'center',    # Цены - по центру
+            'total_price': 'center'    # Суммы - по центру
+        }
+        
+        # Выбираем нужные ширины и выравнивания в зависимости от типа устройства
         if device_type == DeviceType.MOBILE:
             field_widths = mobile_field_widths
+            field_alignments = mobile_field_alignments
         else:
             field_widths = desktop_field_widths
+            field_alignments = desktop_field_alignments
         
         columns = []
         for column_letter in used_columns:
@@ -617,8 +637,12 @@ class GoogleSheetsCallbackHandler(BaseCallbackHandler):
                 # Для неизвестных полей используем базовую ширину
                 width = 8 if device_type == DeviceType.MOBILE else 12
             
-            # Все колонки выравниваем по левому краю
-            align = "left"
+            # Определяем выравнивание колонки на основе поля
+            if field_name in field_alignments:
+                align = field_alignments[field_name]
+            else:
+                # Для неизвестных полей используем выравнивание по левому краю
+                align = "left"
             
             # Создаем конфигурацию колонки
             column_config = ColumnConfig(
@@ -740,9 +764,8 @@ class GoogleSheetsCallbackHandler(BaseCallbackHandler):
                     else:
                         row_data[column_letter.lower()] = "-"
                 elif field_name == 'total_price':
-                    price = item.price if item.price is not None else 0
-                    quantity = item.quantity if item.quantity is not None else 0
-                    total = price * quantity
+                    # Используем сумму напрямую из чека (item.total), а не вычисляем
+                    total = item.total if item.total is not None else 0
                     if total > 0:
                         if device_type == DeviceType.MOBILE:
                             # Компактное форматирование для мобильной версии
@@ -1165,12 +1188,24 @@ class GoogleSheetsCallbackHandler(BaseCallbackHandler):
         # Первая строка: буквы колонок (A, B, C, ...)
         column_headers = []
         for column in dynamic_columns:
-            column_headers.append(f"{column.title:^{column.width}}")
-        lines.append(" | ".join(column_headers))
-        
-        # Разделитель
-        total_width = sum(column.width for column in dynamic_columns) + (len(dynamic_columns) - 1) * 3
-        lines.append("─" * total_width)
+            # Используем выравнивание из конфигурации колонки
+            if column.align == "right":
+                column_headers.append(f"{column.title:>{column.width}}")
+            elif column.align == "center":
+                column_headers.append(f"{column.title:^{column.width}}")
+            else:  # left
+                column_headers.append(f"{column.title:<{column.width}}")
+        # Используем компактные разделители для мобильной версии
+        if device_type == DeviceType.MOBILE:
+            lines.append("|".join(column_headers))
+            # Разделитель без пробелов
+            total_width = sum(column.width for column in dynamic_columns) + (len(dynamic_columns) - 1) * 1
+            lines.append("─" * total_width)
+        else:
+            lines.append(" | ".join(column_headers))
+            # Разделитель с пробелами для десктопной версии
+            total_width = sum(column.width for column in dynamic_columns) + (len(dynamic_columns) - 1) * 3
+            lines.append("─" * total_width)
         
         # Строки данных - используем TableManager для правильного переноса текста
         

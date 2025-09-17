@@ -318,7 +318,12 @@ class TableManager:
             else:  # left
                 header_parts.append(f"{title:<{column.width}}")
         
-        return " | ".join(header_parts)
+        # Используем компактные разделители для мобильной версии Google Sheets preview
+        if (config.table_type == TableType.GOOGLE_SHEETS_PREVIEW and 
+            config.device_type == DeviceType.MOBILE):
+            return "|".join(header_parts)
+        else:
+            return " | ".join(header_parts)
     
     def _create_table_separator(self, config: TableConfig) -> str:
         """Создает разделитель таблицы"""
@@ -571,7 +576,12 @@ class TableManager:
                     else:  # left
                         row_parts.append(f"{'':<{column.width}}")
             
-            table_lines.append(" | ".join(row_parts))
+            # Используем компактные разделители для мобильной версии Google Sheets preview
+            if (config.table_type == TableType.GOOGLE_SHEETS_PREVIEW and 
+                config.device_type == DeviceType.MOBILE):
+                table_lines.append("|".join(row_parts))
+            else:
+                table_lines.append(" | ".join(row_parts))
         
         return table_lines
     

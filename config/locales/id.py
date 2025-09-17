@@ -20,7 +20,9 @@ ID_TRANSLATIONS = {
                 "google_sheets_management": "⚙️ Google Sheets",
                 "ingredients_management": "🥕 Daftar Bahan",
                 "instruction": "📖 Instruksi",
-                "turbo_mode": "🚀 TURBO"
+                "turbo_mode": "🚀 TURBO",
+                "turbo_mode_on": "🚀 TURBO [ON]",
+                "turbo_mode_off": "🚀 TURBO [OFF]"
             }
         }
     },
@@ -544,8 +546,8 @@ ID_TRANSLATIONS = {
     
     # Mode TURBO
     "turbo_mode": {
-        "enabled_simple": "🚀 Mode TURBO diaktifkan",
-        "disabled_simple": "⏹️ Mode TURBO dinonaktifkan",
+        "enabled_simple": "🚀 Mode TURBO diaktifkan\n\n_Pemrosesan file dengan kecepatan maksimal\\._\n_Kualitas pemindaian mungkin berkurang\\._\n_Tidak disarankan untuk kuitansi tulisan tangan\\._",
+        "disabled_simple": "⏹️ Mode TURBO dinonaktifkan\n\n_Kualitas pemindaian kuitansi maksimal\\._",
         "enabled": "🚀 Mode TURBO diaktifkan\n\nSekarang semua pemrosesan foto akan dikirim langsung ke Gemini Flash tanpa pemrosesan OpenCV untuk kecepatan maksimal!\n\n🔍 **Analisis OpenCV dinonaktifkan**",
         "disabled": "🚀 Mode TURBO dinonaktifkan\n\nKembali ke pemrosesan standar menggunakan OpenCV.\n\n🔍 **Analisis OpenCV diaktifkan**",
         "status_enabled": "✅ Mode TURBO diaktifkan (OpenCV dinonaktifkan)",

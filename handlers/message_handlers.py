@@ -182,7 +182,7 @@ class MessageHandlers(BaseMessageHandler):
                 callback_data="dashboard_instruction"
             )],
             [InlineKeyboardButton(
-                self.get_text("welcome.dashboard.buttons.turbo_mode", context, update=update), 
+                self._get_turbo_button_text(context, update), 
                 callback_data="dashboard_turbo_mode"
             )]
         ]
@@ -201,6 +201,15 @@ class MessageHandlers(BaseMessageHandler):
         )])
         
         return keyboard, is_admin
+    
+    def _get_turbo_button_text(self, context: ContextTypes.DEFAULT_TYPE, update) -> str:
+        """Get Turbo button text based on current state"""
+        turbo_enabled = context.user_data.get('turbo_mode', False)
+        
+        if turbo_enabled:
+            return self.get_text("welcome.dashboard.buttons.turbo_mode_on", context, update=update)
+        else:
+            return self.get_text("welcome.dashboard.buttons.turbo_mode_off", context, update=update)
     
     async def admin_commands(self, update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
         """Handle admin commands - show admin panel"""

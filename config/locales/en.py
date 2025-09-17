@@ -20,7 +20,9 @@ EN_TRANSLATIONS = {
                 "google_sheets_management": "⚙️ Google Sheets",
                 "ingredients_management": "🥕 Ingredients List",
                 "instruction": "📖 Instruction",
-                "turbo_mode": "🚀 TURBO"
+                "turbo_mode": "🚀 TURBO",
+                "turbo_mode_on": "🚀 TURBO [ON]",
+                "turbo_mode_off": "🚀 TURBO [OFF]"
             }
         }
     },
@@ -550,8 +552,8 @@ EN_TRANSLATIONS = {
     
     # TURBO mode
     "turbo_mode": {
-        "enabled_simple": "🚀 TURBO mode enabled",
-        "disabled_simple": "⏹️ TURBO mode disabled",
+        "enabled_simple": "🚀 TURBO mode enabled\n\n_File processing at maximum speed\\._\n_Scanning quality may be reduced\\._\n_Not recommended for handwritten receipts\\._",
+        "disabled_simple": "⏹️ TURBO mode disabled\n\n_Maximum quality scanning of receipts\\._",
         "enabled": "🚀 TURBO mode enabled\n\nNow all photo processing will be sent directly to Gemini Flash without OpenCV processing for maximum speed!\n\n🔍 **OpenCV analysis disabled**",
         "disabled": "🚀 TURBO mode disabled\n\nReturned to standard processing using OpenCV.\n\n🔍 **OpenCV analysis enabled**",
         "status_enabled": "✅ TURBO mode enabled (OpenCV disabled)",

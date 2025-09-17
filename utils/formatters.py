@@ -362,10 +362,10 @@ class ReceiptFormatter:
         max_price_length = max(len(self.number_formatter.format_number_with_spaces(item.price)) for item in items)
         max_total_length = max(len(self.number_formatter.format_number_with_spaces(item.total)) for item in items)
         
-        # Set fixed column widths (optimized for mobile devices - total width exactly 40 characters)
-        number_width = 1    # Fixed width 1 character for number
-        product_width = 8   # Fixed width 8 characters for products column
-        quantity_width = 3  # Fixed width 3 characters for quantity (for decimal numbers)
+        # Set fixed column widths (optimized for mobile devices - total width exactly 38 characters)
+        number_width = 2    # Fixed width 2 characters for number
+        product_width = 9   # Fixed width 9 characters for products column
+        quantity_width = 7  # Fixed width 7 characters for quantity (for decimal numbers)
         price_width = 7     # Fixed width 7 characters for price
         total_width = 7     # Fixed width 7 characters for total
         status_width = 1    # Fixed width 1 character for status
@@ -377,8 +377,8 @@ class ReceiptFormatter:
         price_header = get_global_locale_manager().get_text("formatters.table_headers.price", context)
         amount_header = get_global_locale_manager().get_text("formatters.table_headers.amount", context)
         
-        header = f"{number_header:^{number_width}} | {product_header:<{product_width}} | {quantity_header:^{quantity_width}} | {price_header:^{price_width}} | {amount_header:>{total_width}} | {'':^{status_width}}"
-        separator = "─" * (number_width + product_width + quantity_width + price_width + total_width + status_width + 10)  # 10 characters for separators
+        header = f"{number_header:<{number_width}}|{product_header:<{product_width}}|{quantity_header:^{quantity_width}}|{price_header:>{price_width}}|{amount_header:>{total_width}}|{'':<{status_width}}"
+        separator = "─" * (number_width + product_width + quantity_width + price_width + total_width + status_width + 5)  # 5 characters for separators
         
         lines = [header, separator]
         
@@ -494,10 +494,10 @@ class ReceiptFormatter:
                 
                 if i == 0:
                     # First row with full data
-                    line = f"{line_number:^{number_width}} | {formatted_name:<{product_width}} | {quantity_part:^{quantity_width}} | {price_str:^{price_width}} | {total_str:>{total_width}} | {status:^{status_width}}"
+                    line = f"{line_number:<{number_width}}|{formatted_name:<{product_width}}|{quantity_part:^{quantity_width}}|{price_str:>{price_width}}|{total_str:>{total_width}}|{status:<{status_width}}"
                 else:
                     # Subsequent rows with name and quantity parts, but no price/total/status
-                    line = f"{'':^{number_width}} | {formatted_name:<{product_width}} | {quantity_part:^{quantity_width}} | {'':^{price_width}} | {'':>{total_width}} | {'':^{status_width}}"
+                    line = f"{'':<{number_width}}|{formatted_name:<{product_width}}|{quantity_part:^{quantity_width}}|{'':>{price_width}}|{'':>{total_width}}|{'':<{status_width}}"
                 lines.append(line)
         
         # Add "Total" block under table
