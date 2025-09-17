@@ -123,15 +123,8 @@ class GoogleSheetsCallbackHandler(BaseCallbackHandler):
         # Store selected sheet ID in context for upload
         context.user_data['selected_sheet_id'] = selected_sheet.get('doc_id')
         
-        # Determine device type
-        device_type = DeviceType.MOBILE  # Default
-        if context and hasattr(context, 'user_data'):
-            device_type_str = context.user_data.get('device_type')
-            if device_type_str:
-                try:
-                    device_type = DeviceType(device_type_str)
-                except ValueError:
-                    pass
+        # Determine device type using TableManager for better reliability
+        device_type = await self.table_manager.detect_device_type(context)
         
         # Create dynamic table preview
         table_preview = self._format_dynamic_google_sheets_preview(
@@ -579,16 +572,34 @@ class GoogleSheetsCallbackHandler(BaseCallbackHandler):
         used_columns = sorted(column_mapping.values())
         # print(f"📊 Creating dynamic columns for: {used_columns}")  # Отключено для чистоты консоли
         
-        # Определяем ширину колонок согласно требованиям:
-        # дата 10 (было 9, увеличили на 1), название 20 (было 21, уменьшили на 1), 
-        # количество 6, цена 10, сумма 10
-        field_widths = {
+        # Определяем ширину колонок для Desktop версии (текущая версия)
+        desktop_field_widths = {
             'check_date': 10,
             'product_name': 20,
             'quantity': 6,
             'unit_price': 10,
             'total_price': 10
         }
+        
+        # Определяем ширину колонок для Mobile версии (уменьшенная до 40 символов с учетом разделителей)
+        # Общая ширина Desktop: 10+20+6+10+10 = 56 символов
+        # Общая ширина Mobile: 40 символов (включая разделители)
+        # Разделители: 4 × 3 = 12 символов
+        # Доступно для колонок: 40 - 12 = 28 символов
+        # Цены и суммы делаем одинаковой ширины для лучшего выравнивания
+        mobile_field_widths = {
+            'check_date': 4,      # 5 - 1 = 4
+            'product_name': 9,    # 10 - 1 = 9
+            'quantity': 3,        # без изменений
+            'unit_price': 6,      # 5 + 1 = 6 (одинаковая с total_price)
+            'total_price': 6      # 5 + 1 = 6 (одинаковая с unit_price)
+        }
+        
+        # Выбираем нужные ширины в зависимости от типа устройства
+        if device_type == DeviceType.MOBILE:
+            field_widths = mobile_field_widths
+        else:
+            field_widths = desktop_field_widths
         
         columns = []
         for column_letter in used_columns:
@@ -604,7 +615,7 @@ class GoogleSheetsCallbackHandler(BaseCallbackHandler):
                 width = field_widths[field_name]
             else:
                 # Для неизвестных полей используем базовую ширину
-                width = 12 if device_type == DeviceType.MOBILE else 15
+                width = 8 if device_type == DeviceType.MOBILE else 12
             
             # Все колонки выравниваем по левому краю
             align = "left"
@@ -649,7 +660,7 @@ class GoogleSheetsCallbackHandler(BaseCallbackHandler):
         
         return "---"  # Если поле не найдено
     
-    def _prepare_dynamic_table_data(self, receipt_data, matching_result, column_mapping: Dict[str, str]) -> List[Dict[str, Any]]:
+    def _prepare_dynamic_table_data(self, receipt_data, matching_result, column_mapping: Dict[str, str], device_type: DeviceType = DeviceType.DESKTOP) -> List[Dict[str, Any]]:
         """
         Подготавливает данные для динамической таблицы на основе column_mapping
         
@@ -707,10 +718,18 @@ class GoogleSheetsCallbackHandler(BaseCallbackHandler):
                 elif field_name == 'price_per_item':
                     price = item.price if item.price is not None else 0
                     if price > 0:
-                        if price == int(price):
-                            row_data[column_letter.lower()] = f"{int(price):,}".replace(",", " ")
+                        if device_type == DeviceType.MOBILE:
+                            # Компактное форматирование для мобильной версии
+                            if price == int(price):
+                                row_data[column_letter.lower()] = str(int(price))
+                            else:
+                                row_data[column_letter.lower()] = f"{price:.1f}"
                         else:
-                            row_data[column_letter.lower()] = f"{price:,.1f}".replace(",", " ")
+                            # Форматирование с пробелами для десктопной версии
+                            if price == int(price):
+                                row_data[column_letter.lower()] = f"{int(price):,}".replace(",", " ")
+                            else:
+                                row_data[column_letter.lower()] = f"{price:,.1f}".replace(",", " ")
                     else:
                         row_data[column_letter.lower()] = "-"
                 elif field_name == 'total_price':
@@ -718,10 +737,18 @@ class GoogleSheetsCallbackHandler(BaseCallbackHandler):
                     quantity = item.quantity if item.quantity is not None else 0
                     total = price * quantity
                     if total > 0:
-                        if total == int(total):
-                            row_data[column_letter.lower()] = f"{int(total):,}".replace(",", " ")
+                        if device_type == DeviceType.MOBILE:
+                            # Компактное форматирование для мобильной версии
+                            if total == int(total):
+                                row_data[column_letter.lower()] = str(int(total))
+                            else:
+                                row_data[column_letter.lower()] = f"{total:.1f}"
                         else:
-                            row_data[column_letter.lower()] = f"{total:,.1f}".replace(",", " ")
+                            # Форматирование с пробелами для десктопной версии
+                            if total == int(total):
+                                row_data[column_letter.lower()] = f"{int(total):,}".replace(",", " ")
+                            else:
+                                row_data[column_letter.lower()] = f"{total:,.1f}".replace(",", " ")
                     else:
                         row_data[column_letter.lower()] = "-"
                 else:
@@ -1121,7 +1148,7 @@ class GoogleSheetsCallbackHandler(BaseCallbackHandler):
             return "Ошибка создания колонок таблицы"
         
         # Подготавливаем данные
-        table_data = self._prepare_dynamic_table_data(receipt_data, matching_result, column_mapping)
+        table_data = self._prepare_dynamic_table_data(receipt_data, matching_result, column_mapping, device_type)
         if not table_data:
             return "Нет данных для отображения"
         
@@ -1139,8 +1166,6 @@ class GoogleSheetsCallbackHandler(BaseCallbackHandler):
         lines.append("─" * total_width)
         
         # Строки данных - используем TableManager для правильного переноса текста
-        from utils.table_manager import TableManager
-        table_manager = TableManager(self.locale_manager)
         
         for row_data in table_data:
             # Подготавливаем данные для строки
@@ -1148,11 +1173,11 @@ class GoogleSheetsCallbackHandler(BaseCallbackHandler):
             for column in dynamic_columns:
                 value = str(row_data.get(column.key, ""))
                 # Используем улучшенную функцию переноса текста из TableManager
-                wrapped_value = table_manager._wrap_text(value, column.width, column.width * 5)  # max_name_length = width * 5
+                wrapped_value = self.table_manager._wrap_text(value, column.width, column.width * 5)  # max_name_length = width * 5
                 row_data_list.append(wrapped_value)
             
             # Создаем многострочную строку таблицы
-            table_lines = table_manager._create_multiline_table_row(row_data_list, 
+            table_lines = self.table_manager._create_multiline_table_row(row_data_list, 
                 TableConfig(
                     table_type=TableType.GOOGLE_SHEETS_PREVIEW,
                     device_type=device_type,
@@ -1169,9 +1194,7 @@ class GoogleSheetsCallbackHandler(BaseCallbackHandler):
     async def _format_google_sheets_matching_table(self, matching_result: IngredientMatchingResult, context=None) -> str:
         """Format Google Sheets matching table for editing"""
         # Всегда используем TableManager для правильной локализации
-        from utils.table_manager import TableManager
-        table_manager = TableManager(self.locale_manager)
-        return await table_manager.format_google_sheets_matching_table(matching_result, context)
+        return await self.table_manager.format_google_sheets_matching_table(matching_result, context)
     
     def _create_google_sheets_table_header(self, context=None) -> str:
         """Create Google Sheets table header"""

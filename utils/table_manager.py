@@ -474,7 +474,7 @@ class TableManager:
         # Ограничиваем количество строк, но не общую длину текста
         lines = wrapped_text.split('\n')
         if len(lines) > 5:  # Максимум 5 строк для читаемости
-            return '\n'.join(lines[:4]) + '\n...'
+            return '\n'.join(lines[:5])  # Убираем многоточие, показываем все строки
         
         return wrapped_text
     
@@ -499,8 +499,8 @@ class TableManager:
                 # Разбиваем длинное слово на части
                 remaining_word = word
                 while len(remaining_word) > max_width:
-                    lines.append(remaining_word[:max_width-3] + "...")
-                    remaining_word = remaining_word[max_width-3:]
+                    lines.append(remaining_word[:max_width])
+                    remaining_word = remaining_word[max_width:]
                 if remaining_word:
                     current_line = remaining_word
                 continue

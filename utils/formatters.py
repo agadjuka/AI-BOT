@@ -35,6 +35,30 @@ class NumberFormatter:
             return formatted
     
     @staticmethod
+    def format_number_compact(number: Optional[float]) -> str:
+        """Format number without spaces for mobile display"""
+        # Handle None values
+        if number is None:
+            return "0"
+        
+        # Always show number as integer if it's whole
+        if number == int(number):
+            return str(int(number))
+        else:
+            # If there are decimal places, use comma as decimal separator
+            formatted = f"{number:.2f}"
+            # Remove trailing zeros from decimal part
+            if '.' in formatted:
+                parts = formatted.split('.')
+                if len(parts) == 2:
+                    decimal_part = parts[1].rstrip('0')
+                    if decimal_part:
+                        return f"{parts[0]},{decimal_part}"
+                    else:
+                        return parts[0]
+            return formatted
+    
+    @staticmethod
     def get_display_width(text: str) -> int:
         """Calculate real text width considering emojis and Markdown formatting"""
         if not text:
