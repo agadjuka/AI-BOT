@@ -584,8 +584,16 @@ class PhotoHandler(BaseMessageHandler):
             # Check if there are errors
             has_errors = not self.processor.check_all_items_confirmed(final_data)
             
-            # Create aligned table programmatically
-            aligned_table = self.formatter.format_aligned_table(final_data, context)
+            # Create aligned table programmatically based on user's display mode
+            from services.user_service import get_user_service
+            user_service = get_user_service()
+            user_id = update.effective_user.id
+            display_mode = await user_service.get_user_display_mode(user_id)
+            
+            if display_mode == "desktop":
+                aligned_table = self.formatter.format_aligned_table_desktop(final_data, context)
+            else:
+                aligned_table = self.formatter.format_aligned_table_mobile(final_data, context)
             
             # Calculate total sum
             calculated_total = self.formatter.calculate_total_sum(final_data)

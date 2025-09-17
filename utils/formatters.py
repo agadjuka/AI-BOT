@@ -174,8 +174,8 @@ class ReceiptFormatter:
         self.number_formatter = NumberFormatter()
         self.text_parser = TextParser()
     
-    def format_aligned_table(self, data: ReceiptData, context: Optional[Any] = None) -> str:
-        """Create aligned table for Telegram with optimal column widths and total block"""
+    def format_aligned_table_desktop(self, data: ReceiptData, context: Optional[Any] = None) -> str:
+        """Create aligned table for Telegram with optimal column widths and total block - DESKTOP VERSION"""
         items = data.items
         
         if not items:
@@ -195,6 +195,156 @@ class ReceiptFormatter:
         price_width = 8     # Fixed width 8 characters for price
         total_width = 8     # Fixed width 8 characters for total
         status_width = 2    # Fixed width 2 characters for status
+        
+        # Create header with optimal widths
+        number_header = get_global_locale_manager().get_text("formatters.table_headers.number", context)
+        product_header = get_global_locale_manager().get_text("formatters.table_headers.product", context)
+        quantity_header = get_global_locale_manager().get_text("formatters.table_headers.quantity", context)
+        price_header = get_global_locale_manager().get_text("formatters.table_headers.price", context)
+        amount_header = get_global_locale_manager().get_text("formatters.table_headers.amount", context)
+        
+        header = f"{number_header:^{number_width}} | {product_header:<{product_width}} | {quantity_header:^{quantity_width}} | {price_header:^{price_width}} | {amount_header:>{total_width}} | {'':^{status_width}}"
+        separator = "─" * (number_width + product_width + quantity_width + price_width + total_width + status_width + 10)  # 10 characters for separators
+        
+        lines = [header, separator]
+        
+        # Add data rows
+        for item in items:
+            line_number = item.line_number
+            name = str(item.name)
+            quantity = item.quantity
+            price = item.price
+            total = item.total
+            
+            # Break long names into parts with word/character wrapping
+            # Consider real emoji width in display
+            name_parts = []
+            if self.number_formatter.get_display_width(name) <= product_width - 1:  # -1 for space
+                name_parts = [name]
+            else:
+                # Wrap by words if possible
+                words = name.split()
+                current_line = ""
+                for word in words:
+                    test_line = current_line + (" " if current_line else "") + word
+                    if self.number_formatter.get_display_width(test_line) <= product_width - 1:
+                        current_line = test_line
+                    else:
+                        if current_line:
+                            name_parts.append(current_line)
+                            current_line = word
+                        else:
+                            # If word is too long, break by characters
+                            while self.number_formatter.get_display_width(word) > product_width - 1:
+                                # Find maximum length that fits
+                                for i in range(len(word), 0, -1):
+                                    if self.number_formatter.get_display_width(word[:i]) <= product_width - 1:
+                                        name_parts.append(word[:i])
+                                        word = word[i:]
+                                        break
+                                else:
+                                    # If even one character doesn't fit, take it
+                                    name_parts.append(word[:1])
+                                    word = word[1:]
+                            current_line = word
+                if current_line:
+                    name_parts.append(current_line)
+            
+            # Format quantity - if 0 or None, show dash
+            if quantity is None or quantity == 0:
+                quantity_str = "-"
+            elif quantity is not None and quantity == int(quantity):
+                quantity_str = str(int(quantity))
+            else:
+                quantity_str = str(quantity)
+            
+            # Format price - if 0 or None, show dash
+            if price is None or price == 0:
+                price_str = "-"
+            else:
+                # Use the same formatting as other places to preserve decimal places
+                price_str = self.number_formatter.format_number_with_spaces(price)
+            
+            # Format total - if 0 or None, show dash
+            if total is None or total == 0:
+                total_str = "-"
+            else:
+                total_str = self.number_formatter.format_number_with_spaces(total)
+            
+            # Determine status based on item data
+            item_status = item.status
+            if item_status == 'confirmed':
+                status = "✅"
+            elif item_status == 'error':
+                status = "🔴"
+            else:
+                status = "⚠️"
+            
+            # Create rows with alignment (can be multiple rows for one product)
+            for i, name_part in enumerate(name_parts):
+                # Apply Markdown formatting for unreadable names
+                formatted_name = name_part
+                if name_part == "???":
+                    formatted_name = "***???***"  # Bold and underlined text in Markdown
+                
+                if i == 0:
+                    # First row with full data
+                    line = f"{line_number:^{number_width}} | {formatted_name:<{product_width}} | {quantity_str:^{quantity_width}} | {price_str:^{price_width}} | {total_str:>{total_width}} | {status:^{status_width}}"
+                else:
+                    # Subsequent rows only with name, but same length
+                    line = f"{'':^{number_width}} | {formatted_name:<{product_width}} | {'':^{quantity_width}} | {'':^{price_width}} | {'':>{total_width}} | {'':^{status_width}}"
+                lines.append(line)
+        
+        # Add "Total" block under table
+        lines.append("")  # Empty line for separation
+        
+        # Get total sum from receipt
+        receipt_total_text = data.grand_total_text
+        receipt_total = self.text_parser.parse_number_from_text(receipt_total_text)
+        formatted_receipt_total = self.number_formatter.format_number_with_spaces(receipt_total)
+        
+        # Create "Total" block - separate rectangle under table
+        # Calculate total table width for total block alignment
+        total_table_width = number_width + product_width + quantity_width + price_width + total_width + status_width + 10
+        
+        # Create "Total" block with right alignment
+        total_label = get_global_locale_manager().get_text("formatters.total_label", context)
+        total_value = formatted_receipt_total
+        
+        # Calculate position for total block right alignment
+        total_block_width = len(total_label) + 1 + len(total_value)  # +1 for space
+        padding = total_table_width - total_block_width
+        
+        if padding > 0:
+            total_line = " " * padding + f"{total_label} {total_value}"
+        else:
+            total_line = f"{total_label} {total_value}"
+        
+        lines.append(total_line)
+        
+        return "\n".join(lines)
+    
+    def format_aligned_table_mobile(self, data: ReceiptData, context: Optional[Any] = None) -> str:
+        """Create aligned table for Telegram with optimal column widths and total block - MOBILE VERSION"""
+        items = data.items
+        
+        if not items:
+            return get_global_locale_manager().get_text("formatters.no_data_to_display", context)
+        
+        # Determine optimal width for each column based on data
+        # Consider real emoji width in display
+        max_name_length = max(self.number_formatter.get_display_width(str(item.name)) for item in items)
+        max_quantity_length = max(len(self.number_formatter.format_number_with_spaces(item.quantity)) for item in items)
+        max_price_length = max(len(self.number_formatter.format_number_with_spaces(item.price)) for item in items)
+        max_total_length = max(len(self.number_formatter.format_number_with_spaces(item.total)) for item in items)
+        
+        # Set fixed column widths (optimized for mobile devices - total width exactly 40 characters)
+        number_width = 1    # Fixed width 1 character for number
+        product_width = 8   # Fixed width 8 characters for products column
+        quantity_width = 3  # Fixed width 3 characters for quantity (for decimal numbers)
+        price_width = 7     # Fixed width 7 characters for price
+        total_width = 7     # Fixed width 7 characters for total
+        status_width = 1    # Fixed width 1 character for status
         
         # Create header with optimal widths
         number_header = get_global_locale_manager().get_text("formatters.table_headers.number", context)
