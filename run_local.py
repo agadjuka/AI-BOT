@@ -63,7 +63,7 @@ def main():
     print("✅ Все переменные окружения загружены")
     print("=" * 50)
     
-    # Импортируем и запускаем main_local
+    # Импортируем и запускаем main_localа
     try:
         from main_local import main
         main()  # main() уже асинхроннсая функция, не нужно asyncio.run()
