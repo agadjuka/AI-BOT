@@ -155,9 +155,9 @@ class MessageHandlers(BaseMessageHandler):
         
         # Create display mode button text
         if display_mode == "desktop":
-            mode_button_text = "🖥️ Компьютер"
+            mode_button_text = self.get_text("device_buttons.computer", context, update=update)
         else:  # mobile
-            mode_button_text = "📱 Смартфон"
+            mode_button_text = self.get_text("device_buttons.smartphone", context, update=update)
         
         # Create dashboard keyboard
         keyboard = [

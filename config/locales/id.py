@@ -562,6 +562,12 @@ ID_TRANSLATIONS = {
         "mobile_selected": "📱 Antarmuka ponsel dipilih",
         "desktop_selected": "🖥️ Antarmuka desktop dipilih",
         "error_switching": "❌ Error saat mengganti mode tampilan"
+    },
+    
+    # Tombol perangkat
+    "device_buttons": {
+        "smartphone": "📱 Smartphone ✔️",
+        "computer": "🖥️ Komputer ✔️"
     }
     
 }

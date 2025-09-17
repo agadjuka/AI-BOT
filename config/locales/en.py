@@ -568,6 +568,12 @@ EN_TRANSLATIONS = {
         "mobile_selected": "📱 Mobile interface selected",
         "desktop_selected": "🖥️ Desktop interface selected",
         "error_switching": "❌ Error switching display mode"
+    },
+    
+    # Device buttons
+    "device_buttons": {
+        "smartphone": "📱 Smartphone ✔️",
+        "computer": "🖥️ Computer ✔️"
     }
     
 }
