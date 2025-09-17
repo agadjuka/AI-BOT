@@ -465,7 +465,7 @@ class IngredientMatchingInputHandler(BaseMessageHandler):
             return
         
         # Format final result
-        final_text = self.ingredient_formatter.format_matching_table(matching_result)
+        final_text = await self.ingredient_formatter.format_matching_table(matching_result)
         
         # Add action buttons
         keyboard = [

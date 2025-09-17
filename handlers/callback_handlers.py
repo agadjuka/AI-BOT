@@ -21,6 +21,7 @@ from handlers.admin_panel import AdminPanelHandler
 from config.table_config import TableType, DeviceType
 from config.locales.locale_manager import get_global_locale_manager
 from config.locales.language_buttons import get_language_keyboard
+from services.user_service import get_user_service
 
 
 class CallbackHandlers(BaseCallbackHandler):
@@ -137,6 +138,9 @@ class CallbackHandlers(BaseCallbackHandler):
         
         elif action == "dashboard_main":
             return await self._handle_dashboard_main(update, context)
+        
+        elif action == "toggle_display_mode":
+            return await self._handle_toggle_display_mode(update, context)
         
         # Admin panel callbacks
         elif action == "admin_panel":
@@ -299,6 +303,62 @@ class CallbackHandlers(BaseCallbackHandler):
             reply_markup=reply_markup,
             parse_mode='HTML'
         )
+        
+        return self.config.AWAITING_CORRECTION
+    
+    async def _handle_toggle_display_mode(self, update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
+        """Handle display mode toggle button"""
+        query = update.callback_query
+        user_id = update.effective_user.id
+        
+        # Get user service
+        user_service = get_user_service()
+        
+        # Get current display mode
+        current_mode = await user_service.get_user_display_mode(user_id)
+        
+        # Determine new mode (toggle)
+        new_mode = "mobile" if current_mode == "desktop" else "desktop"
+        
+        # Set new display mode
+        success = await user_service.set_user_display_mode(user_id, new_mode)
+        
+        if success:
+            # Show alert notification using localized text
+            if new_mode == "mobile":
+                alert_text = self.get_text("display_mode_notifications.mobile_selected", context, update=update)
+            else:  # desktop
+                alert_text = self.get_text("display_mode_notifications.desktop_selected", context, update=update)
+            
+            # Send temporary notification message
+            temp_message = await query.message.reply_text(alert_text)
+            
+            # Update dashboard with new button text
+            from handlers.message_handlers import MessageHandlers
+            message_handlers = MessageHandlers(self.config, self.analysis_service)
+            keyboard, is_admin = await message_handlers._create_dashboard_keyboard(update, context)
+            
+            reply_markup = InlineKeyboardMarkup(keyboard)
+            
+            await query.edit_message_text(
+                self.get_text("welcome.dashboard.welcome_message", context, update=update, 
+                             user=update.effective_user.mention_html()),
+                reply_markup=reply_markup,
+                parse_mode='HTML'
+            )
+            
+            # Delete temporary message after 1 second
+            await asyncio.sleep(1)
+            try:
+                await temp_message.delete()
+            except Exception as e:
+                print(f"Warning: Could not delete temporary message: {e}")
+            
+            # Answer callback query to remove loading state
+            await query.answer()
+        else:
+            error_text = self.get_text("display_mode_notifications.error_switching", context, update=update)
+            await query.answer(error_text, show_alert=True)
         
         return self.config.AWAITING_CORRECTION
     

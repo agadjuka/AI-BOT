@@ -329,6 +329,85 @@ class UserService:
         except Exception as e:
             print(f"❌ Error getting user info: {e}")
             return None
+    
+    async def set_user_display_mode(self, user_id: int, mode: str) -> bool:
+        """
+        Set user display mode in Firestore
+        
+        Args:
+            user_id: Telegram user ID
+            mode: Display mode ("desktop" or "mobile")
+            
+        Returns:
+            True if successful, False otherwise
+        """
+        if not self.db:
+            print("❌ Firestore not available")
+            return False
+        
+        if mode not in ['desktop', 'mobile']:
+            print(f"❌ Invalid display mode: {mode}. Must be 'desktop' or 'mobile'")
+            return False
+        
+        try:
+            user_ref = self.db.collection('users').document(str(user_id))
+            
+            # Check if user document exists
+            user_doc = user_ref.get()
+            if user_doc.exists:
+                # Update existing user document
+                user_ref.update({
+                    'display_mode': mode
+                })
+                print(f"✅ Updated user {user_id} display mode to {mode}")
+            else:
+                # Create new user document with display mode
+                user_ref.set({
+                    'display_mode': mode
+                })
+                print(f"✅ Created user {user_id} with display mode {mode}")
+            
+            return True
+            
+        except Exception as e:
+            print(f"❌ Error setting user display mode: {e}")
+            return False
+    
+    async def get_user_display_mode(self, user_id: int) -> str:
+        """
+        Get user display mode from Firestore
+        
+        Args:
+            user_id: Telegram user ID
+            
+        Returns:
+            Display mode ("desktop" or "mobile"). Returns "mobile" as default if not set.
+        """
+        if not self.db:
+            print("❌ Firestore not available")
+            return "mobile"
+        
+        try:
+            user_ref = self.db.collection('users').document(str(user_id))
+            user_doc = user_ref.get()
+            
+            if user_doc.exists:
+                user_data = user_doc.to_dict()
+                display_mode = user_data.get('display_mode')
+                
+                if display_mode in ['desktop', 'mobile']:
+                    print(f"✅ Retrieved user {user_id} display mode: {display_mode}")
+                    return display_mode
+                else:
+                    print(f"⚠️ User {user_id} has invalid display mode '{display_mode}', using default 'mobile'")
+                    return "mobile"
+            else:
+                print(f"⚠️ User {user_id} document does not exist, using default display mode 'mobile'")
+                return "mobile"
+                
+        except Exception as e:
+            print(f"❌ Error getting user display mode: {e}")
+            return "mobile"
 
 
 # Global instance management

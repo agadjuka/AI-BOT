@@ -555,6 +555,13 @@ ID_TRANSLATIONS = {
             "toggle_turbo": "🚀 Toggle TURBO",
             "back_to_dashboard": "⬅️ Kembali ke dashboard"
         }
+    },
+    
+    # Notifikasi toggle mode tampilan
+    "display_mode_notifications": {
+        "mobile_selected": "📱 Antarmuka ponsel dipilih",
+        "desktop_selected": "🖥️ Antarmuka desktop dipilih",
+        "error_switching": "❌ Error saat mengganti mode tampilan"
     }
     
 }

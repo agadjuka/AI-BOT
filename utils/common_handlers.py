@@ -73,7 +73,7 @@ class CommonHandlers:
         print("⚠️ _ensure_google_sheets_ingredients_loaded() устарела - используйте персональные ингредиенты из Firestore")
         return True
     
-    def format_table_with_pagination(self, data: List[Dict[str, Any]], 
+    async def format_table_with_pagination(self, data: List[Dict[str, Any]], 
                                    page: int = 1, 
                                    items_per_page: int = 10,
                                    table_formatter: callable = None,
@@ -94,7 +94,7 @@ class CommonHandlers:
         # Используем TableManager если доступен
         if hasattr(self, 'table_manager') and self.table_manager:
             from config.table_config import TableType
-            return self.table_manager.format_table_with_pagination(
+            return await self.table_manager.format_table_with_pagination(
                 data, page, TableType.GENERAL_PAGINATED, context
             )
         

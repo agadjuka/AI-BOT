@@ -88,7 +88,7 @@ class FileGenerationCallbackHandler(BaseCallbackHandler):
         await query.answer()
         
         # Format matching table
-        table_text = self._format_matching_table(matching_result)
+        table_text = await self._format_matching_table(matching_result)
         
         keyboard = [
             [InlineKeyboardButton("📄 Скачать файл для постера", callback_data="generate_poster_file")],
@@ -99,7 +99,7 @@ class FileGenerationCallbackHandler(BaseCallbackHandler):
         
         await self.common_handlers.send_long_message_with_keyboard(query.message, table_text, reply_markup)
     
-    def _format_matching_table(self, matching_result: IngredientMatchingResult) -> str:
+    async def _format_matching_table(self, matching_result: IngredientMatchingResult) -> str:
         """Format matching table for display"""
         table_text = "📊 **Таблица сопоставления ингредиентов:**\n\n"
         

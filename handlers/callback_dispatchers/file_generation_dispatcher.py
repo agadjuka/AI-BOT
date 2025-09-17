@@ -137,7 +137,7 @@ class FileGenerationDispatcher(BaseCallbackHandler):
         await query.answer()
         
         # Format matching table
-        table_text = self._format_matching_table(matching_result, context)
+        table_text = await self._format_matching_table(matching_result, context)
         
         keyboard = [
             [InlineKeyboardButton(
@@ -157,7 +157,7 @@ class FileGenerationDispatcher(BaseCallbackHandler):
         
         await self.common_handlers.send_long_message_with_keyboard(query.message, table_text, reply_markup)
     
-    def _format_matching_table(self, matching_result: IngredientMatchingResult, context) -> str:
+    async def _format_matching_table(self, matching_result: IngredientMatchingResult, context) -> str:
         """Format matching table for display"""
         table_text = self.locale_manager.get_text("file_generation.matching_table_title", context) + "\n\n"
         

@@ -11,6 +11,7 @@ from config.table_config import (
     table_config_manager, TableConfig, ColumnConfig
 )
 from models.ingredient_matching import IngredientMatchingResult, IngredientMatch, MatchStatus
+from services.user_service import get_user_service
 
 
 class TableManager:
@@ -20,9 +21,9 @@ class TableManager:
         self.config_manager = table_config_manager
         self.locale_manager = locale_manager
     
-    def detect_device_type(self, context: Optional[ContextTypes.DEFAULT_TYPE] = None) -> DeviceType:
+    async def detect_device_type(self, context: Optional[ContextTypes.DEFAULT_TYPE] = None) -> DeviceType:
         """
-        Определяет тип устройства пользователя
+        Определяет тип устройства пользователя на основе сохраненных настроек
         
         Args:
             context: Контекст Telegram
@@ -30,20 +31,30 @@ class TableManager:
         Returns:
             DeviceType: Тип устройства
         """
-        # Простая эвристика - можно расширить
         if context and hasattr(context, 'user_data'):
-            # Проверяем сохраненные настройки пользователя
-            device_type = context.user_data.get('device_type')
-            if device_type:
+            user_id = context.user_data.get('user_id')
+            if user_id:
                 try:
-                    return DeviceType(device_type)
-                except ValueError:
+                    # Получаем сохраненную настройку пользователя
+                    user_service = get_user_service()
+                    display_mode = await user_service.get_user_display_mode(user_id)
+                    
+                    # Конвертируем display_mode в DeviceType
+                    if display_mode == "desktop":
+                        return DeviceType.DESKTOP
+                    elif display_mode == "mobile":
+                        return DeviceType.MOBILE
+                    else:
+                        # Fallback на мобильное устройство
+                        return DeviceType.MOBILE
+                except Exception as e:
+                    print(f"❌ Error getting user display mode: {e}")
                     pass
         
         # По умолчанию считаем мобильным устройством
         return DeviceType.MOBILE
     
-    def format_ingredient_matching_table(self, 
+    async def format_ingredient_matching_table(self, 
                                        result: IngredientMatchingResult, 
                                        context: Optional[ContextTypes.DEFAULT_TYPE] = None,
                                        changed_indices: set = None) -> str:
@@ -58,7 +69,7 @@ class TableManager:
         Returns:
             str: Отформатированная таблица
         """
-        device_type = self.detect_device_type(context)
+        device_type = await self.detect_device_type(context)
         config = self.config_manager.get_config(
             TableType.INGREDIENT_MATCHING, 
             device_type, 
@@ -94,7 +105,7 @@ class TableManager:
         
         return "\n".join(table_lines)
     
-    def format_google_sheets_matching_table(self, 
+    async def format_google_sheets_matching_table(self, 
                                           result: IngredientMatchingResult, 
                                           context: Optional[ContextTypes.DEFAULT_TYPE] = None) -> str:
         """
@@ -107,7 +118,7 @@ class TableManager:
         Returns:
             str: Отформатированная таблица
         """
-        device_type = self.detect_device_type(context)
+        device_type = await self.detect_device_type(context)
         config = self.config_manager.get_config(
             TableType.GOOGLE_SHEETS_MATCHING, 
             device_type, 
@@ -138,7 +149,7 @@ class TableManager:
         
         return "\n".join(table_lines)
     
-    def format_receipt_preview_table(self, 
+    async def format_receipt_preview_table(self, 
                                    receipt_data: List[Dict[str, Any]], 
                                    context: Optional[ContextTypes.DEFAULT_TYPE] = None) -> str:
         """
@@ -151,7 +162,7 @@ class TableManager:
         Returns:
             str: Отформатированная таблица
         """
-        device_type = self.detect_device_type(context)
+        device_type = await self.detect_device_type(context)
         config = self.config_manager.get_config(
             TableType.RECEIPT_PREVIEW, 
             device_type, 
@@ -178,7 +189,7 @@ class TableManager:
         
         return "\n".join(table_lines)
     
-    def format_next_items_table(self, 
+    async def format_next_items_table(self, 
                               next_items: List[Dict[str, Any]], 
                               context: Optional[ContextTypes.DEFAULT_TYPE] = None) -> str:
         """
@@ -191,7 +202,7 @@ class TableManager:
         Returns:
             str: Отформатированная таблица
         """
-        device_type = self.detect_device_type(context)
+        device_type = await self.detect_device_type(context)
         config = self.config_manager.get_config(
             TableType.NEXT_ITEMS, 
             device_type, 
@@ -218,7 +229,7 @@ class TableManager:
         
         return "\n".join(table_lines)
     
-    def format_table_with_pagination(self, 
+    async def format_table_with_pagination(self, 
                                    data: List[Dict[str, Any]], 
                                    page: int = 1,
                                    table_type: TableType = TableType.GENERAL_PAGINATED,
@@ -235,7 +246,7 @@ class TableManager:
         Returns:
             Tuple[str, InlineKeyboardMarkup]: Текст таблицы и клавиатура навигации
         """
-        device_type = self.detect_device_type(context)
+        device_type = await self.detect_device_type(context)
         config = self.config_manager.get_config(
             table_type, 
             device_type, 

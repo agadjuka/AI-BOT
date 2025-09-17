@@ -50,7 +50,7 @@ class GoogleSheetsCallbackHandler(BaseCallbackHandler):
             return
         
         # Use the same table formatting as the editor
-        table_text = self._format_google_sheets_matching_table(matching_result, context)
+        table_text = await self._format_google_sheets_matching_table(matching_result, context)
         choose_action_text = self.locale_manager.get_text("sheets.callback.choose_action_for_matching", context)
         schema_text = table_text + "\n\n" + choose_action_text
         
@@ -285,7 +285,7 @@ class GoogleSheetsCallbackHandler(BaseCallbackHandler):
                 return
         
         # Format the matching table for Google Sheets
-        table_text = self._format_google_sheets_matching_table(matching_result, context)
+        table_text = await self._format_google_sheets_matching_table(matching_result, context)
         
         # Create buttons for items that need matching
         keyboard = self._create_matching_table_keyboard(matching_result, context)
@@ -310,7 +310,7 @@ class GoogleSheetsCallbackHandler(BaseCallbackHandler):
         matching_result = pending_data['matching_result']
         
         # Format the matching table for Google Sheets (same as in editor)
-        table_text = self._format_google_sheets_matching_table(matching_result, context)
+        table_text = await self._format_google_sheets_matching_table(matching_result, context)
         instruction_text = "\n\n" + self.locale_manager.get_text("sheets.callback.choose_position_for_matching", context) + "\n\n"
         full_text = table_text + instruction_text
         
@@ -1162,12 +1162,12 @@ class GoogleSheetsCallbackHandler(BaseCallbackHandler):
         return "\n".join(lines)
     
     
-    def _format_google_sheets_matching_table(self, matching_result: IngredientMatchingResult, context=None) -> str:
+    async def _format_google_sheets_matching_table(self, matching_result: IngredientMatchingResult, context=None) -> str:
         """Format Google Sheets matching table for editing"""
         # Всегда используем TableManager для правильной локализации
         from utils.table_manager import TableManager
         table_manager = TableManager(self.locale_manager)
-        return table_manager.format_google_sheets_matching_table(matching_result, context)
+        return await table_manager.format_google_sheets_matching_table(matching_result, context)
     
     def _create_google_sheets_table_header(self, context=None) -> str:
         """Create Google Sheets table header"""

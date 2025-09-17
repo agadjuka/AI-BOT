@@ -19,6 +19,7 @@ from utils.common_handlers import CommonHandlers
 from utils.access_control import access_check
 from config.locales.locale_manager import get_global_locale_manager
 from config.locales.language_buttons import get_language_keyboard
+from services.user_service import get_user_service
 
 
 class MessageHandlers(BaseMessageHandler):
@@ -148,8 +149,22 @@ class MessageHandlers(BaseMessageHandler):
         user_id = update.effective_user.id
         is_admin = await self.admin_panel_handler.is_admin(user_id, None)
         
+        # Get user display mode
+        user_service = get_user_service()
+        display_mode = await user_service.get_user_display_mode(user_id)
+        
+        # Create display mode button text
+        if display_mode == "desktop":
+            mode_button_text = "🖥️ Компьютер"
+        else:  # mobile
+            mode_button_text = "📱 Смартфон"
+        
         # Create dashboard keyboard
         keyboard = [
+            [InlineKeyboardButton(
+                mode_button_text, 
+                callback_data="toggle_display_mode"
+            )],
             [InlineKeyboardButton(
                 self.get_text("welcome.dashboard.buttons.language_settings", context, update=update), 
                 callback_data="dashboard_language_settings"

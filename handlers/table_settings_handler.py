@@ -9,6 +9,7 @@ from telegram.ext import ContextTypes
 from handlers.base_callback_handler import BaseCallbackHandler
 from config.table_config import TableType, DeviceType, TableConfig, ColumnConfig, TableStyle
 from utils.table_manager import TableManager
+from services.user_service import get_user_service
 
 
 class TableSettingsHandler(BaseCallbackHandler):
@@ -24,7 +25,20 @@ class TableSettingsHandler(BaseCallbackHandler):
         await query.answer()
         
         user_id = update.effective_user.id
-        device_type = self.table_manager.detect_device_type(context)
+        
+        # Получаем сохраненную настройку пользователя
+        try:
+            user_service = get_user_service()
+            display_mode = await user_service.get_user_display_mode(user_id)
+            
+            # Конвертируем display_mode в DeviceType
+            if display_mode == "desktop":
+                device_type = DeviceType.DESKTOP
+            else:
+                device_type = DeviceType.MOBILE
+        except Exception as e:
+            print(f"❌ Error getting user display mode: {e}")
+            device_type = DeviceType.MOBILE
         
         # Сохраняем тип устройства в контексте
         context.user_data['device_type'] = device_type.value
@@ -261,8 +275,23 @@ class TableSettingsHandler(BaseCallbackHandler):
         query = update.callback_query
         await query.answer()
         
-        # Сохраняем тип устройства
+        user_id = update.effective_user.id
+        
+        # Сохраняем тип устройства в контексте
         context.user_data['device_type'] = device_type.value
+        
+        # Сохраняем настройку в Firestore
+        try:
+            user_service = get_user_service()
+            display_mode = "desktop" if device_type == DeviceType.DESKTOP else "mobile"
+            success = await user_service.set_user_display_mode(user_id, display_mode)
+            
+            if success:
+                print(f"✅ Updated user {user_id} display mode to {display_mode}")
+            else:
+                print(f"❌ Failed to update user {user_id} display mode")
+        except Exception as e:
+            print(f"❌ Error setting user display mode: {e}")
         
         # Показываем обновленные настройки
         return await self.show_device_type_settings(update, context)
@@ -279,8 +308,20 @@ class TableSettingsHandler(BaseCallbackHandler):
             for device_type in DeviceType:
                 self.table_manager.reset_user_table_settings(user_id, table_type, device_type)
         
-        # Сбрасываем тип устройства
+        # Сбрасываем тип устройства в контексте
         context.user_data.pop('device_type', None)
+        
+        # Сбрасываем настройку в Firestore (устанавливаем мобильный режим по умолчанию)
+        try:
+            user_service = get_user_service()
+            success = await user_service.set_user_display_mode(user_id, "mobile")
+            
+            if success:
+                print(f"✅ Reset user {user_id} display mode to mobile")
+            else:
+                print(f"❌ Failed to reset user {user_id} display mode")
+        except Exception as e:
+            print(f"❌ Error resetting user display mode: {e}")
         
         text = "✅ Все настройки таблиц сброшены к стандартным значениям!"
         

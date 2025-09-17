@@ -561,6 +561,13 @@ EN_TRANSLATIONS = {
             "toggle_turbo": "🚀 Toggle TURBO",
             "back_to_dashboard": "⬅️ Back to dashboard"
         }
+    },
+    
+    # Display mode toggle notifications
+    "display_mode_notifications": {
+        "mobile_selected": "📱 Mobile interface selected",
+        "desktop_selected": "🖥️ Desktop interface selected",
+        "error_switching": "❌ Error switching display mode"
     }
     
 }

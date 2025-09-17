@@ -15,7 +15,7 @@ class IngredientFormatter:
         self.max_suggestion_length = 15  # Maximum length for suggestion names
         self.table_manager = table_manager
     
-    def format_matching_table(self, result: IngredientMatchingResult, changed_indices: set = None, context: Optional[ContextTypes.DEFAULT_TYPE] = None) -> str:
+    async def format_matching_table(self, result: IngredientMatchingResult, changed_indices: set = None, context: Optional[ContextTypes.DEFAULT_TYPE] = None) -> str:
         """
         Format ingredient matching results as a table
         
@@ -29,7 +29,7 @@ class IngredientFormatter:
         """
         # Используем новый TableManager если доступен
         if self.table_manager:
-            return self.table_manager.format_ingredient_matching_table(result, context, changed_indices)
+            return await self.table_manager.format_ingredient_matching_table(result, context, changed_indices)
         
         # Fallback на старую логику
         if not result.matches:

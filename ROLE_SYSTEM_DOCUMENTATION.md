@@ -9,6 +9,8 @@
 ### Коллекция `users`
 Каждый документ пользователя содержит:
 - `role` (string): Роль пользователя ("admin" или "user")
+- `display_mode` (string): Режим отображения таблиц ("desktop" или "mobile")
+- `display_mode_updated_at` (timestamp): Время последнего обновления режима отображения
 - Другие поля пользователя (ingredient_list, language, etc.)
 
 ### Коллекция `whitelist`
@@ -49,6 +51,8 @@
 - `remove_from_whitelist(username)` - удалить пользователя из whitelist
 - `get_whitelist()` - получить список всех пользователей в whitelist
 - `get_user_info(user_id)` - получить полную информацию о пользователе
+- `set_user_display_mode(user_id, mode)` - установить режим отображения таблиц
+- `get_user_display_mode(user_id)` - получить режим отображения таблиц
 
 ### 2. RoleInitializer (`utils/role_initializer.py`)
 Утилита для инициализации ролей при запуске бота:
@@ -105,6 +109,21 @@ from services.user_service import get_user_service
 
 user_service = get_user_service(db)
 is_admin = await user_service.is_user_admin(user_id)
+```
+
+### Управление режимом отображения таблиц
+```python
+from services.user_service import get_user_service
+
+user_service = get_user_service(db)
+
+# Установить режим отображения
+success = await user_service.set_user_display_mode(user_id, "desktop")
+success = await user_service.set_user_display_mode(user_id, "mobile")
+
+# Получить текущий режим отображения
+display_mode = await user_service.get_user_display_mode(user_id)
+# Возвращает "desktop" или "mobile", по умолчанию "mobile"
 ```
 
 ## Безопасность

@@ -31,7 +31,7 @@ class IngredientMatchingCallbackHandler(BaseCallbackHandler):
             return
         
         # Format matching results
-        results_text = self.ingredient_formatter.format_matching_table(matching_result, context=context)
+        results_text = await self.ingredient_formatter.format_matching_table(matching_result, context=context)
         
         # Create action buttons
         keyboard = [
