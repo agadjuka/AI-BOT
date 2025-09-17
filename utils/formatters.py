@@ -35,30 +35,6 @@ class NumberFormatter:
             return formatted
     
     @staticmethod
-    def format_number_compact(number: Optional[float]) -> str:
-        """Format number without spaces for mobile display"""
-        # Handle None values
-        if number is None:
-            return "0"
-        
-        # Always show number as integer if it's whole
-        if number == int(number):
-            return str(int(number))
-        else:
-            # If there are decimal places, use comma as decimal separator
-            formatted = f"{number:.2f}"
-            # Remove trailing zeros from decimal part
-            if '.' in formatted:
-                parts = formatted.split('.')
-                if len(parts) == 2:
-                    decimal_part = parts[1].rstrip('0')
-                    if decimal_part:
-                        return f"{parts[0]},{decimal_part}"
-                    else:
-                        return parts[0]
-            return formatted
-    
-    @staticmethod
     def get_display_width(text: str) -> int:
         """Calculate real text width considering emojis and Markdown formatting"""
         if not text:
@@ -362,11 +338,11 @@ class ReceiptFormatter:
         max_price_length = max(len(self.number_formatter.format_number_with_spaces(item.price)) for item in items)
         max_total_length = max(len(self.number_formatter.format_number_with_spaces(item.total)) for item in items)
         
-        # Set fixed column widths (optimized for mobile devices - total width exactly 40 characters)
+        # Set fixed column widths (optimized for mobile devices - total width exactly 39 characters)
         number_width = 1    # Fixed width 1 character for number
         product_width = 8   # Fixed width 8 characters for products column
         quantity_width = 3  # Fixed width 3 characters for quantity (for decimal numbers)
-        price_width = 7     # Fixed width 7 characters for price
+        price_width = 6     # Fixed width 6 characters for price
         total_width = 7     # Fixed width 7 characters for total
         status_width = 1    # Fixed width 1 character for status
         

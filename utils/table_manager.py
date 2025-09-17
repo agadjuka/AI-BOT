@@ -32,11 +32,7 @@ class TableManager:
             DeviceType: Тип устройства
         """
         if context and hasattr(context, 'user_data'):
-            # Пробуем получить user_id из разных источников
             user_id = context.user_data.get('user_id')
-            if not user_id and hasattr(context, 'effective_user'):
-                user_id = context.effective_user.id if context.effective_user else None
-            
             if user_id:
                 try:
                     # Получаем сохраненную настройку пользователя
@@ -123,18 +119,10 @@ class TableManager:
             str: Отформатированная таблица
         """
         device_type = await self.detect_device_type(context)
-        
-        # Получаем user_id для конфигурации
-        user_id = None
-        if context and hasattr(context, 'user_data'):
-            user_id = context.user_data.get('user_id')
-        if not user_id and context and hasattr(context, 'effective_user'):
-            user_id = context.effective_user.id if context.effective_user else None
-        
         config = self.config_manager.get_config(
             TableType.GOOGLE_SHEETS_MATCHING, 
             device_type, 
-            user_id
+            context.user_data.get('user_id') if context else None
         )
         
         if not result.matches:
@@ -474,7 +462,7 @@ class TableManager:
         # Ограничиваем количество строк, но не общую длину текста
         lines = wrapped_text.split('\n')
         if len(lines) > 5:  # Максимум 5 строк для читаемости
-            return '\n'.join(lines[:5])  # Убираем многоточие, показываем все строки
+            return '\n'.join(lines[:4]) + '\n...'
         
         return wrapped_text
     
@@ -499,8 +487,8 @@ class TableManager:
                 # Разбиваем длинное слово на части
                 remaining_word = word
                 while len(remaining_word) > max_width:
-                    lines.append(remaining_word[:max_width])
-                    remaining_word = remaining_word[max_width:]
+                    lines.append(remaining_word[:max_width-3] + "...")
+                    remaining_word = remaining_word[max_width-3:]
                 if remaining_word:
                     current_line = remaining_word
                 continue
