@@ -746,7 +746,7 @@ class CallbackHandlers(BaseCallbackHandler):
         table_data = self._create_table_preview_data(context)
         
         # Generate table preview using TableManager
-        table_preview = self._generate_table_preview(table_data, context)
+        table_preview = await self._generate_table_preview(table_data, context, update)
         
         # Create message text
         title = self.get_text("add_sheet.step3_title", context, update=update, sheet_name=sheet_name)
@@ -811,8 +811,75 @@ class CallbackHandlers(BaseCallbackHandler):
         
         return [column_headers, field_headers]
     
-    def _generate_table_preview(self, table_data: list, context: ContextTypes.DEFAULT_TYPE) -> str:
-        """Generate table preview using ReceiptFormatter style"""
+    async def _generate_table_preview(self, table_data: list, context: ContextTypes.DEFAULT_TYPE, update=None) -> str:
+        """Generate table preview - automatically choose desktop or mobile version based on device type"""
+        try:
+            # Import DeviceType here to avoid circular imports
+            from config.table_config import DeviceType
+            
+            # Detect device type
+            device_type = await self._detect_device_type(context, update)
+            
+            if device_type == DeviceType.MOBILE:
+                return self._generate_table_preview_mobile(table_data, context)
+            else:
+                return self._generate_table_preview_desktop(table_data, context)
+                
+        except Exception as e:
+            print(f"❌ Error in device detection, falling back to desktop: {e}")
+            return self._generate_table_preview_desktop(table_data, context)
+    
+    async def _detect_device_type(self, context: ContextTypes.DEFAULT_TYPE, update=None):
+        """Detect device type from context or user settings in Firestore"""
+        try:
+            # Get user ID from context (check both possible keys)
+            user_id = context.user_data.get('user_id') or context.user_data.get('_current_user_id')
+            
+            # If not found in context, try to get from update
+            if not user_id and update and hasattr(update, 'effective_user'):
+                user_id = getattr(update.effective_user, 'id', None)
+                if user_id:
+                    # Save to context for future use
+                    context.user_data['_current_user_id'] = user_id
+                    print(f"DEBUG: Got user_id from update and saved to context: {user_id}")
+            
+            if not user_id:
+                print("⚠️ No user_id in context or update, using default desktop mode")
+                from config.table_config import DeviceType
+                return DeviceType.DESKTOP
+            
+            # Import UserService
+            from services.user_service import get_user_service
+            from google.cloud import firestore
+            
+            # Get Firestore instance
+            import main
+            db = main.db
+            
+            if not db:
+                print("⚠️ Firestore not available, using default desktop mode")
+                from config.table_config import DeviceType
+                return DeviceType.DESKTOP
+            
+            # Get user service and check display mode
+            user_service = get_user_service(db)
+            display_mode = await user_service.get_user_display_mode(user_id)
+            
+            from config.table_config import DeviceType
+            if display_mode == 'mobile':
+                print(f"✅ User {user_id} has mobile display mode enabled")
+                return DeviceType.MOBILE
+            else:
+                print(f"✅ User {user_id} has desktop display mode enabled")
+                return DeviceType.DESKTOP
+            
+        except Exception as e:
+            print(f"❌ Error detecting device type: {e}")
+            from config.table_config import DeviceType
+            return DeviceType.DESKTOP
+    
+    def _generate_table_preview_desktop(self, table_data: list, context: ContextTypes.DEFAULT_TYPE) -> str:
+        """Generate desktop table preview using ReceiptFormatter style"""
         try:
             # Set column widths - first column (row numbers) is 2 characters, others are 10
             number_width = 2    # First column for row numbers
@@ -856,13 +923,100 @@ class CallbackHandlers(BaseCallbackHandler):
         except Exception as e:
             print(f"❌ Error generating table preview: {e}")
             # Fallback to simple table
-            return self._create_simple_table_preview(table_data)
+            return self._create_simple_table_preview_desktop(table_data)
     
-    def _create_simple_table_preview(self, table_data: list) -> str:
-        """Create simple table preview as fallback"""
+    def _create_simple_table_preview_desktop(self, table_data: list) -> str:
+        """Create simple desktop table preview as fallback"""
         # Use same column widths as main method
         number_width = 2    # First column for row numbers
         column_width = 10   # Other columns
+        
+        lines = []
+        
+        # First row - column letters (A, B, C, D, E)
+        if len(table_data) > 0:
+            row = table_data[0]
+            header_parts = []
+            for j, cell in enumerate(row):
+                if j == 0:  # Empty cell for row numbers
+                    header_parts.append(f"{'':^{number_width}}")
+                else:  # Column letters
+                    header_parts.append(f"{cell:^{column_width}}")
+            lines.append("|".join(header_parts) + "|")  # Add closing vertical separator
+        
+        # Second row - separator line
+        separator = "─" * (number_width + column_width * 5 + 6)  # 1 number column + 5 data columns + 6 separators
+        lines.append(separator)
+        
+        # Third row - field headers
+        if len(table_data) > 1:
+            row = table_data[1]
+            line_number = row[0] if len(row) > 0 else "1"
+            date = row[1] if len(row) > 1 else ""
+            product = row[2] if len(row) > 2 else ""
+            quantity = row[3] if len(row) > 3 else ""
+            price = row[4] if len(row) > 4 else ""
+            total = row[5] if len(row) > 5 else ""
+            
+            line = f"{line_number:^{number_width}}|{date:^{column_width}}|{product:^{column_width}}|{quantity:^{column_width}}|{price:^{column_width}}|{total:^{column_width}}|"
+            lines.append(line)
+        
+        table_content = "\n".join(lines)
+        return f"<pre><code>{table_content}</code></pre>"
+    
+    def _generate_table_preview_mobile(self, table_data: list, context: ContextTypes.DEFAULT_TYPE) -> str:
+        """Generate mobile table preview using ReceiptFormatter style - 38 characters total width"""
+        try:
+            # Set column widths for mobile - total 38 characters
+            # 2 + 6 + 6 + 6 + 6 + 6 + 6 separators = 38 characters
+            number_width = 2    # First column for row numbers
+            column_width = 6    # Other columns (5 columns * 6 = 30, + separators = 38)
+            
+            lines = []
+            
+            # First row - column letters (A, B, C, D, E)
+            if len(table_data) > 0:
+                row = table_data[0]
+                header_parts = []
+                for j, cell in enumerate(row):
+                    if j == 0:  # Empty cell for row numbers
+                        header_parts.append(f"{'':^{number_width}}")
+                    else:  # Column letters
+                        header_parts.append(f"{cell:^{column_width}}")
+                lines.append("|".join(header_parts) + "|")  # Add closing vertical separator
+            
+            # Second row - separator line
+            separator = "─" * (number_width + column_width * 5 + 6)  # 1 number column + 5 data columns + 6 separators
+            lines.append(separator)
+            
+            # Third row - field headers
+            if len(table_data) > 1:
+                row = table_data[1]
+                line_number = row[0] if len(row) > 0 else "1"
+                date = row[1] if len(row) > 1 else ""
+                product = row[2] if len(row) > 2 else ""
+                quantity = row[3] if len(row) > 3 else ""
+                price = row[4] if len(row) > 4 else ""
+                total = row[5] if len(row) > 5 else ""
+                
+                line = f"{line_number:^{number_width}}|{date:^{column_width}}|{product:^{column_width}}|{quantity:^{column_width}}|{price:^{column_width}}|{total:^{column_width}}|"
+                lines.append(line)
+            
+            # Wrap in HTML pre/code block for monospace font
+            table_content = "\n".join(lines)
+            result = f"<pre><code>{table_content}</code></pre>"
+            return result
+            
+        except Exception as e:
+            print(f"❌ Error generating mobile table preview: {e}")
+            # Fallback to simple table
+            return self._create_simple_table_preview_mobile(table_data)
+    
+    def _create_simple_table_preview_mobile(self, table_data: list) -> str:
+        """Create simple mobile table preview as fallback - 38 characters total width"""
+        # Use same column widths as main method
+        number_width = 2    # First column for row numbers
+        column_width = 6    # Other columns (5 columns * 6 = 30, + separators = 38)
         
         lines = []
         
