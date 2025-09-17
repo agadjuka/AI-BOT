@@ -1,78 +1,63 @@
 """
 Ленивый загрузчик OpenCV для оптимизации производительности
-Загружает OpenCV только при необходимости и выгружает после использования
+Загружает OpenCV только при необходимости с полной изоляцией для параллельной обработки
 """
 import sys
 import gc
 from typing import Optional, Any
 import warnings
 
-# Глобальная переменная для отслеживания загруженного OpenCV
-_cv2_module: Optional[Any] = None
-_opencv_loaded = False
-
 def get_opencv():
     """
-    Ленивая загрузка OpenCV - загружает модуль только при первом вызове
+    Ленивая загрузка OpenCV - создает новый экземпляр каждый раз для параллельной обработки
     """
-    global _cv2_module, _opencv_loaded
-    
-    if not _opencv_loaded:
-        try:
-            print("🔍 Загружаем OpenCV для анализа изображения...")
-            import cv2
-            _cv2_module = cv2
-            _opencv_loaded = True
-            print("✅ OpenCV загружен успешно")
-        except ImportError as e:
-            print(f"❌ Ошибка загрузки OpenCV: {e}")
-            raise
-        except Exception as e:
-            print(f"❌ Неожиданная ошибка при загрузке OpenCV: {e}")
-            raise
-    
-    return _cv2_module
+    try:
+        print("🔍 Загружаем OpenCV для анализа изображения...")
+        import cv2
+        print("✅ OpenCV загружен успешно")
+        return cv2
+    except ImportError as e:
+        print(f"❌ Ошибка загрузки OpenCV: {e}")
+        raise
+    except Exception as e:
+        print(f"❌ Неожиданная ошибка при загрузке OpenCV: {e}")
+        raise
 
 def unload_opencv():
     """
     Выгружает OpenCV из памяти для освобождения ресурсов
     """
-    global _cv2_module, _opencv_loaded
-    
-    if _opencv_loaded and _cv2_module is not None:
+    try:
+        print("🧹 Выгружаем OpenCV из памяти...")
+        
+        # Очищаем кэш OpenCV (если доступно)
         try:
-            print("🧹 Выгружаем OpenCV из памяти...")
-            
-            # Очищаем кэш OpenCV (если доступно)
-            try:
-                if hasattr(_cv2_module, 'destroyAllWindows'):
-                    _cv2_module.destroyAllWindows()
-            except Exception:
-                # Игнорируем ошибки destroyAllWindows (не критично)
-                pass
-            
-            # Удаляем модуль из sys.modules
             if 'cv2' in sys.modules:
-                del sys.modules['cv2']
-            
-            # Очищаем глобальную переменную
-            _cv2_module = None
-            _opencv_loaded = False
-            
-            # Принудительная сборка мусора
-            gc.collect()
-            
-            print("✅ OpenCV выгружен из памяти")
-            
-        except Exception as e:
-            print(f"⚠️ Ошибка при выгрузке OpenCV: {e}")
-            # Не поднимаем исключение - это не критично
+                cv2_module = sys.modules['cv2']
+                if hasattr(cv2_module, 'destroyAllWindows'):
+                    cv2_module.destroyAllWindows()
+        except Exception:
+            # Игнорируем ошибки destroyAllWindows (не критично)
+            pass
+        
+        # Удаляем модуль из sys.modules
+        if 'cv2' in sys.modules:
+            del sys.modules['cv2']
+        
+        # Принудительная сборка мусора
+        gc.collect()
+        
+        print("✅ OpenCV выгружен из памяти")
+        
+    except Exception as e:
+        print(f"⚠️ Ошибка при выгрузке OpenCV: {e}")
+        # Не поднимаем исключение - это не критично
 
 def is_opencv_loaded() -> bool:
     """
-    Проверяет, загружен ли OpenCV
+    Проверяет, загружен ли OpenCV в sys.modules
     """
-    return _opencv_loaded and _cv2_module is not None
+    return 'cv2' in sys.modules
 
 def with_opencv(func):
     """
@@ -80,7 +65,7 @@ def with_opencv(func):
     Автоматически загружает OpenCV перед выполнением и выгружает после
     """
     def wrapper(*args, **kwargs):
-        # Загружаем OpenCV
+        # Загружаем OpenCV (создает новый экземпляр)
         cv2 = get_opencv()
         
         try:
@@ -98,7 +83,7 @@ def with_opencv_async(func):
     Асинхронный декоратор для функций, которые используют OpenCV
     """
     async def wrapper(*args, **kwargs):
-        # Загружаем OpenCV
+        # Загружаем OpenCV (создает новый экземпляр)
         cv2 = get_opencv()
         
         try:
@@ -114,18 +99,59 @@ def with_opencv_async(func):
 class OpenCVContext:
     """
     Контекстный менеджер для работы с OpenCV
-    Автоматически загружает и выгружает OpenCV
+    Автоматически загружает и выгружает OpenCV с полной изоляцией для параллельной обработки
     """
     
     def __init__(self):
         self.cv2 = None
+        self._is_loaded = False
     
     def __enter__(self):
-        self.cv2 = get_opencv()
+        # Загружаем OpenCV для этого конкретного контекста
+        try:
+            print("🔍 Загружаем OpenCV для анализа изображения...")
+            import cv2
+            self.cv2 = cv2
+            self._is_loaded = True
+            print("✅ OpenCV загружен успешно")
+        except ImportError as e:
+            print(f"❌ Ошибка загрузки OpenCV: {e}")
+            raise
+        except Exception as e:
+            print(f"❌ Неожиданная ошибка при загрузке OpenCV: {e}")
+            raise
         return self.cv2
     
     def __exit__(self, exc_type, exc_val, exc_tb):
-        unload_opencv()
+        # Выгружаем OpenCV только если мы его загружали
+        if self._is_loaded and self.cv2 is not None:
+            try:
+                print("🧹 Выгружаем OpenCV из памяти...")
+                
+                # Очищаем кэш OpenCV (если доступно)
+                try:
+                    if hasattr(self.cv2, 'destroyAllWindows'):
+                        self.cv2.destroyAllWindows()
+                except Exception:
+                    # Игнорируем ошибки destroyAllWindows (не критично)
+                    pass
+                
+                # Удаляем модуль из sys.modules
+                if 'cv2' in sys.modules:
+                    del sys.modules['cv2']
+                
+                # Очищаем локальную переменную
+                self.cv2 = None
+                self._is_loaded = False
+                
+                # Принудительная сборка мусора
+                gc.collect()
+                
+                print("✅ OpenCV выгружен из памяти")
+                
+            except Exception as e:
+                print(f"⚠️ Ошибка при выгрузке OpenCV: {e}")
+                # Не поднимаем исключение - это не критично
         return False  # Не подавляем исключения
 
 # Функция для проверки доступности OpenCV без загрузки
