@@ -1051,8 +1051,8 @@ class CallbackHandlers(BaseCallbackHandler):
         table_content = "\n".join(lines)
         return f"<pre><code>{table_content}</code></pre>"
     
-    def _create_mapping_editor_table_preview(self, column_mapping: dict, context: ContextTypes.DEFAULT_TYPE) -> str:
-        """Create table preview for mapping editor with smart 5-column window"""
+    def _create_mapping_editor_table_preview_desktop(self, column_mapping: dict, context: ContextTypes.DEFAULT_TYPE) -> str:
+        """Create desktop table preview for mapping editor with smart 5-column window"""
         # Use the same table structure as Table Configuration (Step 3 of 3)
         # Set column widths - first column (row numbers) is 2 characters, others are 10
         number_width = 2    # First column for row numbers
@@ -1101,6 +1101,76 @@ class CallbackHandlers(BaseCallbackHandler):
         # Wrap in HTML pre/code block for monospace font
         table_content = "\n".join(lines)
         return f"<pre><code>{table_content}</code></pre>"
+    
+    def _create_mapping_editor_table_preview_mobile(self, column_mapping: dict, context: ContextTypes.DEFAULT_TYPE) -> str:
+        """Create mobile table preview for mapping editor with smart 5-column window - 38 characters total width"""
+        # Use the same table structure as Table Configuration (Step 3 of 3)
+        # Set column widths for mobile - total 38 characters
+        # 2 + 6 + 6 + 6 + 6 + 6 + 6 separators = 38 characters
+        number_width = 2    # First column for row numbers
+        column_width = 6    # Other columns (5 columns * 6 = 30, + separators = 38)
+        
+        lines = []
+        
+        # Smart 5-column window algorithm
+        display_columns = self._get_smart_5_column_window(column_mapping)
+        
+        # First row - dynamic column letters (always exactly 5)
+        header_parts = []
+        header_parts.append(f"{'':^{number_width}}")  # Empty cell for row numbers
+        for col in display_columns:
+            header_parts.append(f"{col:^{column_width}}")
+        lines.append("|".join(header_parts) + "|")  # Add closing vertical separator
+        
+        # Second row - separator line
+        separator = "─" * (number_width + column_width * 5 + 6)  # 1 number column + 5 data columns + 6 separators
+        lines.append(separator)
+        
+        # Third row - field names mapped to columns
+        row_parts = []
+        row_parts.append(f"{'1':^{number_width}}")  # Row number
+        
+        # Map fields to columns - show field names only if mapped, otherwise show dashes
+        field_mapping = {
+            'check_date': 'Date',
+            'product_name': 'Product',
+            'quantity': 'Qty',
+            'price_per_item': 'Price',
+            'total_price': 'Sum'
+        }
+        
+        for col in display_columns:
+            # Find which field is mapped to this column
+            field_name = "---"
+            for field_key, mapped_col in column_mapping.items():
+                if mapped_col == col:
+                    field_name = field_mapping.get(field_key, field_key)
+                    break
+            row_parts.append(f"{field_name:^{column_width}}")
+        
+        lines.append("|".join(row_parts) + "|")
+        
+        # Wrap in HTML pre/code block for monospace font
+        table_content = "\n".join(lines)
+        return f"<pre><code>{table_content}</code></pre>"
+    
+    async def _create_mapping_editor_table_preview(self, column_mapping: dict, context: ContextTypes.DEFAULT_TYPE, update=None) -> str:
+        """Create table preview for mapping editor - automatically choose desktop or mobile version based on device type"""
+        try:
+            # Import DeviceType here to avoid circular imports
+            from config.table_config import DeviceType
+            
+            # Detect device type
+            device_type = await self._detect_device_type(context, update)
+            
+            if device_type == DeviceType.MOBILE:
+                return self._create_mapping_editor_table_preview_mobile(column_mapping, context)
+            else:
+                return self._create_mapping_editor_table_preview_desktop(column_mapping, context)
+                
+        except Exception as e:
+            print(f"❌ Error in device detection for mapping editor, falling back to desktop: {e}")
+            return self._create_mapping_editor_table_preview_desktop(column_mapping, context)
     
     def _get_smart_5_column_window(self, column_mapping: dict) -> list:
         """
@@ -1323,7 +1393,7 @@ class CallbackHandlers(BaseCallbackHandler):
         description = self.get_text("add_sheet.mapping_editor.description", context, update=update)
         
         # Create table preview data
-        table_preview = self._create_mapping_editor_table_preview(column_mapping, context)
+        table_preview = await self._create_mapping_editor_table_preview(column_mapping, context, update)
         
         # Get current sheet name
         current_sheet_name = context.user_data.get('sheet_name', 'Sheet1')
