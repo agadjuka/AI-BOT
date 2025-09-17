@@ -588,11 +588,11 @@ class GoogleSheetsCallbackHandler(BaseCallbackHandler):
         # Доступно для колонок: 40 - 12 = 28 символов
         # Цены и суммы делаем одинаковой ширины для лучшего выравнивания
         mobile_field_widths = {
-            'check_date': 4,      # 5 - 1 = 4
-            'product_name': 9,    # 10 - 1 = 9
+            'check_date': 5,      # 4 + 1 = 5 (увеличиваем дату)
+            'product_name': 9,    # без изменений
             'quantity': 3,        # без изменений
-            'unit_price': 6,      # 5 + 1 = 6 (одинаковая с total_price)
-            'total_price': 6      # 5 + 1 = 6 (одинаковая с unit_price)
+            'unit_price': 5,      # 6 - 1 = 5 (уменьшаем цену)
+            'total_price': 6      # без изменений (оставляем сумму больше для итогов)
         }
         
         # Выбираем нужные ширины в зависимости от типа устройства
@@ -689,7 +689,14 @@ class GoogleSheetsCallbackHandler(BaseCallbackHandler):
             # Заполняем данные для каждой колонки
             for field_name, column_letter in column_mapping.items():
                 if field_name == 'check_date':
-                    row_data[column_letter.lower()] = datetime.now().strftime('%d.%m.%Y')
+                    # Для отображения в таблице предпросмотра используем короткий формат даты
+                    # Для загрузки в Google Sheets будет использоваться полная дата
+                    if device_type == DeviceType.MOBILE:
+                        # Короткий формат для мобильной версии: 17.09
+                        row_data[column_letter.lower()] = datetime.now().strftime('%d.%m')
+                    else:
+                        # Полный формат для десктопной версии: 17.09.2025
+                        row_data[column_letter.lower()] = datetime.now().strftime('%d.%m.%Y')
                 elif field_name == 'product_name':
                     # Для красных маркеров (NO_MATCH) используем название из чека (Gemini recognition)
                     # Для зеленых и желтых маркеров используем сопоставленное название
