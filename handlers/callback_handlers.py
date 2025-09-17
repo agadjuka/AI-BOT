@@ -1839,11 +1839,11 @@ class CallbackHandlers(BaseCallbackHandler):
         else:
             message = self.get_text("turbo_mode.disabled_simple", context, update=update)
         
-        # Send temporary message that will be deleted after 3 seconds
+        # Send temporary message that will be deleted after 1 second
         temp_message = await query.message.reply_text(message)
         
-        # Delete the temporary message after 3 seconds
-        asyncio.create_task(self._delete_message_after_delay(context.bot, temp_message.chat_id, temp_message.message_id, 3))
+        # Delete the temporary message after 1 second
+        asyncio.create_task(self._delete_message_after_delay(context.bot, temp_message.chat_id, temp_message.message_id, 1))
         
         # Return to dashboard without changing the current message
         return self.config.AWAITING_CORRECTION
