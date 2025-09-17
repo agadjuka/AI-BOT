@@ -39,6 +39,10 @@ class GoogleSheetsCallbackHandler(BaseCallbackHandler):
         query = update.callback_query
         await query.answer()
         
+        # Ensure user_id is in context
+        if not context.user_data.get('user_id') and update.effective_user:
+            context.user_data['user_id'] = update.effective_user.id
+        
         # Get data from parameters or context
         receipt_data, matching_result = self._get_data_from_context_or_params(
             context, receipt_data, matching_result

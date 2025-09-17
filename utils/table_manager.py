@@ -32,7 +32,11 @@ class TableManager:
             DeviceType: Тип устройства
         """
         if context and hasattr(context, 'user_data'):
+            # Пробуем получить user_id из разных источников
             user_id = context.user_data.get('user_id')
+            if not user_id and hasattr(context, 'effective_user'):
+                user_id = context.effective_user.id if context.effective_user else None
+            
             if user_id:
                 try:
                     # Получаем сохраненную настройку пользователя
@@ -119,10 +123,18 @@ class TableManager:
             str: Отформатированная таблица
         """
         device_type = await self.detect_device_type(context)
+        
+        # Получаем user_id для конфигурации
+        user_id = None
+        if context and hasattr(context, 'user_data'):
+            user_id = context.user_data.get('user_id')
+        if not user_id and context and hasattr(context, 'effective_user'):
+            user_id = context.effective_user.id if context.effective_user else None
+        
         config = self.config_manager.get_config(
             TableType.GOOGLE_SHEETS_MATCHING, 
             device_type, 
-            context.user_data.get('user_id') if context else None
+            user_id
         )
         
         if not result.matches:

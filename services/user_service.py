@@ -385,6 +385,12 @@ class UserService:
         """
         if not self.db:
             print("❌ Firestore not available")
+            # Проверяем переменную окружения для локальной разработки
+            import os
+            env_display_mode = os.getenv('DISPLAY_MODE', '').lower()
+            if env_display_mode in ['desktop', 'mobile']:
+                print(f"✅ Using display mode from environment: {env_display_mode}")
+                return env_display_mode
             return "mobile"
         
         try:

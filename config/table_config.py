@@ -110,18 +110,18 @@ class TableConfigManager:
             max_items_per_page=15
         )
         
-        # Таблица Google Sheets - мобильная версия
+        # Таблица Google Sheets - мобильная версия (40 символов)
         self._configs["google_sheets_matching_mobile"] = TableConfig(
             table_type=TableType.GOOGLE_SHEETS_MATCHING,
             device_type=DeviceType.MOBILE,
             columns=[
                 ColumnConfig("number", "№", 2, "right"),
-                ColumnConfig("receipt_item", "formatters.table_headers.name", 25, "left"),
-                ColumnConfig("google_sheets", "formatters.table_headers.ingredient", 20, "left"),
+                ColumnConfig("receipt_item", "formatters.table_headers.name", 13, "left"),
+                ColumnConfig("google_sheets", "formatters.table_headers.ingredient", 12, "left"),
                 ColumnConfig("status", "", 4, "center")
             ],
             style=TableStyle(
-                max_name_length=30,
+                max_name_length=13,
                 compact_mode=True,
                 show_separators=True
             ),
@@ -129,18 +129,18 @@ class TableConfigManager:
             max_items_per_page=8
         )
         
-        # Таблица Google Sheets - десктопная версия
+        # Таблица Google Sheets - десктопная версия (50 символов)
         self._configs["google_sheets_matching_desktop"] = TableConfig(
             table_type=TableType.GOOGLE_SHEETS_MATCHING,
             device_type=DeviceType.DESKTOP,
             columns=[
                 ColumnConfig("number", "№", 2, "right"),
-                ColumnConfig("receipt_item", "formatters.table_headers.name", 35, "left"),
-                ColumnConfig("google_sheets", "formatters.table_headers.ingredient", 30, "left"),
-                ColumnConfig("status", "", 6, "center")
+                ColumnConfig("receipt_item", "formatters.table_headers.name", 19, "left"),
+                ColumnConfig("google_sheets", "formatters.table_headers.ingredient", 16, "left"),
+                ColumnConfig("status", "", 4, "center")
             ],
             style=TableStyle(
-                max_name_length=40,
+                max_name_length=19,
                 compact_mode=False,
                 show_separators=True
             ),
