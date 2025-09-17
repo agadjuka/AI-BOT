@@ -4,7 +4,6 @@ Refactored callback handlers for Telegram bot - dispatcher only
 import asyncio
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import ContextTypes
-
 from config.settings import BotConfig
 from services.ai_service import ReceiptAnalysisServiceCompat
 from services.google_sheets_service import GoogleSheetsService
@@ -22,6 +21,7 @@ from config.table_config import TableType, DeviceType
 from config.locales.locale_manager import get_global_locale_manager
 from config.locales.language_buttons import get_language_keyboard
 from services.user_service import get_user_service
+from utils.safe_callback import safe_callback_answer, safe_edit_message
 
 
 class CallbackHandlers(BaseCallbackHandler):
@@ -59,7 +59,7 @@ class CallbackHandlers(BaseCallbackHandler):
     async def handle_correction_choice(self, update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
         """Handle correction choice callback - main dispatcher"""
         query = update.callback_query
-        await query.answer()
+        await safe_callback_answer(query)
         
         # Save user_id to context for language loading
         self.save_user_context(update, context)
@@ -100,7 +100,7 @@ class CallbackHandlers(BaseCallbackHandler):
             return await self.file_generation_dispatcher._handle_file_generation_actions(update, context, action)
         
         elif action == "finish":
-            await query.answer(self.get_text("buttons.finish", context, update=update))
+            await safe_callback_answer(query, self.get_text("buttons.finish", context, update=update))
             return self.config.AWAITING_CORRECTION
         
         elif action == "cancel":
@@ -181,7 +181,7 @@ class CallbackHandlers(BaseCallbackHandler):
         
         
         elif action == "noop":
-            await query.answer()
+            await safe_callback_answer(query)
             return self.config.AWAITING_CORRECTION
         
         # Ingredients management callbacks
@@ -196,13 +196,13 @@ class CallbackHandlers(BaseCallbackHandler):
             return await self._handle_table_settings_actions(update, context, action)
         
         else:
-            await query.answer(self.get_text("errors.unknown_action", context, update=update))
+            await safe_callback_answer(query, self.get_text("errors.unknown_action", context, update=update))
             return self.config.AWAITING_CORRECTION
     
     async def _handle_language_selection(self, update: Update, context: ContextTypes.DEFAULT_TYPE, action: str) -> int:
         """Handle language selection callback"""
         query = update.callback_query
-        await query.answer()
+        await safe_callback_answer(query)
         
         # Extract language code from action (e.g., "select_language_ru" -> "ru")
         language_code = action.replace("select_language_", "")
@@ -210,7 +210,7 @@ class CallbackHandlers(BaseCallbackHandler):
         
         # Validate language code
         if not self.locale_manager.is_language_supported(language_code):
-            await query.answer(self.get_text("errors.unsupported_language", context, update=update))
+            await safe_callback_answer(query, self.get_text("errors.unsupported_language", context, update=update))
             return self.config.AWAITING_CORRECTION
         
         # Set user language
@@ -258,7 +258,7 @@ class CallbackHandlers(BaseCallbackHandler):
     async def _cancel(self, update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
         """Cancel current operation"""
         query = update.callback_query
-        await query.answer()
+        await safe_callback_answer(query)
         
         # Clear all data
         self._clear_receipt_data(context)
@@ -273,13 +273,14 @@ class CallbackHandlers(BaseCallbackHandler):
     async def _handle_dashboard_language_settings(self, update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
         """Handle language settings from dashboard"""
         query = update.callback_query
-        await query.answer()
+        await safe_callback_answer(query)
         
         # Show language selection
         language_keyboard = get_language_keyboard()
         
-        await query.edit_message_text(
-            self.get_text("welcome.choose_language", context, update=update),
+        await safe_edit_message(
+            query,
+            text=self.get_text("welcome.choose_language", context, update=update),
             reply_markup=language_keyboard
         )
         
@@ -288,7 +289,7 @@ class CallbackHandlers(BaseCallbackHandler):
     async def _handle_dashboard_main(self, update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
         """Handle dashboard main button from main menu"""
         query = update.callback_query
-        await query.answer()
+        await safe_callback_answer(query)
         
         # Create dashboard keyboard using common method from message_handlers
         from handlers.message_handlers import MessageHandlers
@@ -355,17 +356,17 @@ class CallbackHandlers(BaseCallbackHandler):
                 print(f"Warning: Could not delete temporary message: {e}")
             
             # Answer callback query to remove loading state
-            await query.answer()
+            await safe_callback_answer(query)
         else:
             error_text = self.get_text("display_mode_notifications.error_switching", context, update=update)
-            await query.answer(error_text, show_alert=True)
+            await safe_callback_answer(query, error_text, show_alert=True)
         
         return self.config.AWAITING_CORRECTION
     
     async def _handle_dashboard_instruction(self, update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
         """Handle instruction button from dashboard"""
         query = update.callback_query
-        await query.answer()
+        await safe_callback_answer(query)
         
         # Create back button
         keyboard = [
@@ -389,7 +390,7 @@ class CallbackHandlers(BaseCallbackHandler):
     async def _handle_back_to_main_menu(self, update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
         """Handle back to main menu"""
         query = update.callback_query
-        await query.answer()
+        await safe_callback_answer(query)
         
         # Show main menu
         keyboard = [
@@ -423,7 +424,7 @@ class CallbackHandlers(BaseCallbackHandler):
         """Handle Google Sheets management button from dashboard"""
         query = update.callback_query
         if query:
-            await query.answer()
+            await safe_callback_answer(query)
         
         # Get user ID
         user_id = update.effective_user.id
@@ -531,7 +532,7 @@ class CallbackHandlers(BaseCallbackHandler):
     async def _handle_sheets_management_actions(self, update: Update, context: ContextTypes.DEFAULT_TYPE, action: str) -> int:
         """Handle Google Sheets management actions"""
         query = update.callback_query
-        await query.answer()
+        await safe_callback_answer(query)
         
         if action == "sheets_add_new":
             # Handle "Add new sheet" button - start FSM process
@@ -556,7 +557,7 @@ class CallbackHandlers(BaseCallbackHandler):
     async def _handle_add_new_sheet_step1(self, update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
         """Handle Step 1: Show instructions and service account email"""
         query = update.callback_query
-        await query.answer()
+        await safe_callback_answer(query)
         
         # Get service account email from credentials
         service_email = self._get_service_account_email()
@@ -1222,7 +1223,7 @@ class CallbackHandlers(BaseCallbackHandler):
     async def _handle_confirm_mapping_actions(self, update: Update, context: ContextTypes.DEFAULT_TYPE, action: str) -> int:
         """Handle confirmation mapping actions"""
         query = update.callback_query
-        await query.answer()
+        await safe_callback_answer(query)
         
         if action == "confirm_use_default_mapping":
             # Use default mapping - save sheet and finish
@@ -1356,7 +1357,7 @@ class CallbackHandlers(BaseCallbackHandler):
     async def _enter_mapping_editor(self, update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
         """Enter mapping editor mode"""
         query = update.callback_query
-        await query.answer()
+        await safe_callback_answer(query)
         
         # Get stored sheet data
         sheet_id = context.user_data.get('new_sheet_id')
@@ -1474,7 +1475,7 @@ class CallbackHandlers(BaseCallbackHandler):
     async def _handle_mapping_field_edit(self, update: Update, context: ContextTypes.DEFAULT_TYPE, field_key: str) -> int:
         """Handle field button press in mapping editor"""
         query = update.callback_query
-        await query.answer()
+        await safe_callback_answer(query)
         
         # Store which field we're editing
         context.user_data['field_to_edit'] = field_key
@@ -1499,7 +1500,7 @@ class CallbackHandlers(BaseCallbackHandler):
     async def _handle_mapping_editor_actions(self, update: Update, context: ContextTypes.DEFAULT_TYPE, action: str) -> int:
         """Handle mapping editor action buttons"""
         query = update.callback_query
-        await query.answer()
+        await safe_callback_answer(query)
         
         if action == "save_mapping_and_exit":
             # Save mapping and exit
@@ -1521,7 +1522,7 @@ class CallbackHandlers(BaseCallbackHandler):
     async def _handle_edit_sheet_name(self, update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
         """Handle edit sheet name button"""
         query = update.callback_query
-        await query.answer()
+        await safe_callback_answer(query)
         
         # Create message text
         message_text = self.get_text("add_sheet.mapping_editor.sheet_name_input", context, update=update)
@@ -1740,7 +1741,7 @@ class CallbackHandlers(BaseCallbackHandler):
     async def _handle_ingredients_management(self, update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
         """Handle ingredients management callback"""
         query = update.callback_query
-        await query.answer()
+        await safe_callback_answer(query)
         
         # Import ingredients menu handler
         from handlers.ingredients_menu.ingredients_menu_callback_handler import IngredientsMenuCallbackHandler
@@ -1773,7 +1774,7 @@ class CallbackHandlers(BaseCallbackHandler):
     async def _handle_table_settings_actions(self, update: Update, context: ContextTypes.DEFAULT_TYPE, action: str) -> int:
         """Handle table settings actions"""
         query = update.callback_query
-        await query.answer()
+        await safe_callback_answer(query)
         
         # Handle specific table settings actions
         if action == "table_settings_ingredient_matching":
@@ -1820,7 +1821,7 @@ class CallbackHandlers(BaseCallbackHandler):
     async def _handle_dashboard_turbo_mode(self, update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
         """Handle TURBO mode button from dashboard - simple toggle"""
         query = update.callback_query
-        await query.answer()
+        await safe_callback_answer(query)
         
         # Get current TURBO mode status from user data
         user_id = update.effective_user.id
@@ -1851,7 +1852,7 @@ class CallbackHandlers(BaseCallbackHandler):
     async def _handle_turbo_toggle(self, update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
         """Handle TURBO mode toggle"""
         query = update.callback_query
-        await query.answer()
+        await safe_callback_answer(query)
         
         # Toggle TURBO mode
         user_id = update.effective_user.id

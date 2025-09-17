@@ -686,7 +686,7 @@ async def keepalive_check():
 
 @app.post("/webhook")
 async def webhook(request: Request):
-    """Webhook endpoint for Telegram updates - ASYNC VERSION"""
+    """Webhook endpoint for Telegram updates - OPTIMIZED VERSION"""
     try:
         # Get the update from Telegram
         update_data = await request.json()
@@ -697,20 +697,22 @@ async def webhook(request: Request):
         if not application:
             return {"ok": True, "error": "Bot not initialized"}
         
-        # ASYNC PROCESSING: Process all updates asynchronously in background
-        # This allows multiple updates to be processed in parallel
         try:
             update = Update.de_json(update_data, application.bot)
             
             if not update:
                 return {"ok": True}
             
-            # КРИТИЧЕСКОЕ ИЗМЕНЕНИЕ: Запускаем обработку асинхронно в фоне
-            # Это позволяет webhook сразу вернуть ответ, а обработка работает параллельно
-            asyncio.create_task(application.process_update(update))
-            
-            # Сразу возвращаем ответ - webhook не блокируется!
-            return {"ok": True}
+            # ОПТИМИЗАЦИЯ: Для callback queries обрабатываем синхронно
+            # чтобы избежать таймаутов, для остальных - асинхронно
+            if update.callback_query:
+                # Синхронная обработка для callback queries
+                await application.process_update(update)
+                return {"ok": True}
+            else:
+                # Асинхронная обработка для остальных обновлений
+                asyncio.create_task(application.process_update(update))
+                return {"ok": True}
             
         except Exception as e:
             print(f"❌ Ошибка при обработке update: {e}")
