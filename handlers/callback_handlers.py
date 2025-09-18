@@ -1847,7 +1847,20 @@ class CallbackHandlers(BaseCallbackHandler):
         # Delete the temporary message after specified duration
         asyncio.create_task(self._delete_message_after_delay(context.bot, temp_message.chat_id, temp_message.message_id, duration))
         
-        # Return to dashboard without changing the current message
+        # Update dashboard with new turbo button state
+        from handlers.message_handlers import MessageHandlers
+        message_handlers = MessageHandlers(self.config, self.analysis_service)
+        keyboard, is_admin = await message_handlers._create_dashboard_keyboard(update, context)
+        
+        reply_markup = InlineKeyboardMarkup(keyboard)
+        
+        await query.edit_message_text(
+            self.get_text("welcome.dashboard.welcome_message", context, update=update, 
+                         user=update.effective_user.mention_html()),
+            reply_markup=reply_markup,
+            parse_mode='HTML'
+        )
+        
         return self.config.AWAITING_CORRECTION
     
     async def _handle_turbo_toggle(self, update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:

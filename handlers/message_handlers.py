@@ -153,6 +153,11 @@ class MessageHandlers(BaseMessageHandler):
         user_service = get_user_service()
         display_mode = await user_service.get_user_display_mode(user_id)
         
+        # Load turbo mode from Firestore if not already in context
+        if 'turbo_mode' not in context.user_data:
+            turbo_mode = await self._load_turbo_mode_from_firestore(user_id)
+            context.user_data['turbo_mode'] = turbo_mode
+        
         # Create display mode button text
         if display_mode == "desktop":
             mode_button_text = self.get_text("device_buttons.computer", context, update=update)
@@ -210,6 +215,37 @@ class MessageHandlers(BaseMessageHandler):
             return self.get_text("welcome.dashboard.buttons.turbo_mode_on", context, update=update)
         else:
             return self.get_text("welcome.dashboard.buttons.turbo_mode_off", context, update=update)
+    
+    async def _load_turbo_mode_from_firestore(self, user_id: int) -> bool:
+        """Load turbo mode setting from Firestore"""
+        try:
+            # Import Firestore client
+            from google.cloud import firestore
+            
+            # Get global Firestore instance
+            import main
+            db = main.db
+            
+            if not db:
+                print("❌ Firestore not available for loading turbo mode")
+                return False
+            
+            # Load from users/{user_id}/settings/turbo_mode
+            user_ref = db.collection('users').document(str(user_id))
+            user_doc = user_ref.get()
+            
+            if user_doc.exists:
+                user_data = user_doc.to_dict()
+                turbo_mode = user_data.get('turbo_mode', False)
+                print(f"✅ Turbo mode loaded from Firestore: user {user_id}, turbo={turbo_mode}")
+                return turbo_mode
+            else:
+                print(f"ℹ️ User {user_id} not found in Firestore, using default turbo=False")
+                return False
+                
+        except Exception as e:
+            print(f"❌ Error loading turbo mode from Firestore: {e}")
+            return False
     
     async def admin_commands(self, update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
         """Handle admin commands - show admin panel"""
