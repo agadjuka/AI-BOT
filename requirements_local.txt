@@ -1,31 +1,12 @@
-# Локальная версия зависимостей для разработки
-# Стабильные версии для Python 3.10+
+# Local development dependencies for template bot
 python-telegram-bot==20.7
-google-cloud-aiplatform==1.71.1
-vertexai==1.71.1
-
-# Фиксированные версии numpy и pandas для совместимости
-numpy==1.24.3
-pandas==2.0.3
-
-# Computer Vision библиотеки
-opencv-python-headless==4.8.1.78
-
-# Остальные зависимости
-openpyxl==3.1.2
-google-auth==2.23.4
-google-auth-oauthlib==1.1.0
-google-auth-httplib2==0.1.1
-google-api-python-client==2.108.0
+google-generativeai==0.8.3
 google-cloud-firestore==2.13.1
 
-# Асинхронные библиотеки для поддержки async/await
-httpx==0.25.2  # Асинхронные HTTP-запросы к Vertex AI и другим API (совместимо с python-telegram-bot)
-aiofiles==23.2.1  # Асинхронные файловые операции для работы с файлами без блокировки
-anyio==3.7.1  # Асинхронная совместимость для httpx и других библиотек (совместимо с fastapi)
+# Async libraries
+httpx==0.25.2
+aiofiles==23.2.1
+anyio==3.7.1
 
-# Дополнительные асинхронные зависимости (опционально)
-# asyncio-mqtt==0.16.1  # Асинхронный MQTT-клиент (раскомментировать если используется MQTT)
-
-# Для локальной разработки (не нужны для production)
+# For local development
 python-dotenv==1.0.0

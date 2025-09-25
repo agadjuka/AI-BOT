@@ -31,8 +31,10 @@ from google.cloud import firestore
 db = None
 try:
     # Попробуем инициализировать Firestore
-    db = firestore.Client(database='billscaner')
-    print("✅ Firestore клиент инициализирован успешно (база: billscaner)")
+    # Получаем имя базы данных из переменных окружения
+    database_name = os.getenv("FIRESTORE_DATABASE", "default")
+    db = firestore.Client(database=database_name)
+    print(f"✅ Firestore клиент инициализирован успешно (база: {database_name})")
 except Exception as e:
     print(f"❌ Ошибка инициализации Firestore: {e}")
     print("💡 В Cloud Run используется Application Default Credentials (ADC)")
@@ -58,16 +60,8 @@ except ImportError as e:
     np = None
     pd = None
 
-# Проверяем доступность OpenCV без его загрузки
-try:
-    from utils.opencv_lazy_loader import check_opencv_availability
-    opencv_available = check_opencv_availability()
-    print(f"✅ OpenCV доступен: {opencv_available}")
-    if not opencv_available:
-        print("⚠️ OpenCV недоступен - анализ изображений будет ограничен")
-except Exception as e:
-    print(f"⚠️ Не удалось проверить доступность OpenCV: {e}")
-    opencv_available = False
+# OpenCV removed for template - not needed for basic bot functionality
+opencv_available = False
 
 # Импорты с обработкой ошибок
 try:
@@ -76,9 +70,9 @@ try:
     from services.ai_service import AIService, ReceiptAnalysisServiceCompat, AIServiceFactory
     from handlers.message_handlers import MessageHandlers
     from handlers.callback_handlers import CallbackHandlers
-    from utils.ingredient_storage import IngredientStorage
+    # IngredientStorage removed for template
     from utils.message_sender import MessageSender
-    from google_sheets_handler import get_google_sheets_ingredients
+    # Google Sheets handler removed for template
     print("✅ Все модули импортированы успешно")
 except ImportError as e:
     print(f"❌ Ошибка импорта модулей: {e}")
@@ -89,9 +83,9 @@ except ImportError as e:
     ReceiptAnalysisServiceCompat = None
     MessageHandlers = None
     CallbackHandlers = None
-    IngredientStorage = None
+    # IngredientStorage removed for template
     MessageSender = None
-    get_google_sheets_ingredients = None
+    # get_google_sheets_ingredients = None  # Removed for template
 
 # Bot configuration - будет инициализирован позже
 TOKEN = None
@@ -102,29 +96,19 @@ app = FastAPI(title="AI Bot", description="Telegram Bot for receipt processing")
 
 # Global variables
 application: Optional[Application] = None
-ingredient_storage: Optional[IngredientStorage] = None
 keep_alive_task_obj: Optional[asyncio.Task] = None
 locale_manager_cache: Optional[object] = None
 
-async def cleanup_old_files_periodically(ingredient_storage: IngredientStorage) -> None:
-    """Async background task to clean up old files every 30 minutes"""
-    while True:
-        try:
-            await asyncio.sleep(1800)  # 30 minutes = 1800 seconds
-            ingredient_storage.cleanup_old_files()
-            print("🧹 Выполнена очистка старых файлов сопоставления")
-        except asyncio.CancelledError:
-            print("🧹 Задача очистки файлов отменена")
-            break
-        except Exception as e:
-            print(f"❌ Ошибка при очистке файлов: {e}")
-            # Продолжаем работу даже при ошибке
-            await asyncio.sleep(60)  # Ждем минуту перед следующей попыткой
+# Cleanup function removed for template - not needed for basic bot functionality
 
 async def send_keep_alive_request() -> None:
-    """Отправляет простой HTTP запрос на собственный URL для keep-alive - НЕЗАВИСИМАЯ ВЕРСИЯ"""
-    # Хардкодим URL сервиса - никаких зависимостей от переменных окружения
-    SERVICE_URL = "https://ai-bot-apmtihe4ga-as.a.run.app"
+    """Отправляет простой HTTP запрос на собственный URL для keep-alive"""
+    # Получаем URL сервиса из переменных окружения
+    SERVICE_URL = os.getenv("SERVICE_URL", "")
+    
+    if not SERVICE_URL:
+        print("⚠️ SERVICE_URL не установлен, пропускаем keep-alive")
+        return
     
     try:
         # Убираем trailing slash если есть
@@ -215,7 +199,7 @@ def create_application() -> Application:
     """Create and configure the Telegram application"""
     # Check if all required modules are available
     if not all([BotConfig, PromptManager, AIService, ReceiptAnalysisServiceCompat, 
-                MessageHandlers, CallbackHandlers, IngredientStorage]):
+                MessageHandlers, CallbackHandlers]):
         raise ImportError("Required modules are not available")
     
     # Initialize configuration
@@ -238,239 +222,28 @@ def create_application() -> Application:
     message_handlers = MessageHandlers(config, analysis_service)
     callback_handlers = CallbackHandlers(config, analysis_service)
     
-    # Initialize ingredient storage with 1 hour cleanup
-    ingredient_storage = IngredientStorage(max_age_hours=1)
+    # Ingredient storage removed for template - not needed for basic bot functionality
     
     # Create application
     application = Application.builder().token(TOKEN).concurrent_updates(True).build()
     
     
-    # Initialize empty Google Sheets ingredients - will be loaded on demand
-    application.bot_data["google_sheets_ingredients"] = {}
-    print("✅ Google Sheets ингредиенты будут загружены по требованию")
-    
-    # Preload GoogleSheetsManager to initialize Firestore connection
-    from services.google_sheets_manager import get_google_sheets_manager
-    sheets_manager = get_google_sheets_manager(db)
-    print("✅ GoogleSheetsManager предзагружен с Firestore")
-    
-    # Preload IngredientsManager to initialize Firestore connection
-    from services.ingredients_manager import get_ingredients_manager
-    ingredients_manager = get_ingredients_manager(db)
-    print("✅ IngredientsManager предзагружен с Firestore")
-    
-    # Preload UserService to initialize user role management
-    from services.user_service import get_user_service
-    user_service = get_user_service(db)
-    print("✅ UserService предзагружен с Firestore")
-    
-    # Preload GoogleSheetsService to initialize Google Sheets API
-    from services.google_sheets_service import GoogleSheetsService
-    google_sheets_service = GoogleSheetsService(
-        credentials_path=config.GOOGLE_SHEETS_CREDENTIALS if os.path.exists(config.GOOGLE_SHEETS_CREDENTIALS) else None,
-        spreadsheet_id=config.GOOGLE_SHEETS_SPREADSHEET_ID
-    )
-    print("✅ GoogleSheetsService предзагружен")
-    
-    # Debug Google Sheets configuration
-    print(f"🔍 Google Sheets configuration:")
-    print(f"  - Credentials path: {config.GOOGLE_SHEETS_CREDENTIALS}")
-    print(f"  - Spreadsheet ID: {config.GOOGLE_SHEETS_SPREADSHEET_ID}")
-    print(f"  - Service available: {google_sheets_service.is_available()}")
-    print(f"  - GOOGLE_APPLICATION_CREDENTIALS_JSON set: {bool(os.getenv('GOOGLE_APPLICATION_CREDENTIALS_JSON'))}")
-    print(f"  - GOOGLE_SHEETS_CREDENTIALS_JSON set: {bool(os.getenv('GOOGLE_SHEETS_CREDENTIALS_JSON'))}")
-    
-    # Test Google Sheets access
-    if google_sheets_service.is_available():
-        try:
-            # Try to access the spreadsheet to verify credentials
-            spreadsheet = google_sheets_service.service.spreadsheets().get(spreadsheetId=config.GOOGLE_SHEETS_SPREADSHEET_ID).execute()
-            print(f"✅ Google Sheets access verified - spreadsheet title: {spreadsheet.get('properties', {}).get('title', 'Unknown')}")
-        except Exception as e:
-            print(f"❌ Google Sheets access failed: {e}")
-            print(f"💡 This might be due to:")
-            print(f"   - Invalid credentials")
-            print(f"   - Insufficient permissions")
-            print(f"   - Spreadsheet not accessible")
-    else:
-        print("❌ Google Sheets service not available")
-    
-    # Подробная отладка credentials
-    google_sheets_credentials_json = os.getenv('GOOGLE_SHEETS_CREDENTIALS_JSON')
-    if google_sheets_credentials_json:
-        try:
-            import json
-            credentials_info = json.loads(google_sheets_credentials_json)
-            print(f"  - NEW Credentials project_id: {credentials_info.get('project_id', 'Не найден')}")
-            print(f"  - NEW Credentials client_email: {credentials_info.get('client_email', 'Не найден')}")
-            print(f"  - NEW Credentials type: {credentials_info.get('type', 'Не найден')}")
-        except Exception as e:
-            print(f"  - Ошибка парсинга NEW credentials JSON: {e}")
-    else:
-        print("  - GOOGLE_SHEETS_CREDENTIALS_JSON не установлена")
-        
-        # Fallback to old credentials
-        google_credentials_json = os.getenv('GOOGLE_APPLICATION_CREDENTIALS_JSON')
-        if google_credentials_json:
-            try:
-                import json
-                credentials_info = json.loads(google_credentials_json)
-                print(f"  - OLD Credentials project_id: {credentials_info.get('project_id', 'Не найден')}")
-                print(f"  - OLD Credentials client_email: {credentials_info.get('client_email', 'Не найден')}")
-                print(f"  - OLD Credentials type: {credentials_info.get('type', 'Не найден')}")
-            except Exception as e:
-                print(f"  - Ошибка парсинга OLD credentials JSON: {e}")
-        else:
-            print("  - GOOGLE_APPLICATION_CREDENTIALS_JSON также не установлена")
-    
-    # Проверяем файл credentials
-    if os.path.exists(config.GOOGLE_SHEETS_CREDENTIALS):
-        print(f"  - Файл credentials существует: ✅")
-        try:
-            with open(config.GOOGLE_SHEETS_CREDENTIALS, 'r') as f:
-                file_content = f.read()
-                if file_content.strip():
-                    print(f"  - Размер файла: {len(file_content)} символов")
-                else:
-                    print(f"  - Файл пустой: ❌")
-        except Exception as e:
-            print(f"  - Ошибка чтения файла: {e}")
-    else:
-        print(f"  - Файл credentials не существует: ❌")
+    # Services removed for template - only basic bot functionality remains
+    print("✅ Template mode: Advanced services disabled")
 
-    # Create conversation handler
+    # Create simple conversation handler for template
     conv_handler = ConversationHandler(
         entry_points=[
             CommandHandler("start", message_handlers.start),
-            CommandHandler("reset_language", message_handlers.reset_language),
-            CommandHandler("dashboard", message_handlers.dashboard),
-            CommandHandler("admin", message_handlers.admin_commands),
-            CommandHandler("add_whitelist", message_handlers.add_to_whitelist),
-            CommandHandler("remove_whitelist", message_handlers.remove_from_whitelist),
-            CommandHandler("list_whitelist", message_handlers.list_whitelist),
-            MessageHandler(filters.PHOTO, message_handlers.handle_photo)
+            CommandHandler("help", message_handlers.help_command),
+            MessageHandler(filters.TEXT & ~filters.COMMAND, message_handlers.handle_text)
         ],
         states={
-            config.AWAITING_CORRECTION: [
-                CallbackQueryHandler(callback_handlers.handle_correction_choice),
-                CommandHandler("dashboard", message_handlers.dashboard),
-                MessageHandler(filters.TEXT & ~filters.COMMAND, message_handlers.handle_user_input),
-                MessageHandler(filters.PHOTO, message_handlers.handle_photo)
-            ],
-            config.AWAITING_DASHBOARD: [
-                CallbackQueryHandler(callback_handlers.handle_correction_choice),
-                CommandHandler("dashboard", message_handlers.dashboard),
-                MessageHandler(filters.TEXT & ~filters.COMMAND, message_handlers.handle_user_input),
-                MessageHandler(filters.PHOTO, message_handlers.handle_photo)
-            ],
-            config.AWAITING_INPUT: [
-                CallbackQueryHandler(callback_handlers.handle_correction_choice),
-                CommandHandler("dashboard", message_handlers.dashboard),
-                MessageHandler(filters.TEXT & ~filters.COMMAND, message_handlers.handle_user_input),
-                MessageHandler(filters.PHOTO, message_handlers.handle_photo)
-            ],
-            config.AWAITING_LINE_NUMBER: [
-                CallbackQueryHandler(callback_handlers.handle_correction_choice),
-                CommandHandler("dashboard", message_handlers.dashboard),
-                MessageHandler(filters.TEXT & ~filters.COMMAND, message_handlers.handle_line_number_input),
-                MessageHandler(filters.PHOTO, message_handlers.handle_photo)
-            ],
-            config.AWAITING_FIELD_EDIT: [
-                CallbackQueryHandler(callback_handlers.handle_correction_choice), 
-                CommandHandler("dashboard", message_handlers.dashboard),
-                MessageHandler(filters.TEXT & ~filters.COMMAND, message_handlers.handle_user_input),
-                MessageHandler(filters.PHOTO, message_handlers.handle_photo)
-            ],
-            config.AWAITING_DELETE_LINE_NUMBER: [
-                CallbackQueryHandler(callback_handlers.handle_correction_choice),
-                CommandHandler("dashboard", message_handlers.dashboard),
-                MessageHandler(filters.TEXT & ~filters.COMMAND, message_handlers.handle_delete_line_number_input),
-                MessageHandler(filters.PHOTO, message_handlers.handle_photo)
-            ],
-            config.AWAITING_TOTAL_EDIT: [
-                CommandHandler("dashboard", message_handlers.dashboard),
-                MessageHandler(filters.TEXT & ~filters.COMMAND, message_handlers.handle_total_edit_input),
-                MessageHandler(filters.PHOTO, message_handlers.handle_photo)
-            ],
-            config.AWAITING_INGREDIENT_MATCHING: [
-                CallbackQueryHandler(callback_handlers.handle_correction_choice),
-                CommandHandler("dashboard", message_handlers.dashboard),
-                MessageHandler(filters.PHOTO, message_handlers.handle_photo)
-            ],
-            config.AWAITING_MANUAL_MATCH: [
-                CommandHandler("dashboard", message_handlers.dashboard),
-                MessageHandler(filters.TEXT & ~filters.COMMAND, message_handlers.handle_ingredient_matching_input),
-                CallbackQueryHandler(callback_handlers.handle_correction_choice),
-                MessageHandler(filters.PHOTO, message_handlers.handle_photo)
-            ],
-            config.AWAITING_SHEET_URL: [
-                CallbackQueryHandler(callback_handlers.handle_correction_choice),
-                CommandHandler("dashboard", message_handlers.dashboard),
-                MessageHandler(filters.TEXT & ~filters.COMMAND, callback_handlers._handle_sheet_url_input),
-                MessageHandler(filters.PHOTO, message_handlers.handle_photo)
-            ],
-            config.AWAITING_SHEET_NAME: [
-                CallbackQueryHandler(callback_handlers.handle_correction_choice),
-                CommandHandler("dashboard", message_handlers.dashboard),
-                MessageHandler(filters.TEXT & ~filters.COMMAND, callback_handlers._handle_sheet_name_input),
-                MessageHandler(filters.PHOTO, message_handlers.handle_photo)
-            ],
-            config.AWAITING_CONFIRM_MAPPING: [
-                CallbackQueryHandler(callback_handlers.handle_correction_choice),
-                CommandHandler("dashboard", message_handlers.dashboard),
-                MessageHandler(filters.PHOTO, message_handlers.handle_photo)
-            ],
-            config.EDIT_MAPPING: [
-                CallbackQueryHandler(callback_handlers.handle_correction_choice),
-                CommandHandler("dashboard", message_handlers.dashboard),
-                MessageHandler(filters.TEXT & ~filters.COMMAND, message_handlers.handle_column_input),
-                MessageHandler(filters.PHOTO, message_handlers.handle_photo)
-            ],
-            config.AWAITING_COLUMN_INPUT: [
-                CallbackQueryHandler(callback_handlers.handle_correction_choice),
-                CommandHandler("dashboard", message_handlers.dashboard),
-                MessageHandler(filters.TEXT & ~filters.COMMAND, message_handlers.handle_column_input),
-                MessageHandler(filters.PHOTO, message_handlers.handle_photo)
-            ],
-            config.AWAITING_SHEET_NAME_INPUT: [
-                CallbackQueryHandler(callback_handlers.handle_correction_choice),
-                CommandHandler("dashboard", message_handlers.dashboard),
-                MessageHandler(filters.TEXT & ~filters.COMMAND, message_handlers.handle_sheet_name_input),
-                MessageHandler(filters.PHOTO, message_handlers.handle_photo)
-            ],
-            config.AWAITING_START_ROW_INPUT: [
-                CallbackQueryHandler(callback_handlers.handle_correction_choice),
-                CommandHandler("dashboard", message_handlers.dashboard),
-                MessageHandler(filters.TEXT & ~filters.COMMAND, message_handlers.handle_start_row_input),
-                MessageHandler(filters.PHOTO, message_handlers.handle_photo)
-            ],
-            config.AWAITING_INGREDIENTS_FILE: [
-                CallbackQueryHandler(callback_handlers.handle_correction_choice),
-                CommandHandler("dashboard", message_handlers.dashboard),
-                MessageHandler(filters.Document.ALL, message_handlers.handle_ingredients_file_upload),
-                MessageHandler(filters.PHOTO, message_handlers.handle_photo)
-            ],
-            config.AWAITING_INGREDIENTS_TEXT: [
-                CallbackQueryHandler(callback_handlers.handle_correction_choice),
-                CommandHandler("dashboard", message_handlers.dashboard),
-                MessageHandler(filters.TEXT & ~filters.COMMAND, message_handlers.handle_ingredients_text_upload),
-                MessageHandler(filters.PHOTO, message_handlers.handle_photo)
-            ],
-            config.AWAITING_ADMIN_USERNAME: [
-                CallbackQueryHandler(callback_handlers.handle_correction_choice),
-                CommandHandler("dashboard", message_handlers.dashboard),
-                MessageHandler(filters.TEXT & ~filters.COMMAND, message_handlers.handle_user_input),
-                MessageHandler(filters.PHOTO, message_handlers.handle_photo)
-            ],
-            config.AWAITING_ADMIN_CONFIRM_DELETE: [
-                CallbackQueryHandler(callback_handlers.handle_correction_choice),
-                CommandHandler("dashboard", message_handlers.dashboard),
-                MessageHandler(filters.PHOTO, message_handlers.handle_photo)
-            ],
+            # Basic states only for template
         },
         fallbacks=[
             CommandHandler("cancel", message_handlers.start),
-            CommandHandler("dashboard", message_handlers.dashboard)
+            CommandHandler("help", message_handlers.help_command)
         ],
         per_message=False
     )
@@ -478,18 +251,15 @@ def create_application() -> Application:
     # Add handlersп
     application.add_handler(conv_handler)
     
-    # Add separate command handlers that work in any state
+    # Add basic command handlers for template
     application.add_handler(CommandHandler("start", message_handlers.start))
-    application.add_handler(CommandHandler("dashboard", message_handlers.dashboard))
-    application.add_handler(CommandHandler("reset_language", message_handlers.reset_language))
-    application.add_handler(CommandHandler("switch_model", message_handlers.switch_model))
-    application.add_handler(CommandHandler("model_info", message_handlers.model_info))
+    application.add_handler(CommandHandler("help", message_handlers.help_command))
     
     return application
 
 async def initialize_bot():
     """Initialize the bot application and start background tasks"""
-    global application, ingredient_storage, TOKEN, TELEGRAM_API
+    global application, TOKEN, TELEGRAM_API
     
     # Проверяем, не инициализирован ли уже бот
     if application is not None:
@@ -519,22 +289,9 @@ async def initialize_bot():
     application = create_application()
     print(f"✅ Application создан: {application}")
     
-    # Initialize ingredient storage with 1 hour cleanup
-    ingredient_storage = IngredientStorage(max_age_hours=1)
+    # Ingredient storage and cleanup removed for template - not needed for basic bot functionality
     
-    # Start background cleanup task
-    cleanup_task = asyncio.create_task(cleanup_old_files_periodically(ingredient_storage))
-    print("✅ Фоновая задача очистки запущена")
-    
-    # Initialize roles and permissions
-    if db:
-        try:
-            from utils.role_initializer import initialize_roles_and_permissions
-            await initialize_roles_and_permissions(db)
-            print("✅ Roles and permissions initialized")
-        except Exception as e:
-            print(f"⚠️ Role initialization failed: {e}")
-            # НЕ прерываем инициализацию - роли не критичны для базовой работы
+    # Role initialization removed for template
     
     # Start keep-alive task - НЕ блокируем инициализацию бота
     try:
@@ -662,11 +419,7 @@ async def debug_info():
             "WEBHOOK_URL": "***" if os.getenv("WEBHOOK_URL") else "NOT SET",
             "GOOGLE_APPLICATION_CREDENTIALS_JSON": "***" if os.getenv("GOOGLE_APPLICATION_CREDENTIALS_JSON") else "NOT SET"
         },
-        "google_sheets_config": {
-            "credentials_path": "google_sheets_credentials.json",
-            "spreadsheet_id": "1ah85v40ZqJzTz8PGHO6Ndoctw378NOYATH9X3OeeuUI",
-            "service_available": google_sheets_service.is_available() if 'google_sheets_service' in locals() else False
-        }
+        "template_mode": True
     }
 
 @app.get("/keepalive")
@@ -697,24 +450,16 @@ async def webhook(request: Request):
         if not application:
             return {"ok": True, "error": "Bot not initialized"}
         
-        # ULTRA-OPTIMIZATION: Process photos synchronously for immediate response
-        # This prevents timeouts and ensures fast processing
+        # Process update normally for template
         try:
             update = Update.de_json(update_data, application.bot)
             
             if not update:
                 return {"ok": True}
             
-            # Check if this is a photo update - handle it specially
-            if update.message and update.message.photo:
-                # For photos, we need to process them synchronously to avoid timeouts
-                # The photo handler has been optimized to work synchronously
-                await application.process_update(update)
-                return {"ok": True}
-            else:
-                # For other updates, process normally
-                await application.process_update(update)
-                return {"ok": True}
+            # Process all updates normally
+            await application.process_update(update)
+            return {"ok": True}
             
         except Exception as e:
             print(f"❌ Ошибка при обработке update: {e}")

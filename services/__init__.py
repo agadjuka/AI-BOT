@@ -1,8 +1,13 @@
-# Services
+# Services - Template version
 
-from .google_sheets_manager import GoogleSheetsManager, get_google_sheets_manager
+from .ai_service import AIService, ReceiptAnalysisServiceCompat, AIServiceFactory
+from .language_service import LanguageService
+from .user_service import UserService
 
 __all__ = [
-    'GoogleSheetsManager',
-    'get_google_sheets_manager'
+    'AIService',
+    'ReceiptAnalysisServiceCompat', 
+    'AIServiceFactory',
+    'LanguageService',
+    'UserService'
 ]

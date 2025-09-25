@@ -4,6 +4,8 @@ Uses polling instead of webhook for local development
 """
 import logging
 import asyncio
+import os
+from dotenv import load_dotenv
 from telegram.ext import (
     Application,
     CommandHandler,
@@ -16,53 +18,39 @@ from telegram.ext import (
 from telegram.error import Conflict, NetworkError
 from config.locales.locale_manager import initialize_locale_manager
 
+# Загружаем переменные окружения из .env файла
+load_dotenv()
+
 # Инициализация клиента Firestore
 # Этот код будет работать автоматически в Cloud Run
 # и при локальной настройке с переменной окружения.
 from google.cloud import firestore
-import os
-
-# Установка переменной окружения для Google Cloud credentials
-if not os.getenv('GOOGLE_APPLICATION_CREDENTIALS'):
-    credentials_file = "just-advice-470905-a3-ee25a8712359.json"
-    if os.path.exists(credentials_file):
-        os.environ['GOOGLE_APPLICATION_CREDENTIALS'] = credentials_file
-        print(f"✅ Установлена переменная GOOGLE_APPLICATION_CREDENTIALS: {credentials_file}")
-    else:
-        print(f"❌ Файл учетных данных не найден: {credentials_file}")
 
 # Инициализация клиента Firestore с обработкой ошибок
 try:
-    db = firestore.Client(database='billscaner')
-    print("✅ Firestore клиент инициализирован успешно (база: billscaner)")
+    # Получаем имя базы данных из переменных окружения
+    database_name = os.getenv("FIRESTORE_DATABASE", "default")
+    db = firestore.Client(database=database_name)
+    print(f"✅ Firestore клиент инициализирован успешно (база: {database_name})")
 except Exception as e:
     print(f"❌ Ошибка инициализации Firestore: {e}")
     print("💡 Убедитесь, что переменная GOOGLE_APPLICATION_CREDENTIALS установлена")
     print(f"💡 Текущее значение: {os.environ.get('GOOGLE_APPLICATION_CREDENTIALS', 'НЕ УСТАНОВЛЕНО')}")
     db = None
 
-# Проверяем доступность OpenCV без его загрузки
-try:
-    from utils.opencv_lazy_loader import check_opencv_availability
-    opencv_available = check_opencv_availability()
-    print(f"✅ OpenCV доступен: {opencv_available}")
-    if not opencv_available:
-        print("⚠️ OpenCV недоступен - анализ изображений будет ограничен")
-except Exception as e:
-    print(f"⚠️ Не удалось проверить доступность OpenCV: {e}")
-    opencv_available = False
+# OpenCV removed for template - not needed for basic bot functionality
+opencv_available = False
 
 from config.settings import BotConfig
 from config.prompts import PromptManager
 from services.ai_service import AIService, ReceiptAnalysisServiceCompat, AIServiceFactory
 from handlers.message_handlers import MessageHandlers
 from handlers.callback_handlers import CallbackHandlers
-from utils.ingredient_storage import IngredientStorage
 from utils.message_sender import MessageSender
-from google_sheets_handler import get_google_sheets_ingredients
+# Google Sheets handler removed for template
 
 
-def safe_start_bot(application: Application, ingredient_storage: IngredientStorage, max_retries: int = 3) -> None:
+def safe_start_bot(application: Application, max_retries: int = 3) -> None:
     """Безопасный запуск бота с обработкой конфликтов"""
     for attempt in range(max_retries):
         try:
@@ -110,18 +98,7 @@ def safe_start_bot(application: Application, ingredient_storage: IngredientStora
             raise
 
 
-def cleanup_old_files_periodically(ingredient_storage: IngredientStorage) -> None:
-    """Background task to clean up old files every 30 minutes"""
-    import time
-    while True:
-        try:
-            time.sleep(1800)  # 30 minutes = 1800 seconds
-            ingredient_storage.cleanup_old_files()
-            print("🧹 Выполнена очистка старых файлов сопоставления")
-        except Exception as e:
-            print(f"❌ Ошибка при очистке файлов: {e}")
-            # Продолжаем работу даже при ошибке
-            time.sleep(60)  # Ждем минуту перед следующей попыткой
+# Cleanup function removed for template - not needed for basic bot functionality
 
 def main() -> None:
     """Main function to start the bot"""
@@ -153,217 +130,45 @@ def main() -> None:
     # await message_sender.send_error_message(update, context, "Произошла ошибка при обработке")
     # await message_sender.send_temp_message(update, context, "Временное сообщение", duration=5)
     
-    # Initialize ingredient storage with 1 hour cleanup
-    ingredient_storage = IngredientStorage(max_age_hours=1)
+    # Ingredient storage removed for template - not needed for basic bot functionality
     
     # Create application
     application = Application.builder().token(config.BOT_TOKEN).concurrent_updates(True).build()
     
-    # Initialize empty Google Sheets ingredients - will be loaded on demand
-    application.bot_data["google_sheets_ingredients"] = {}
-    print("✅ Google Sheets ингредиенты будут загружены по требованию")
-    
-    # Preload GoogleSheetsManager to initialize Firestore connection
-    from services.google_sheets_manager import get_google_sheets_manager
-    sheets_manager = get_google_sheets_manager(db)
-    print("✅ GoogleSheetsManager предзагружен с Firestore")
-    
-    # Preload IngredientsManager to initialize Firestore connection
-    from services.ingredients_manager import get_ingredients_manager
-    ingredients_manager = get_ingredients_manager(db)
-    print("✅ IngredientsManager предзагружен с Firestore")
-    
-    # Preload UserService to initialize user role management
-    from services.user_service import get_user_service
-    user_service = get_user_service(db)
-    print("✅ UserService предзагружен с Firestore")
-    
-    # Preload GoogleSheetsService to initialize Google Sheets API
-    from services.google_sheets_service import GoogleSheetsService
-    google_sheets_service = GoogleSheetsService(
-        credentials_path=config.GOOGLE_SHEETS_CREDENTIALS,
-        spreadsheet_id=config.GOOGLE_SHEETS_SPREADSHEET_ID
-    )
-    print("✅ GoogleSheetsService предзагружен")
+    # Services removed for template - only basic bot functionality remains
+    print("✅ Template mode: Advanced services disabled")
 
-    # Create conversation handler
+    # Create simple conversation handler for template
     conv_handler = ConversationHandler(
         entry_points=[
             CommandHandler("start", message_handlers.start),
-            CommandHandler("reset_language", message_handlers.reset_language),
-            CommandHandler("dashboard", message_handlers.dashboard),
-            CommandHandler("admin", message_handlers.admin_commands),
-            CommandHandler("add_whitelist", message_handlers.add_to_whitelist),
-            CommandHandler("remove_whitelist", message_handlers.remove_from_whitelist),
-            CommandHandler("list_whitelist", message_handlers.list_whitelist),
-            MessageHandler(filters.PHOTO, message_handlers.handle_photo)
+            CommandHandler("help", message_handlers.help_command),
+            MessageHandler(filters.TEXT & ~filters.COMMAND, message_handlers.handle_text)
         ],
         states={
-            config.AWAITING_CORRECTION: [
-                CallbackQueryHandler(callback_handlers.handle_correction_choice),
-                CommandHandler("dashboard", message_handlers.dashboard),
-                MessageHandler(filters.TEXT & ~filters.COMMAND, message_handlers.handle_user_input),  # Add text handler for search
-                MessageHandler(filters.PHOTO, message_handlers.handle_photo)  # Add photo handler
-            ],
-            config.AWAITING_DASHBOARD: [
-                CallbackQueryHandler(callback_handlers.handle_correction_choice),
-                CommandHandler("dashboard", message_handlers.dashboard),
-                MessageHandler(filters.TEXT & ~filters.COMMAND, message_handlers.handle_user_input),
-                MessageHandler(filters.PHOTO, message_handlers.handle_photo)
-            ],
-            config.AWAITING_INPUT: [
-                CommandHandler("dashboard", message_handlers.dashboard),
-                MessageHandler(filters.TEXT & ~filters.COMMAND, message_handlers.handle_user_input),
-                MessageHandler(filters.PHOTO, message_handlers.handle_photo)  # Add photo handler
-            ],
-            config.AWAITING_LINE_NUMBER: [
-                CommandHandler("dashboard", message_handlers.dashboard),
-                MessageHandler(filters.TEXT & ~filters.COMMAND, message_handlers.handle_line_number_input),
-                MessageHandler(filters.PHOTO, message_handlers.handle_photo)  # Add photo handler
-            ],
-            config.AWAITING_FIELD_EDIT: [
-                CallbackQueryHandler(callback_handlers.handle_correction_choice), 
-                CommandHandler("dashboard", message_handlers.dashboard),
-                MessageHandler(filters.TEXT & ~filters.COMMAND, message_handlers.handle_user_input),
-                MessageHandler(filters.PHOTO, message_handlers.handle_photo)  # Add photo handler
-            ],
-            config.AWAITING_DELETE_LINE_NUMBER: [
-                CommandHandler("dashboard", message_handlers.dashboard),
-                MessageHandler(filters.TEXT & ~filters.COMMAND, message_handlers.handle_delete_line_number_input),
-                MessageHandler(filters.PHOTO, message_handlers.handle_photo)  # Add photo handler
-            ],
-            config.AWAITING_TOTAL_EDIT: [
-                CommandHandler("dashboard", message_handlers.dashboard),
-                MessageHandler(filters.TEXT & ~filters.COMMAND, message_handlers.handle_total_edit_input),
-                MessageHandler(filters.PHOTO, message_handlers.handle_photo)  # Add photo handler
-            ],
-            config.AWAITING_INGREDIENT_MATCHING: [
-                CallbackQueryHandler(callback_handlers.handle_correction_choice),
-                CommandHandler("dashboard", message_handlers.dashboard),
-                MessageHandler(filters.PHOTO, message_handlers.handle_photo)  # Add photo handler
-            ],
-            config.AWAITING_MANUAL_MATCH: [
-                CommandHandler("dashboard", message_handlers.dashboard),
-                MessageHandler(filters.TEXT & ~filters.COMMAND, message_handlers.handle_ingredient_matching_input),
-                CallbackQueryHandler(callback_handlers.handle_correction_choice),
-                MessageHandler(filters.PHOTO, message_handlers.handle_photo)  # Add photo handler
-            ],
-            config.AWAITING_SHEET_URL: [
-                CallbackQueryHandler(callback_handlers.handle_callback_query),
-                CallbackQueryHandler(callback_handlers.handle_correction_choice),
-                CommandHandler("dashboard", message_handlers.dashboard),
-                MessageHandler(filters.TEXT & ~filters.COMMAND, callback_handlers._handle_sheet_url_input),
-                MessageHandler(filters.PHOTO, message_handlers.handle_photo)
-            ],
-            config.AWAITING_SHEET_NAME: [
-                CallbackQueryHandler(callback_handlers.handle_callback_query),
-                CallbackQueryHandler(callback_handlers.handle_correction_choice),
-                CommandHandler("dashboard", message_handlers.dashboard),
-                MessageHandler(filters.TEXT & ~filters.COMMAND, callback_handlers._handle_sheet_name_input),
-                MessageHandler(filters.PHOTO, message_handlers.handle_photo)
-            ],
-            config.AWAITING_CONFIRM_MAPPING: [
-                CallbackQueryHandler(callback_handlers.handle_callback_query),
-                CallbackQueryHandler(callback_handlers.handle_correction_choice),
-                CommandHandler("dashboard", message_handlers.dashboard),
-                MessageHandler(filters.PHOTO, message_handlers.handle_photo)
-            ],
-            config.EDIT_MAPPING: [
-                CallbackQueryHandler(callback_handlers.handle_callback_query),
-                CallbackQueryHandler(callback_handlers.handle_correction_choice),
-                CommandHandler("dashboard", message_handlers.dashboard),
-                MessageHandler(filters.TEXT & ~filters.COMMAND, message_handlers.handle_column_input),
-                MessageHandler(filters.PHOTO, message_handlers.handle_photo)
-            ],
-            config.AWAITING_COLUMN_INPUT: [
-                CallbackQueryHandler(callback_handlers.handle_callback_query),
-                CallbackQueryHandler(callback_handlers.handle_correction_choice),
-                CommandHandler("dashboard", message_handlers.dashboard),
-                MessageHandler(filters.TEXT & ~filters.COMMAND, message_handlers.handle_column_input),
-                MessageHandler(filters.PHOTO, message_handlers.handle_photo)
-            ],
-            config.AWAITING_SHEET_NAME_INPUT: [
-                CallbackQueryHandler(callback_handlers.handle_callback_query),
-                CallbackQueryHandler(callback_handlers.handle_correction_choice),
-                CommandHandler("dashboard", message_handlers.dashboard),
-                MessageHandler(filters.TEXT & ~filters.COMMAND, message_handlers.handle_sheet_name_input),
-                MessageHandler(filters.PHOTO, message_handlers.handle_photo)
-            ],
-            config.AWAITING_START_ROW_INPUT: [
-                CallbackQueryHandler(callback_handlers.handle_callback_query),
-                CallbackQueryHandler(callback_handlers.handle_correction_choice),
-                CommandHandler("dashboard", message_handlers.dashboard),
-                MessageHandler(filters.TEXT & ~filters.COMMAND, message_handlers.handle_start_row_input),
-                MessageHandler(filters.PHOTO, message_handlers.handle_photo)
-            ],
-            config.AWAITING_INGREDIENTS_FILE: [
-                CallbackQueryHandler(callback_handlers.handle_callback_query),
-                CallbackQueryHandler(callback_handlers.handle_correction_choice),
-                CommandHandler("dashboard", message_handlers.dashboard),
-                MessageHandler(filters.Document.ALL, message_handlers.handle_ingredients_file_upload),
-                MessageHandler(filters.PHOTO, message_handlers.handle_photo)
-            ],
-            config.AWAITING_INGREDIENTS_TEXT: [
-                CallbackQueryHandler(callback_handlers.handle_callback_query),
-                CallbackQueryHandler(callback_handlers.handle_correction_choice),
-                CommandHandler("dashboard", message_handlers.dashboard),
-                MessageHandler(filters.TEXT & ~filters.COMMAND, message_handlers.handle_ingredients_text_upload),
-                MessageHandler(filters.PHOTO, message_handlers.handle_photo)
-            ],
-            config.AWAITING_ADMIN_USERNAME: [
-                CallbackQueryHandler(callback_handlers.handle_correction_choice),
-                CommandHandler("dashboard", message_handlers.dashboard),
-                MessageHandler(filters.TEXT & ~filters.COMMAND, message_handlers.handle_user_input),
-                MessageHandler(filters.PHOTO, message_handlers.handle_photo)
-            ],
-            config.AWAITING_ADMIN_CONFIRM_DELETE: [
-                CallbackQueryHandler(callback_handlers.handle_correction_choice),
-                CommandHandler("dashboard", message_handlers.dashboard),
-                MessageHandler(filters.PHOTO, message_handlers.handle_photo)
-            ],
+            # Basic states only for template
         },
         fallbacks=[
             CommandHandler("cancel", message_handlers.start),
-            CommandHandler("dashboard", message_handlers.dashboard)
-        ],  # Use start as cancel fallback and dashboard as universal access
+            CommandHandler("help", message_handlers.help_command)
+        ],
         per_message=False
     )
 
     # Add handlers
     application.add_handler(conv_handler)
     
-    # Add separate command handlers that work in any state
+    # Add basic command handlers for template
     application.add_handler(CommandHandler("start", message_handlers.start))
-    application.add_handler(CommandHandler("dashboard", message_handlers.dashboard))
-    application.add_handler(CommandHandler("reset_language", message_handlers.reset_language))
+    application.add_handler(CommandHandler("help", message_handlers.help_command))
     
-    # Initialize roles and permissions after application is created
-    if db:
-        try:
-            from utils.role_initializer import initialize_roles_and_permissions
-            import asyncio
-            # Run role initialization in a new event loop for local development
-            loop = asyncio.new_event_loop()
-            asyncio.set_event_loop(loop)
-            loop.run_until_complete(initialize_roles_and_permissions(db))
-            loop.close()
-            print("✅ Roles and permissions initialized for local development")
-        except Exception as e:
-            print(f"⚠️ Role initialization failed: {e}")
-            # НЕ прерываем инициализацию - роли не критичны для базовой работы
+    # Role initialization removed for template
 
-    # 4. Запускаем бота с улучшенной обработкой ошибок и автоочисткой
+    # 4. Запускаем бота
     print("🚀 Бот запускается...")
-    print("🧹 Автоочистка файлов сопоставления: каждые 30 минут, файлы старше 1 часа")
-    
-    # Запускаем фоновую задачу для очистки
-    import threading
-    cleanup_thread = threading.Thread(target=cleanup_old_files_periodically, args=(ingredient_storage,), daemon=True)
-    cleanup_thread.start()
-    print("✅ Фоновая задача очистки запущена")
     
     try:
-        safe_start_bot(application, ingredient_storage)
+        safe_start_bot(application)
     except KeyboardInterrupt:
         print("\n⏹️ Бот остановлен пользователем")
     except Exception as e:

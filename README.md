@@ -1,16 +1,23 @@
-# AI Bot - Receipt Analysis 765
+# Telegram Bot Template
 
-Telegram бот для анализа чеков с использованием Google Gemini AI.
+Базовый шаблон для создания Telegram ботов с поддержкой AI (Google Gemini) и деплоем в Google Cloud Run.
 
 ## 🚀 Быстрый старт
 
 ### Локальная разработка
 ```bash
-# 1. Настройка среды разработки
-python dev_setup.py
+# 1. Установка зависимостей
+pip install -r requirements_local.txt
 
-# 2. Редактирование .env файла с вашими токенами
-# 3. Запуск локальной версии
+# 2. Создание .env файла
+cp .env.example .env
+
+# 3. Заполнение переменных окружения в .env
+# BOT_TOKEN=your_telegram_bot_token
+# GEMINI_API_KEY=your_gemini_api_key
+# PROJECT_ID=your_google_cloud_project_id
+
+# 4. Запуск локальной версии
 python run_local.py
 ```
 
@@ -20,75 +27,33 @@ python run_local.py
 git push origin main
 ```
 
-## 🔐 Система ролей и доступаааа
-
-Бот использует систему ролей для контроля доступа:
-
-### Роли пользователей:ваааап
-- **Admin** - полный доступ ко всем функциям
-- **User** - стандартный доступ
-
-### Управление доступом:
-- Администратор (ID: 261617302) назначается автоматически
-- Пользователи добавляются в whitelist администратором
-- Доступ имеют только администраторы и пользователи из whitelist
-
-### Команды администратора:
-- `/admin` - панель администратора
-- `/add_whitelist <username>` - добавить пользователя
-- `/remove_whitelist <username>` - удалить пользователя
-- `/list_whitelist` - показать список пользователей
-
-📖 Подробная документация: [ROLE_SYSTEM_DOCUMENTATION.md](ROLE_SYSTEM_DOCUMENTATION.md)
-
 ## 📁 Структура проекта
 
 ```
-AI Bot/
+telegram-bot-template/
 ├── main.py                    # Production версия (FastAPI + webhook)
 ├── main_local.py             # Локальная версия (polling)
 ├── run_local.py              # Скрипт запуска локальной версии
-├── dev_setup.py              # Настройка среды разработки
-├── switch_mode.py            # Переключение между версиями
 ├── requirements.txt          # Production зависимости
 ├── requirements_local.txt    # Локальные зависимости
 ├── env.example              # Пример конфигурации
 ├── .env                     # Ваши токены (создать вручную)
 ├── config/                  # Конфигурация
-│   ├── __init__.py
-│   ├── settings.py         # Настройки бота и промпты
-│   └── google_sheets_example.py  # Пример настройки Google Sheets
+│   ├── settings.py         # Настройки бота
+│   ├── secrets.py          # Управление секретами
+│   ├── prompts.py          # AI промпты
+│   └── locales/            # Локализация
+│       ├── ru.py          # Русские тексты
+│       ├── en.py          # Английские тексты
+│       └── locale_manager.py  # Менеджер локализации
 ├── services/               # Сервисы
-│   ├── __init__.py
-│   ├── ai_service.py      # Сервис для работы с AI
-│   ├── file_generator_service.py  # Генерация файлов для Google Sheets
-│   ├── google_sheets_service.py   # Загрузка в Google Sheets
-│   └── ingredient_matching_service.py  # Сопоставление ингредиентов
-├── models/                # Модели данных
-│   ├── __init__.py
-│   ├── receipt.py         # Модели чека и элементов
-│   └── ingredient_matching.py  # Модели сопоставления ингредиентов
+│   └── ai_service.py      # AI сервис (Google Gemini)
 ├── handlers/              # Обработчики
-│   ├── __init__.py
 │   ├── message_handlers.py    # Обработчики сообщений
 │   └── callback_handlers.py   # Обработчики callback'ов
 ├── utils/                 # Утилиты
-│   ├── __init__.py
-│   ├── formatters.py      # Форматирование данных
-│   ├── receipt_processor.py   # Обработка данных чека
-│   ├── ingredient_formatter.py  # Форматирование ингредиентов
-│   ├── ingredient_storage.py   # Хранение сопоставлений
-│   └── ui_manager.py      # Управление интерфейсом
-├── validators/            # Валидация
-│   ├── __init__.py
-│   └── receipt_validator.py   # Валидация данных чека
-├── data/                  # Данные
-│   └── *.json            # Файлы сопоставления ингредиентов
-├── google_sheets_handler.py  # Обработчик Google Sheets
-├── test_google_sheets_config.py  # Тест конфигурации
-├── README.md            # Документация
-├── README_LOCAL.md      # Документация по локальной разработке
-└── GOOGLE_SHEETS_SETUP.md  # Настройка Google Sheets
+│   └── message_sender.py  # Отправка сообщений
+└── README.md             # Документация
 ```
 
 ## 🔧 Режимы работы
@@ -98,44 +63,60 @@ AI Bot/
 | **Production** | `main.py` | Webhook (FastAPI) | Деплой в Google Cloud Run |
 | **Local** | `main_local.py` | Polling | Локальная разработка |
 
-## 📖 Документация
+## 🔐 Переменные окружения
 
-- **[README_LOCAL.md](README_LOCAL.md)** - Подробная документация по локальной разработке
-- **[GOOGLE_SHEETS_SETUP.md](GOOGLE_SHEETS_SETUP.md)** - Настройка Google Sheets
+### Обязательные
+- `BOT_TOKEN` - Токен Telegram бота
+- `GEMINI_API_KEY` - API ключ Google Gemini
+- `PROJECT_ID` - ID проекта Google Cloud
 
-## Принципы SOLID
+### Опциональные
+- `FIRESTORE_DATABASE` - Имя базы данных Firestore (по умолчанию: default)
+- `SERVICE_URL` - URL сервиса для keep-alive (для Cloud Run)
+- `GOOGLE_APPLICATION_CREDENTIALS` - Путь к файлу учетных данных Google Cloud
+- `GOOGLE_APPLICATION_CREDENTIALS_JSON` - JSON учетных данных (для Cloud Run)
 
-Проект структурирован в соответствии с принципами SOLID:
+## 🛠️ Функциональность шаблона
 
-- **Single Responsibility Principle**: Каждый модуль отвечает за одну задачу
-- **Open/Closed Principle**: Сервисы открыты для расширения, закрыты для модификации
-- **Liskov Substitution Principle**: Модели данных взаимозаменяемы
-- **Interface Segregation Principle**: Интерфейсы разделены по функциональности
-- **Dependency Inversion Principle**: Зависимости инвертированы через внедрение
+- ✅ Базовые команды `/start` и `/help`
+- ✅ Обработка текстовых сообщений с AI ответами
+- ✅ Поддержка многоязычности (русский/английский)
+- ✅ Интеграция с Google Gemini AI
+- ✅ Firestore для хранения пользовательских данных
+- ✅ Keep-alive для Cloud Run
+- ✅ Логирование и обработка ошибок
 
-## Функциональность
+## 📖 Использование
 
-- Анализ фото чеков с помощью Google Gemini AI
-- Интерактивное редактирование данных чека
-- Автоматическая валидация и расчеты
-- Форматирование данных для мобильных устройств
-- Управление строками чека (добавление, удаление, редактирование)
-- **🆕 Загрузка данных в Google Таблицы**
-- **🆕 Сопоставление ингредиентов с готовыми справочниками**
+1. **Клонируйте репозиторий**
+2. **Скопируйте `.env.example` в `.env`**
+3. **Заполните необходимые переменные окружения**
+4. **Установите зависимости**: `pip install -r requirements_local.txt`
+5. **Запустите локально**: `python run_local.py`
 
-## Новая функциональность: Google Sheets
+## 🚀 Деплой в Google Cloud Run
 
-Добавлена возможность загрузки данных чека напрямую в Google Таблицы:
+1. **Настройте Google Cloud проект**
+2. **Включите необходимые API** (Cloud Run, Firestore)
+3. **Создайте service account** с нужными правами
+4. **Настройте переменные окружения** в Cloud Run
+5. **Деплойте**: `gcloud run deploy`
 
-- 📊 **Загрузка в Google Sheets** - данные чека автоматически загружаются в Google Таблицу
-- 🥬 **Сопоставление ингредиентов** - автоматическое сопоставление товаров с готовыми справочниками
+## 🔧 Кастомизация
 
-### Настройка Google Sheets
+### Добавление новых команд
+1. Добавьте обработчик в `handlers/message_handlers.py`
+2. Зарегистрируйте команду в `main.py` или `main_local.py`
 
-Подробные инструкции по настройке см. в [GOOGLE_SHEETS_SETUP.md](GOOGLE_SHEETS_SETUP.md)
+### Добавление новых языков
+1. Создайте файл в `config/locales/` (например, `de.py`)
+2. Добавьте переводы в формате `LANG_TRANSLATIONS`
+3. Обновите `locale_manager.py`
 
-### Быстрый тест конфигурациии
+### Изменение AI поведения
+1. Отредактируйте промпты в `config/prompts.py`
+2. Настройте AI сервис в `services/ai_service.py`
 
-```bash
-python test_google_sheets_config.py
-```
+## 📝 Лицензия
+
+MIT License - используйте свободно для своих проектов.
